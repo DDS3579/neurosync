@@ -66,4 +66,54 @@ describe("deriveWeeklyBrainActivity", () => {
     expect(result.items).toEqual([]);
     expect(result.activity).toEqual({});
   });
+
+  it("feeds ActivityLog entries into activityToRegionIntensity using their ActivityKind", () => {
+    const result = deriveWeeklyBrainActivity({
+      focus: [],
+      movement: [],
+      sleep: [],
+      habits: [],
+      habitLogs: [],
+      activities: [
+        {
+          id: "a1",
+          createdAt: "2026-11-16T10:00:00.000Z",
+          updatedAt: "2026-11-16T10:00:00.000Z",
+          date: "2026-11-16",
+          type: "puzzles_games",
+          durationMin: 30,
+          enjoyment: 4,
+        },
+        {
+          id: "a2",
+          createdAt: "2026-11-15T10:00:00.000Z",
+          updatedAt: "2026-11-15T10:00:00.000Z",
+          date: "2026-11-15",
+          type: "novelty",
+          durationMin: 40,
+          enjoyment: 5,
+        },
+        {
+          id: "a3",
+          createdAt: "2026-11-14T10:00:00.000Z",
+          updatedAt: "2026-11-14T10:00:00.000Z",
+          date: "2026-11-14",
+          type: "new_hobby",
+          durationMin: 20,
+          enjoyment: 4,
+        },
+      ],
+      today: new Date("2026-11-16T12:00:00"),
+    });
+
+    expect(result.items.map((i) => i.kind).sort()).toEqual([
+      "new_hobby",
+      "novelty",
+      "puzzles_games",
+    ]);
+    expect(result.activity.prefrontal).toBeGreaterThan(0);
+    expect(result.activity.hippocampus).toBeGreaterThan(0);
+    expect(result.activity.cerebellum).toBeGreaterThan(0);
+    expect(result.activity.amygdala).toBeGreaterThan(0);
+  });
 });
