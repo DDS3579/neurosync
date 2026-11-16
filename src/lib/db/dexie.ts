@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 
+import { DEFAULT_REMINDER_SETTINGS } from "@/features/reminders/reminderUtils";
 import type {
   ActivityLog,
   DailyCheckin,
@@ -12,6 +13,7 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  ReminderSettings,
   ReviewItem,
   SleepLog,
   UserSettings,
@@ -22,7 +24,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const DB_NAME = "neurosync";
 
@@ -109,7 +111,7 @@ export class NeuroSyncDatabase extends Dexie {
           });
       });
 
-    this.version(SCHEMA_VERSION)
+    this.version(4)
       .stores({
         settings: "id",
         sleepLogs: "id, date",
@@ -149,6 +151,35 @@ export class NeuroSyncDatabase extends Dexie {
           .table("settings")
           .toCollection()
           .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = 4;
+          });
+      });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number; reminders?: ReminderSettings }) => {
+            if (!row.reminders) {
+              row.reminders = structuredClone(DEFAULT_REMINDER_SETTINGS);
+            }
             row.schemaVersion = SCHEMA_VERSION;
           });
       });
