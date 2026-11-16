@@ -224,6 +224,7 @@ export function BreathingMeditationCard({
                 <button
                   key={m}
                   type="button"
+                  aria-pressed={mode === m}
                   onClick={() => switchMode(m)}
                   className={cn(
                     "rounded-[7px] px-3 py-1.5 text-caption font-medium capitalize transition-colors",
@@ -358,7 +359,10 @@ export function BreathingMeditationCard({
                 />
               ) : null}
 
-              <div className="relative z-10 flex flex-col items-center text-center">
+              <div
+                aria-live="off"
+                className="relative z-10 flex flex-col items-center text-center"
+              >
                 {mode === "breathing" ? (
                   <>
                     <span className="text-section font-medium text-foreground">
@@ -393,6 +397,17 @@ export function BreathingMeditationCard({
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Announces phase/status changes politely without announcing every second tick */}
+            <div aria-live="polite" aria-atomic="true" className="sr-only">
+              {run.status === "paused"
+                ? "Session paused."
+                : run.status === "running" && mode === "breathing"
+                  ? `${phase.label} for ${phase.phaseDurationSec} seconds.`
+                  : run.status === "running"
+                    ? `${meditationMin} minute meditation timer running.`
+                    : ""}
             </div>
 
             {mode === "breathing" && run.status !== "idle" ? (
