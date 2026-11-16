@@ -16,21 +16,22 @@
   --color-surface-2: var(--surface-2);
   --color-border-strong: var(--border-strong);
   --color-violet: var(--violet);
+  --color-violet-text: var(--violet-text);
   --color-cyan: var(--cyan);
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
 
-  /* Type scale — 4px grid. */
-  --text-title: 28px;
-  --text-title--line-height: 34px;
+  /* Type scale — 4px grid, scales with user text-size preference (S/M/L). */
+  --text-title: calc(28px * var(--nx-text-scale, 1));
+  --text-title--line-height: calc(34px * var(--nx-text-scale, 1));
   --text-title--letter-spacing: -0.02em;
-  --text-section: 15px;
-  --text-section--line-height: 22px;
-  --text-body: 14px;
-  --text-body--line-height: 22px;
-  --text-caption: 12px;
-  --text-caption--line-height: 16px;
+  --text-section: calc(15px * var(--nx-text-scale, 1));
+  --text-section--line-height: calc(22px * var(--nx-text-scale, 1));
+  --text-body: calc(14px * var(--nx-text-scale, 1));
+  --text-body--line-height: calc(22px * var(--nx-text-scale, 1));
+  --text-caption: calc(12px * var(--nx-text-scale, 1));
+  --text-caption--line-height: calc(16px * var(--nx-text-scale, 1));
 
   /* Radii: cards 14px, inputs/buttons 10px, chips pill. */
   --radius-card: var(--nx-radius-card);
@@ -86,7 +87,8 @@
   --card-foreground: #e6eaf5;
   --popover: #111a30;
   --popover-foreground: #e6eaf5;
-  --primary: #8b5cf6;
+  /* #7c3aed holds 5.70:1 with #ffffff foreground (WCAG AA normal text). */
+  --primary: #7c3aed;
   --primary-foreground: #ffffff;
   --secondary: #111a30;
   --secondary-foreground: #e6eaf5;
@@ -111,10 +113,11 @@
   --nx-radius-card: 14px;
   --nx-radius-control: 10px;
   --nx-radius-chip: 999px;
+  --nx-text-scale: 1;
 
   --sidebar: #0c1222;
   --sidebar-foreground: #e6eaf5;
-  --sidebar-primary: #8b5cf6;
+  --sidebar-primary: #7c3aed;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #111a30;
   --sidebar-accent-foreground: #e6eaf5;
@@ -123,7 +126,8 @@
 
   --surface: #0c1222;
   --surface-2: #111a30;
-  --violet: #8b5cf6;
+  --violet: #7c3aed;
+  --violet-text: #a78bfa;
   --cyan: #22d3ee;
   --success: #34d399;
   --warn: #fbbf24;
@@ -138,6 +142,73 @@ html {
   color-scheme: dark;
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
   scrollbar-width: thin;
+}
+
+html[data-text-size="sm"] {
+  --nx-text-scale: 0.92;
+  font-size: 14.72px;
+}
+
+html[data-text-size="md"] {
+  --nx-text-scale: 1;
+  font-size: 16px;
+}
+
+html[data-text-size="lg"] {
+  --nx-text-scale: 1.15;
+  font-size: 18.4px;
+}
+
+html[data-high-contrast="true"] {
+  --background: #02040a;
+  --foreground: #ffffff;
+  --surface: #0a101f;
+  --surface-2: #121c36;
+  --card: #0a101f;
+  --card-foreground: #ffffff;
+  --popover: #121c36;
+  --popover-foreground: #ffffff;
+  --secondary: #121c36;
+  --secondary-foreground: #ffffff;
+  --muted: #121c36;
+  --muted-foreground: #cbd5e1;
+  --accent: #121c36;
+  --accent-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.28);
+  --border-strong: rgba(255, 255, 255, 0.5);
+  --input: rgba(255, 255, 255, 0.34);
+  --primary: #6d28d9;
+  --violet: #6d28d9;
+  --violet-text: #ddd6fe;
+  --cyan: #67e8f9;
+  --ring: #67e8f9;
+  --sidebar: #0a101f;
+  --sidebar-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.28);
+  --sidebar-ring: #67e8f9;
+  --chart-1: #c4b5fd;
+  --chart-2: #67e8f9;
+  --chart-3: #6ee7b7;
+  --chart-4: #fde68a;
+  --chart-5: #fca5a5;
+}
+
+html[data-high-contrast="true"]
+  :where(
+    a[href],
+    button,
+    [role="button"],
+    [role="radio"],
+    [role="tab"],
+    [role="menuitem"],
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
 }
 
 @layer base {
