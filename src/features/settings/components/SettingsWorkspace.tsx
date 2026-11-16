@@ -332,8 +332,9 @@ export function SettingsWorkspace({
             </div>
             <p className="text-caption text-muted-foreground">
               Permanently removes all check-ins, sleep logs, focus sessions, habits, mindfulness
-              sessions, journal entries, gratitude notes, and experiments from this browser. This
-              cannot be undone unless you exported a JSON backup.
+              sessions, journal entries, gratitude notes, activity logs, review queue items, and
+              experiments from this browser. This cannot be undone unless you exported a JSON
+              backup.
             </p>
             <Button
               type="button"
