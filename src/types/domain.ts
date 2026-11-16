@@ -15,11 +15,33 @@ export type LearningMethod = 'active_recall' | 'spaced_repetition' | 'problem_so
 
 export interface Base { id: string; createdAt: ISODateTime; updatedAt: ISODateTime; }
 
+export type ReminderKind = 'windDown' | 'checkin' | 'reviewDue';
+
+export interface ReminderSlotConfig {
+  enabled: boolean;
+  time: string; // 'HH:MM' 24-hour local time
+}
+
+export interface QuietHoursConfig {
+  enabled: boolean;
+  start: string; // 'HH:MM' 24-hour local time
+  end: string;   // 'HH:MM' 24-hour local time
+}
+
+export interface ReminderSettings {
+  windDown: ReminderSlotConfig;
+  checkin: ReminderSlotConfig;
+  reviewDue: ReminderSlotConfig;
+  quietHours: QuietHoursConfig;
+}
+
 export interface UserSettings extends Base {
   displayName?: string; sleepTargetMin: number;      // default 480
   focusDefaultMin: number;                            // default 25
   breakDefaultMin: number;                            // default 5
-  onboarded: boolean; reducedMotion?: boolean; schemaVersion: number;
+  onboarded: boolean; reducedMotion?: boolean;
+  reminders?: ReminderSettings;
+  schemaVersion: number;
 }
 export interface SleepLog extends Base {
   date: ISODate;            // the WAKE-UP date
