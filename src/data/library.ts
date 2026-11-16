@@ -371,6 +371,57 @@ export const LIBRARY_ENTRIES: LibraryEntry[] = [
     relatedRegions: ['prefrontal', 'amygdala'],
   },
   {
+    id: 'novelty-and-exploration',
+    category: 'wellbeing',
+    title: 'Novelty and curiosity',
+    summary: 'Unfamiliar experiences invite attention and memory — without needing to become a productivity project.',
+    body: [
+      'Taking a different route home, cooking an unfamiliar dish, or trying a puzzle you have never seen before asks your attention and memory systems to notice what is different from expectation. In neuroscience, novel contexts are commonly associated with hippocampal encoding and prefrontal orienting.',
+      'Curiosity works gently: small everyday variations give your mind fresh texture without adding pressure. Novelty is not a test or a race — even noticing something ordinary from a new angle counts.',
+    ],
+    keyPoints: [
+      'Unfamiliar experiences engage attention and memory systems.',
+      'Small everyday variations count just as much as big trips.',
+      'Worth exploring for curiosity alone, not as a metric.',
+    ],
+    caveat: 'Simplified educational associations only. Trying new things is enjoyable on its own and cannot be measured by this app.',
+    relatedRegions: ['hippocampus', 'prefrontal', 'amygdala'],
+  },
+  {
+    id: 'social-connection',
+    category: 'wellbeing',
+    title: 'Social connection and conversation',
+    summary: 'Time with people you care about weaves together language, memory and emotional meaning.',
+    body: [
+      'Even a brief chat with a friend, sharing a meal, or laughing over a game asks many brain networks to work together at once — listening, reading tone and expression, recalling shared context, and responding in real time.',
+      'Across many cultures and age groups, meaningful social connection is broadly associated with steadier mood and wellbeing. Like rest, time with other people is not a distraction from real work; it is part of a full human week.',
+    ],
+    keyPoints: [
+      'Conversation recruits temporal, prefrontal and memory networks together.',
+      'Short, genuine moments of connection matter as much as long gatherings.',
+      'Social time belongs alongside study and rest.',
+    ],
+    caveat: 'General educational perspective, not medical or psychological advice. Social needs and energy vary widely from person to person.',
+    relatedRegions: ['temporal', 'prefrontal', 'amygdala'],
+  },
+  {
+    id: 'hobbies-and-play',
+    category: 'wellbeing',
+    title: 'Hobbies, music and unhurried play',
+    summary: 'Making things, playing music, or solving puzzles for fun gives learning circuits room to breathe.',
+    body: [
+      'Hobbies — whether sketching, practicing an instrument, learning a language for fun, or working through a weekend puzzle — ask for focus and coordination without the stakes of a deadline or grade.',
+      'Practicing a physical or creative craft draws on cerebellar coordination alongside prefrontal planning and temporal auditory or language networks. Just as importantly, doing something purely because you enjoy it reminds your mind that effort and pleasure can live together.',
+    ],
+    keyPoints: [
+      'Creative, musical and craft hobbies engage wide cortical and cerebellar loops.',
+      'Low stakes leave room for mistakes and play.',
+      'Enjoyment is reason enough — no outcome required.',
+    ],
+    caveat: 'Educational overview only, not a prescription or measurement. Hobbies are valuable for their own sake.',
+    relatedRegions: ['cerebellum', 'prefrontal', 'temporal'],
+  },
+  {
     id: 'novelty-and-hobbies',
     category: 'wellbeing',
     title: 'Novelty, hobbies and the learning brain',
