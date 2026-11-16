@@ -15,7 +15,16 @@ import type {
   UserSettings,
 } from '@/types/domain';
 import { RULES } from './rules';
-import { computeInsights } from './index';
+import {
+  buildConfidence,
+  classifyDataConfidence,
+  computeInsights,
+  computeSnoozeUntil,
+  generateDemoData,
+  isInsightSuppressed,
+  partitionInsightsByFeedback,
+  selectOverviewInsights,
+} from './index';
 
 // Domain imports above are type-only, so these tests run under Vitest with no path-alias config.
 
@@ -528,6 +537,309 @@ describe('reading_without_retrieval', () => {
   });
 });
 
+// ---------- v0.2 insight rules ----------
+
+describe('session_length_vs_focus', () => {
+  it('fires at 6 sessions when duration and self-rated focus correlate (positive and negative)', () => {
+    const pos = emptyInput({
+      focus: [20, 25, 35, 50, 65, 80].map((dur, i) =>
+        makeFocus(d(10 - i), {
+          durationMin: dur,
+          focusRating: ([1, 2, 3, 4, 5, 5][i] as Rating),
+        }),
+      ),
+    });
+    const posInsight = runRule('session_length_vs_focus', pos);
+    expect(posInsight?.kind).toBe('observation');
+    expect(posInsight?.pillar).toBe('focus');
+    expect(posInsight?.confidence?.sampleSize).toBe(6);
+
+    const neg = emptyInput({
+      focus: [20, 25, 35, 50, 65, 80].map((dur, i) =>
+        makeFocus(d(10 - i), {
+          durationMin: dur,
+          focusRating: ([5, 5, 4, 3, 2, 1][i] as Rating),
+        }),
+      ),
+    });
+    const negInsight = runRule('session_length_vs_focus', neg);
+    expect(negInsight?.title).toMatch(/shorter/i);
+  });
+
+  it('respects minimum sample (5 sessions -> null) and |r| >= 0.3 threshold', () => {
+    const five = emptyInput({
+      focus: [20, 30, 40, 50, 60].map((dur, i) =>
+        makeFocus(d(5 - i), { durationMin: dur, focusRating: (i + 1) as Rating }),
+      ),
+    });
+    expect(runRule('session_length_vs_focus', five)).toBeNull();
+
+    const flat = emptyInput({
+      focus: [20, 30, 40, 50, 60, 70].map((dur, i) =>
+        makeFocus(d(6 - i), { durationMin: dur, focusRating: 3 }),
+      ),
+    });
+    expect(runRule('session_length_vs_focus', flat)).toBeNull();
+  });
+});
+
+describe('weekday_vs_weekend_pattern', () => {
+  it('fires when 4+ weekdays and 2+ weekend nights differ in duration or bedtime', () => {
+    // TODAY = Mon 2026-11-16: d(1)=Sun, d(2)=Sat, d(3)=Fri, d(4)=Thu, d(5)=Wed, d(6)=Tue
+    const input = emptyInput({
+      sleep: [
+        makeSleep(d(6), 420),
+        makeSleep(d(5), 420),
+        makeSleep(d(4), 420),
+        makeSleep(d(3), 420),
+        makeSleep(d(2), 540, { wakeTime: `${d(2)}T09:00:00`, bedtime: `${d(2)}T00:00:00` }),
+        makeSleep(d(1), 540, { wakeTime: `${d(1)}T09:00:00`, bedtime: `${d(1)}T00:00:00` }),
+      ],
+    });
+    const insight = runRule('weekday_vs_weekend_pattern', input);
+    expect(insight?.pillar).toBe('sleep');
+    expect(insight?.kind).toBe('observation');
+    expect(insight?.confidence?.sampleSize).toBe(6);
+  });
+
+  it('returns null with only 1 weekend night or negligible weekday/weekend difference', () => {
+    const oneWeekend = emptyInput({
+      sleep: [
+        makeSleep(d(6), 420),
+        makeSleep(d(5), 420),
+        makeSleep(d(4), 420),
+        makeSleep(d(3), 420),
+        makeSleep(d(2), 540),
+      ],
+    });
+    expect(runRule('weekday_vs_weekend_pattern', oneWeekend)).toBeNull();
+
+    const similar = emptyInput({
+      sleep: [6, 5, 4, 3, 2, 1].map((k) => makeSleep(d(k), 460)),
+    });
+    expect(runRule('weekday_vs_weekend_pattern', similar)).toBeNull();
+  });
+});
+
+describe('outdoor_time_mood_energy', () => {
+  it('fires at 6 check-in days with outdoorMin correlating with mood/energy', () => {
+    const input = emptyInput({
+      checkins: [5, 10, 20, 40, 55, 70].map((outdoorMin, i) =>
+        makeCheckin(d(6 - i), {
+          outdoorMin,
+          mood: ([2, 2, 3, 4, 4, 5][i] as Rating),
+          energy: ([2, 3, 3, 4, 5, 5][i] as Rating),
+        }),
+      ),
+    });
+    const insight = runRule('outdoor_time_mood_energy', input);
+    expect(insight?.pillar).toBe('wellbeing');
+    expect(insight?.kind).toBe('observation');
+    expect(insight?.confidence?.summary).toContain('6 days of paired data');
+  });
+
+  it('returns null with 5 days or when outdoorMin is missing', () => {
+    const five = emptyInput({
+      checkins: [5, 15, 30, 45, 60].map((outdoorMin, i) =>
+        makeCheckin(d(5 - i), { outdoorMin, mood: (i + 1) as Rating }),
+      ),
+    });
+    expect(runRule('outdoor_time_mood_energy', five)).toBeNull();
+
+    const noOutdoor = emptyInput({
+      checkins: [6, 5, 4, 3, 2, 1].map((k, i) =>
+        makeCheckin(d(k), { mood: (Math.min(5, i + 1)) as Rating }),
+      ),
+    });
+    expect(runRule('outdoor_time_mood_energy', noOutdoor)).toBeNull();
+  });
+});
+
+describe('mindfulness_vs_stress', () => {
+  it('fires when 3+ mindfulness days and 3+ non-mindfulness days differ by >= 0.4 stress', () => {
+    const lowerStress = emptyInput({
+      checkins: [
+        makeCheckin(d(10), { stress: 2 }),
+        makeCheckin(d(9), { stress: 2 }),
+        makeCheckin(d(8), { stress: 1 }),
+        makeCheckin(d(5), { stress: 4 }),
+        makeCheckin(d(4), { stress: 4 }),
+        makeCheckin(d(3), { stress: 5 }),
+      ],
+      mindfulness: [10, 9, 8].map((k) => makeMindfulness(d(k), 5)),
+    });
+    const insight = runRule('mindfulness_vs_stress', lowerStress);
+    expect(insight?.pillar).toBe('wellbeing');
+    expect(insight?.regions).toContain('amygdala');
+    expect(insight?.confidence?.sampleSize).toBe(6);
+
+    const higherStress = emptyInput({
+      checkins: [
+        makeCheckin(d(10), { stress: 4 }),
+        makeCheckin(d(9), { stress: 5 }),
+        makeCheckin(d(8), { stress: 4 }),
+        makeCheckin(d(5), { stress: 2 }),
+        makeCheckin(d(4), { stress: 2 }),
+        makeCheckin(d(3), { stress: 2 }),
+      ],
+      mindfulness: [10, 9, 8].map((k) => makeMindfulness(d(k), 5)),
+    });
+    expect(runRule('mindfulness_vs_stress', higherStress)?.title).toMatch(/fuller-stress/i);
+  });
+
+  it('returns null with < 3 days in either group or small difference', () => {
+    const twoMindful = emptyInput({
+      checkins: [6, 5, 4, 3, 2, 1].map((k) =>
+        makeCheckin(d(k), { stress: k >= 5 ? 1 : 5 }),
+      ),
+      mindfulness: [6, 5].map((k) => makeMindfulness(d(k), 5)),
+    });
+    expect(runRule('mindfulness_vs_stress', twoMindful)).toBeNull();
+
+    const tinyDiff = emptyInput({
+      checkins: [6, 5, 4, 3, 2, 1].map((k) => makeCheckin(d(k), { stress: 3 })),
+      mindfulness: [6, 5, 4].map((k) => makeMindfulness(d(k), 5)),
+    });
+    expect(runRule('mindfulness_vs_stress', tinyDiff)).toBeNull();
+  });
+});
+
+describe('activity_variety_mood', () => {
+  it('fires when 6+ check-ins and 4+ multi-type activities correlate on trailing variety vs mood', () => {
+    const input = emptyInput({
+      checkins: [
+        makeCheckin(d(15), { mood: 2 }),
+        makeCheckin(d(14), { mood: 2 }),
+        makeCheckin(d(13), { mood: 2 }),
+        makeCheckin(d(4), { mood: 4 }),
+        makeCheckin(d(2), { mood: 5 }),
+        makeCheckin(d(0), { mood: 5 }),
+      ],
+      activities: [
+        makeActivity(d(4), 'social', 30),
+        makeActivity(d(3), 'creative', 25),
+        makeActivity(d(2), 'music', 25),
+        makeActivity(d(0), 'novelty', 20),
+      ],
+    });
+    const insight = runRule('activity_variety_mood', input);
+    expect(insight?.pillar).toBe('wellbeing');
+    expect(insight?.kind).toBe('observation');
+    expect(insight?.confidence?.sampleSize).toBe(6);
+  });
+
+  it('returns null if fewer than 2 distinct activity types or fewer than 4 logs', () => {
+    const singleType = emptyInput({
+      checkins: [10, 8, 6, 4, 2, 0].map((k, i) =>
+        makeCheckin(d(k), { mood: (Math.min(5, i + 1)) as Rating }),
+      ),
+      activities: [4, 3, 2, 0].map((k) => makeActivity(d(k), 'social', 30)),
+    });
+    expect(runRule('activity_variety_mood', singleType)).toBeNull();
+  });
+});
+
+describe('sleep_consistency_long_window', () => {
+  it('fires a milestone when 14+ nights in 28d stay within <= 45 min bedtime spread', () => {
+    const input = emptyInput({
+      sleep: Array.from({ length: 14 }, (_, i) =>
+        makeSleep(d(13 - i), 460 + (i % 2) * 20),
+      ),
+    });
+    const insight = runRule('sleep_consistency_long_window', input);
+    expect(insight?.kind).toBe('milestone');
+    expect(insight?.confidence?.level).toBe('enough');
+  });
+
+  it('fires an observation when 14+ nights in 28d exceed 65 min circular spread, and returns null at 13 nights', () => {
+    const wide = emptyInput({
+      sleep: Array.from({ length: 14 }, (_, i) =>
+        makeSleep(d(13 - i), 450, {
+          bedtime: i % 2 === 0 ? `${d(14 - i)}T21:00:00` : `${d(13 - i)}T02:00:00`,
+        }),
+      ),
+    });
+    expect(runRule('sleep_consistency_long_window', wide)?.kind).toBe('observation');
+
+    const thirteen = emptyInput({ sleep: wide.sleep.slice(0, 13) });
+    expect(runRule('sleep_consistency_long_window', thirteen)).toBeNull();
+  });
+});
+
+// ---------- confidence thresholds, overview 1-per-pillar, feedback, demo ----------
+
+describe('data confidence, overview curation, and feedback filtering', () => {
+  it('classifies confidence levels strictly at thresholds', () => {
+    expect(classifyDataConfidence(6, 0.8)).toBe('low');
+    expect(classifyDataConfidence(7, 0.35)).toBe('low');
+    expect(classifyDataConfidence(8, 0.3)).toBe('moderate');
+    expect(classifyDataConfidence(9, 0.45)).toBe('moderate');
+    expect(classifyDataConfidence(13, 0.5)).toBe('moderate');
+    expect(classifyDataConfidence(14, 0.44)).toBe('moderate');
+    expect(classifyDataConfidence(14, 0.45)).toBe('enough');
+    expect(classifyDataConfidence(21, 0.3)).toBe('enough');
+
+    expect(classifyDataConfidence(6)).toBe('low');
+    expect(classifyDataConfidence(7)).toBe('moderate');
+    expect(classifyDataConfidence(14)).toBe('enough');
+
+    expect(buildConfidence({ sampleSize: 9, unit: 'day', paired: true, effectStrength: 0.4 })).toEqual({
+      level: 'moderate',
+      summary: 'Based on 9 days of paired data',
+      sampleSize: 9,
+    });
+  });
+
+  it('surfaces at most one insight per pillar on Overview', () => {
+    const all = computeInsights(fullInput(), TODAY);
+    const overview = selectOverviewInsights(all, 3);
+    expect(overview).toHaveLength(3);
+    expect(new Set(overview.map((i) => i.pillar)).size).toBe(3);
+  });
+
+  it('handles permanent dismissal and exact 14-day snooze expiry', () => {
+    const until = computeSnoozeUntil(TODAY, 14);
+    expect(until).toBe('2026-11-30');
+
+    const snoozedFb = {
+      id: 'sleep_below_target',
+      insightId: 'sleep_below_target',
+      status: 'snoozed' as const,
+      snoozeUntil: until,
+      createdAt: '2026-11-16T10:00:00.000Z',
+      updatedAt: '2026-11-16T10:00:00.000Z',
+    };
+    const dismissedFb = {
+      id: 'meal_regularity',
+      insightId: 'meal_regularity',
+      status: 'dismissed' as const,
+      createdAt: '2026-11-16T10:00:00.000Z',
+      updatedAt: '2026-11-16T10:00:00.000Z',
+    };
+
+    expect(isInsightSuppressed(snoozedFb, '2026-11-29')).toBe(true);
+    expect(isInsightSuppressed(snoozedFb, '2026-11-30')).toBe(false);
+    expect(isInsightSuppressed(dismissedFb, '2027-06-01')).toBe(true);
+
+    const insights = computeInsights(fullInput(), TODAY);
+    const partitioned = partitionInsightsByFeedback(insights, [snoozedFb, dismissedFb], TODAY);
+    expect(partitioned.active.some((i) => i.id === 'sleep_below_target')).toBe(false);
+    expect(partitioned.active.some((i) => i.id === 'meal_regularity')).toBe(false);
+    expect(partitioned.dismissed.map((e) => e.insightId)).toEqual(['meal_regularity']);
+    expect(partitioned.snoozed.map((e) => e.insightId)).toEqual(['sleep_below_target']);
+  });
+
+  it('runs cleanly on generateDemoData without noise or duplicate sleep-timing rules', () => {
+    const demo14 = generateDemoData(14, 42, parseISO(TODAY));
+    const demo30 = generateDemoData(30, 42, parseISO(TODAY));
+    const out14 = computeInsights(demo14, TODAY);
+    const out30 = computeInsights(demo30, TODAY);
+    expect(out14.length).toBeGreaterThan(0);
+    expect(out30.length).toBeGreaterThan(0);
+    expect(new Set(out30.map((i) => i.id)).size).toBe(out30.length);
+  });
+});
+
 // ---------- computeInsights orchestration ----------
 
 describe('computeInsights', () => {
@@ -617,13 +929,78 @@ describe('insight copy safety', () => {
     ),
   });
 
-  // fullInput fires all 9 base rules; negativePairingInput + v0.2 fixtures cover the rest.
+  const sessionLenInput = emptyInput({
+    focus: [20, 25, 35, 50, 65, 80].map((dur, i) =>
+      makeFocus(d(10 - i), { durationMin: dur, focusRating: ([1, 2, 3, 4, 5, 5][i] as Rating) }),
+    ),
+  });
+
+  const weekdayWeekendInput = emptyInput({
+    sleep: [
+      makeSleep(d(6), 420),
+      makeSleep(d(5), 420),
+      makeSleep(d(4), 420),
+      makeSleep(d(3), 420),
+      makeSleep(d(2), 540, { wakeTime: `${d(2)}T09:00:00`, bedtime: `${d(2)}T00:00:00` }),
+      makeSleep(d(1), 540, { wakeTime: `${d(1)}T09:00:00`, bedtime: `${d(1)}T00:00:00` }),
+    ],
+  });
+
+  const outdoorInput = emptyInput({
+    checkins: [5, 10, 20, 40, 55, 70].map((outdoorMin, i) =>
+      makeCheckin(d(6 - i), {
+        outdoorMin,
+        mood: ([2, 2, 3, 4, 4, 5][i] as Rating),
+      }),
+    ),
+  });
+
+  const mindfulStressInput = emptyInput({
+    checkins: [
+      makeCheckin(d(10), { stress: 2 }),
+      makeCheckin(d(9), { stress: 2 }),
+      makeCheckin(d(8), { stress: 1 }),
+      makeCheckin(d(5), { stress: 4 }),
+      makeCheckin(d(4), { stress: 4 }),
+      makeCheckin(d(3), { stress: 5 }),
+    ],
+    mindfulness: [10, 9, 8].map((k) => makeMindfulness(d(k), 5)),
+  });
+
+  const activityMoodInput = emptyInput({
+    checkins: [
+      makeCheckin(d(15), { mood: 2 }),
+      makeCheckin(d(14), { mood: 2 }),
+      makeCheckin(d(13), { mood: 2 }),
+      makeCheckin(d(4), { mood: 4 }),
+      makeCheckin(d(2), { mood: 5 }),
+      makeCheckin(d(0), { mood: 5 }),
+    ],
+    activities: [
+      makeActivity(d(4), 'social', 30),
+      makeActivity(d(3), 'creative', 25),
+      makeActivity(d(2), 'music', 25),
+      makeActivity(d(0), 'novelty', 20),
+    ],
+  });
+
+  const steadyMonthSleepInput = emptyInput({
+    sleep: Array.from({ length: 14 }, (_, i) => makeSleep(d(13 - i), 460 + (i % 2) * 20)),
+  });
+
+  // Cover every registered rule across positive/negative/v0.2 fixtures.
   const allInsights: Insight[] = [
     fullInput(),
     negativePairingInput(),
     activityVarietyInput,
     studyHeavyInput,
     readingOnlyInput,
+    sessionLenInput,
+    weekdayWeekendInput,
+    outdoorInput,
+    mindfulStressInput,
+    activityMoodInput,
+    steadyMonthSleepInput,
   ].flatMap((input) =>
     RULES.map((r) => r.run(input, TODAY)).filter((i): i is Insight => i !== null),
   );
