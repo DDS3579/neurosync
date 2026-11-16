@@ -20,7 +20,7 @@ export interface MethodBreakdownPoint {
   minutes: number;
 }
 
-const axisTick = { fontSize: 11 } as const;
+const axisTick = { fontSize: 11, fill: "var(--color-muted-foreground)" } as const;
 
 const movementConfig = {
   minutes: { label: "Minutes", color: "var(--chart-3)" },
