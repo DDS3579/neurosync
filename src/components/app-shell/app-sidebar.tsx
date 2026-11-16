@@ -17,11 +17,13 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
+
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 
 function NavRow({ item, active, index }: { item: NavItem; active: boolean; index: number }) {
   const Icon = item.icon;
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
 
   return (
     <SidebarMenuItem>

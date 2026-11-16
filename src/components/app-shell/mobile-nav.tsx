@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 import { isActiveRoute, MOBILE_NAV_ITEMS, type NavItem } from "@/components/app-shell/nav-items";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 
 function MobileTab({ item, active, index }: { item: NavItem; active: boolean; index: number }) {
   const Icon = item.icon;
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
 
   return (
     <motion.div

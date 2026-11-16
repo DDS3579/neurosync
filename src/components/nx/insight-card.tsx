@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { ChevronDown, Info } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 
 import { RegionBadge } from "@/components/nx/region-badge";
 import { Card } from "@/components/ui/card";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 import type { Insight } from "@/types/domain";
 
@@ -15,7 +16,7 @@ export interface InsightCardProps {
 
 export function InsightCard({ insight }: InsightCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const panelId = `insight-education-${insight.id}`;
 
   return (

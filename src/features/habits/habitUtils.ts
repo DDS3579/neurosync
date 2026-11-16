@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+export const HABIT_TABS = ["checkin", "sleep", "movement", "nutrition", "habits"] as const;
+export type HabitTab = (typeof HABIT_TABS)[number];
+
+export const HABIT_HASH_EVENT = "nx:habits-hash-change";
+
+/** Parses a URL hash (#checkin, #sleep, #movement, #nutrition, #habits); unknown hashes default to "checkin". */
+export function parseHabitTabHash(hash: string): HabitTab {
+  const cleaned = hash.replace(/^#/, "").trim().toLowerCase();
+  return (HABIT_TABS as readonly string[]).includes(cleaned)
+    ? (cleaned as HabitTab)
+    : "checkin";
+}
+
 export const DEFAULT_HABIT_NAMES = [
   "Meditation",
   "Reading",

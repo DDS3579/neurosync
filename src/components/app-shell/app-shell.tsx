@@ -11,6 +11,8 @@ import { MobileNav } from "@/components/app-shell/mobile-nav";
 import { QuickLogSheet } from "@/components/app-shell/quick-log-sheet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
+import { HABIT_HASH_EVENT } from "@/features/habits/habitUtils";
+
 const COLLAPSED_KEY = "nx:sidebar-collapsed";
 const COLLAPSED_EVENT = "nx:sidebar-collapsed-change";
 
@@ -28,7 +30,8 @@ function getCollapsedSnapshot(): boolean {
 }
 
 const QUICK_LOG_TARGETS = [
-  { href: "/habits", label: "Check-in and sleep", hint: "Last night's rest and how today feels" },
+  { href: "/habits#checkin", label: "Daily check-in", hint: "Mood, stress, energy, focus and motivation" },
+  { href: "/habits#sleep", label: "Sleep log", hint: "Last night's bedtime, wake time and quality" },
   { href: "/focus", label: "Focus session", hint: "Planned versus actual minutes" },
   { href: "/habits#habits", label: "Habits and movement", hint: "Daily habits, movement, food and water" },
 ];
@@ -40,7 +43,14 @@ function QuickLogContent({ onNavigate }: { onNavigate: () => void }) {
         <li key={target.href}>
           <Link
             href={target.href}
-            onClick={onNavigate}
+            onClick={() => {
+              onNavigate();
+              if (target.href.includes("#")) {
+                window.setTimeout(() => {
+                  window.dispatchEvent(new Event(HABIT_HASH_EVENT));
+                }, 0);
+              }
+            }}
             className="flex items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3 transition-colors duration-[180ms] ease-out hover:border-border-strong"
           >
             <span className="min-w-0">

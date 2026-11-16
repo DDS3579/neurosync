@@ -1,7 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
+
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 
 export interface EmptyStateProps {
   icon?: ReactNode;
@@ -11,7 +13,7 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
 
   return (
     <motion.div

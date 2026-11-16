@@ -54,13 +54,46 @@ export function useBrainQuality(pref: QualityPref): BrainQuality {
 
 /* ---- prefers-reduced-motion -------------------------------------------- */
 const RM_QUERY = "(prefers-reduced-motion: reduce)";
+export const REDUCED_MOTION_ATTR = "data-reduced-motion";
+export const REDUCED_MOTION_EVENT = "nx:reduced-motion-change";
+
+/** True when either the OS media query or UserSettings.reducedMotion is enabled. */
+export function resolveReducedMotion(osReduced: boolean, settingReduced?: boolean): boolean {
+  return Boolean(osReduced || settingReduced);
+}
+
+function getReducedMotionSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
+  const osMatches = window.matchMedia(RM_QUERY).matches;
+  const attrTrue =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute(REDUCED_MOTION_ATTR) === "true";
+  return resolveReducedMotion(osMatches, attrTrue);
+}
+
 function subscribeReducedMotion(cb: () => void): () => void {
   const mq = window.matchMedia(RM_QUERY);
   mq.addEventListener("change", cb);
-  return () => mq.removeEventListener("change", cb);
+  window.addEventListener(REDUCED_MOTION_EVENT, cb);
+
+  let observer: MutationObserver | null = null;
+  if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(cb);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [REDUCED_MOTION_ATTR],
+    });
+  }
+
+  return () => {
+    mq.removeEventListener("change", cb);
+    window.removeEventListener(REDUCED_MOTION_EVENT, cb);
+    observer?.disconnect();
+  };
 }
+
 export function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(subscribeReducedMotion, () => window.matchMedia(RM_QUERY).matches, () => false);
+  return useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, () => false);
 }
 
 /* ---- WebGL support ----------------------------------------------------- */

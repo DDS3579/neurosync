@@ -3,7 +3,7 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 import {
   ChartCard,
@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 import type { Insight, RegionId } from "@/types/domain";
 
@@ -103,7 +104,7 @@ function Entrance({
   className?: string;
   children: ReactNode;
 }) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
 
   return (
     <motion.div

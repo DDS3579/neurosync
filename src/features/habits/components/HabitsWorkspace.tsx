@@ -1,8 +1,15 @@
 "use client";
 
+import { useCallback, useSyncExternalStore } from "react";
+
 import { PageHeader } from "@/components/nx";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  HABIT_HASH_EVENT,
+  parseHabitTabHash,
+  type HabitTab,
+} from "@/features/habits/habitUtils";
 import type {
   DailyCheckin,
   Habit,
@@ -60,7 +67,37 @@ export interface HabitsWorkspaceProps {
   onDeleteHabit: (id: string) => Promise<void>;
 }
 
+function subscribeHabitHash(callback: () => void): () => void {
+  window.addEventListener("hashchange", callback);
+  window.addEventListener("popstate", callback);
+  window.addEventListener(HABIT_HASH_EVENT, callback);
+  return () => {
+    window.removeEventListener("hashchange", callback);
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(HABIT_HASH_EVENT, callback);
+  };
+}
+
+function getHabitHashSnapshot(): HabitTab {
+  return parseHabitTabHash(window.location.hash);
+}
+
 export function HabitsWorkspace(props: HabitsWorkspaceProps) {
+  const activeTab = useSyncExternalStore(
+    subscribeHabitHash,
+    getHabitHashSnapshot,
+    () => "checkin",
+  );
+
+  const handleTabChange = useCallback((next: string) => {
+    const tab = parseHabitTabHash(next);
+    if (typeof window !== "undefined") {
+      const nextUrl = `${window.location.pathname}${window.location.search}#${tab}`;
+      window.history.replaceState(null, "", nextUrl);
+      window.dispatchEvent(new Event(HABIT_HASH_EVENT));
+    }
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -68,7 +105,7 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
         description="Log today's check-in, sleep, movement, nutrition, and habits locally with zero streak pressure."
       />
 
-      <Tabs defaultValue="checkin" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-control border border-border bg-surface p-1 sm:w-fit">
           <TabsTrigger value="checkin">Check-in</TabsTrigger>
           <TabsTrigger value="sleep">Sleep</TabsTrigger>

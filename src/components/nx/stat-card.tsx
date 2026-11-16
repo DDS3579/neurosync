@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 import { Card } from "@/components/ui/card";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 
 export interface StatCardDelta {
@@ -45,7 +46,7 @@ export function StatCard({
   icon,
   accent = "neutral",
 }: StatCardProps) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const DeltaIcon = delta ? deltaIcon[delta.direction] : null;
 
   return (

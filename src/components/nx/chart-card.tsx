@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import { ChartColumn } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 import { Card } from "@/components/ui/card";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 
 export interface ChartCardProps {
   title: string;
@@ -23,7 +24,7 @@ export function ChartCard({
   empty = false,
   emptyMessage = "No data logged for this period yet.",
 }: ChartCardProps) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
 
   return (
     <motion.div
