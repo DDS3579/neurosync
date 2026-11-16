@@ -11,6 +11,7 @@ import {
 } from "@/features/overview/demoData";
 import { OverviewSkeleton, OverviewView } from "@/features/overview/OverviewView";
 import {
+  useActivityLogs,
   useCheckins,
   useFocusSessions,
   useHabitLogs,
@@ -33,6 +34,7 @@ export default function OverviewPage() {
   const habits = useHabits();
   const habitLogs = useHabitLogs();
   const mindfulness = useMindfulnessSessions();
+  const activities = useActivityLogs();
 
   const onLogToday = useCallback(() => router.push("/habits"), [router]);
   const onOpenBrain = useCallback(() => router.push("/brain"), [router]);
@@ -56,7 +58,8 @@ export default function OverviewPage() {
     nutrition.isLoading ||
     habits.isLoading ||
     habitLogs.isLoading ||
-    mindfulness.isLoading;
+    mindfulness.isLoading ||
+    activities.isLoading;
 
   const aggregated = useMemo(() => {
     if (
@@ -69,7 +72,8 @@ export default function OverviewPage() {
       !nutrition.data ||
       !habits.data ||
       !habitLogs.data ||
-      !mindfulness.data
+      !mindfulness.data ||
+      !activities.data
     ) {
       return null;
     }
@@ -84,6 +88,7 @@ export default function OverviewPage() {
       habits: habits.data,
       habitLogs: habitLogs.data,
       mindfulness: mindfulness.data,
+      activities: activities.data,
     });
   }, [
     isLoading,
@@ -96,6 +101,7 @@ export default function OverviewPage() {
     habits.data,
     habitLogs.data,
     mindfulness.data,
+    activities.data,
   ]);
 
   if (!aggregated) {
