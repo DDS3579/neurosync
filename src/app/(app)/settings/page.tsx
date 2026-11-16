@@ -65,6 +65,8 @@ export default function SettingsPage() {
           mindfulnessSessions: [],
           journalEntries: [],
           gratitudeEntries: [],
+          activityLogs: [],
+          reviewItems: [],
         },
       }),
       "replace",
