@@ -9,8 +9,11 @@ import {
   checkinRepository,
   experimentRepository,
   focusRepository,
+  gratitudeRepository,
   habitLogRepository,
   habitRepository,
+  journalRepository,
+  mindfulnessRepository,
   movementRepository,
   nutritionRepository,
   settingsRepository,
@@ -21,8 +24,11 @@ import type {
   DailyCheckin,
   Experiment,
   FocusSession,
+  GratitudeEntry,
   Habit,
   HabitLog,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
@@ -78,6 +84,18 @@ export function useHabits(): LiveResult<Habit> {
 
 export function useExperiments(): LiveResult<Experiment> {
   return useRows(() => experimentRepository.listAll(), ["experiments"]);
+}
+
+export function useMindfulnessSessions(range: DateRange = ALL_TIME): LiveResult<MindfulnessSession> {
+  return useRows(() => mindfulnessRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useJournalEntries(range: DateRange = ALL_TIME): LiveResult<JournalEntry> {
+  return useRows(() => journalRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useGratitudeEntries(range: DateRange = ALL_TIME): LiveResult<GratitudeEntry> {
+  return useRows(() => gratitudeRepository.listByDateRange(range), rangeDeps(range));
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {

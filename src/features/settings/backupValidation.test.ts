@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { BackupError, buildBackup, importAll } from "@/lib/db/backup";
 import { getDb } from "@/lib/db/dexie";
-import { checkinRepository, focusRepository, sleepRepository } from "@/lib/db/repositories";
+import {
+  checkinRepository,
+  focusRepository,
+  gratitudeRepository,
+  journalRepository,
+  mindfulnessRepository,
+  sleepRepository,
+} from "@/lib/db/repositories";
 
 describe("backup import validation", () => {
   beforeEach(async () => {
@@ -36,6 +43,19 @@ describe("backup import validation", () => {
       focusRating: 4,
       difficulty: 3,
       distractions: 1,
+    });
+    await mindfulnessRepository.create({
+      date: "2026-11-15",
+      type: "4_7_8_breathing",
+      durationMin: 2,
+    });
+    await journalRepository.create({
+      date: "2026-11-15",
+      text: "Noticed calm focus after lunch.",
+    });
+    await gratitudeRepository.create({
+      date: "2026-11-15",
+      items: ["Afternoon sun", "Good conversation"],
     });
   });
 
@@ -87,5 +107,46 @@ describe("backup import validation", () => {
     expect(await getDb().sleepLogs.count()).toBe(0);
     expect(await getDb().checkins.count()).toBe(0);
     expect(await getDb().focusSessions.count()).toBe(0);
+    expect(await getDb().mindfulnessSessions.count()).toBe(0);
+    expect(await getDb().journalEntries.count()).toBe(0);
+    expect(await getDb().gratitudeEntries.count()).toBe(0);
+  });
+
+  it("rejects invalid mindfulness, journal, or gratitude rows without wiping existing data", async () => {
+    const snapshot = await buildBackup();
+
+    const badGratitude = structuredClone(snapshot);
+    badGratitude.tables.gratitudeEntries.push({
+      ...badGratitude.tables.gratitudeEntries[0]!,
+      id: "too-many-lines",
+      items: ["one", "two", "three", "four"],
+    });
+    await expect(importAll(JSON.stringify(badGratitude), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badJournal = structuredClone(snapshot);
+    badJournal.tables.journalEntries.push({
+      ...badJournal.tables.journalEntries[0]!,
+      id: "empty-journal",
+      text: "   ",
+    });
+    await expect(importAll(JSON.stringify(badJournal), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badMindfulness = structuredClone(snapshot);
+    badMindfulness.tables.mindfulnessSessions.push({
+      ...badMindfulness.tables.mindfulnessSessions[0]!,
+      id: "bad-duration",
+      durationMin: 0,
+    });
+    await expect(importAll(JSON.stringify(badMindfulness), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    expect(await getDb().mindfulnessSessions.count()).toBe(1);
+    expect(await getDb().journalEntries.count()).toBe(1);
+    expect(await getDb().gratitudeEntries.count()).toBe(1);
   });
 });

@@ -353,6 +353,24 @@ export const LIBRARY_ENTRIES: LibraryEntry[] = [
     relatedRegions: ['amygdala', 'prefrontal'],
   },
   {
+    id: 'paced-breathing-and-stress',
+    category: 'wellbeing',
+    title: 'Paced breathing and the stress response',
+    summary: 'Box breathing and 4-7-8 pacing offer a simple, unhurried anchor for daily stress — with realistic expectations.',
+    body: [
+      'When you feel tense or rushed, breathing tends to become quicker and shallower. Paced patterns such as box breathing (equal four-count inhale, hold, exhale, hold) or 4-7-8 breathing give your attention a predictable rhythm and slow the breath down.',
+      'Physiologically, unhurried exhales gently engage heart-rate and autonomic feedback loops associated with settling down after alertness. Prefrontal attention networks help keep your focus on the count while amygdala salience signals quiet in the background, though responses vary from person to person.',
+      'Research on paced breathing points to modest, short-term calming effects rather than permanent changes. Keep the pace comfortable — never force a breath hold if you feel lightheaded — and treat these sessions as an educational self-reflection tool, not a substitute for professional help.',
+    ],
+    keyPoints: [
+      'Box (4-4-4-4) and 4-7-8 patterns slow breathing with an easy count.',
+      'Effects are modest and short-term, and comfort always comes first.',
+      'Educational information only — not a substitute for professional help.',
+    ],
+    caveat: 'Educational information, not medical advice and not a substitute for professional help. If stress or anxiety feels overwhelming or persistent, consider reaching out to a qualified professional.',
+    relatedRegions: ['prefrontal', 'amygdala'],
+  },
+  {
     id: 'novelty-and-hobbies',
     category: 'wellbeing',
     title: 'Novelty, hobbies and the learning brain',

@@ -4,8 +4,11 @@ import type {
   DailyCheckin,
   Experiment,
   FocusSession,
+  GratitudeEntry,
   Habit,
   HabitLog,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
@@ -17,7 +20,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const DB_NAME = "neurosync";
 
@@ -34,11 +37,14 @@ export class NeuroSyncDatabase extends Dexie {
   habits!: Table<Habit, string>;
   habitLogs!: Table<HabitLog, string>;
   experiments!: Table<Experiment, string>;
+  mindfulnessSessions!: Table<MindfulnessSession, string>;
+  journalEntries!: Table<JournalEntry, string>;
+  gratitudeEntries!: Table<GratitudeEntry, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
 
-    this.version(SCHEMA_VERSION).stores({
+    this.version(1).stores({
       settings: "id",
       sleepLogs: "id, date",
       checkins: "id, date",
@@ -49,6 +55,30 @@ export class NeuroSyncDatabase extends Dexie {
       habitLogs: "id, date, habitId, [date+habitId]",
       experiments: "id, status, metric, baselineStart",
     });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = SCHEMA_VERSION;
+          });
+      });
   }
 }
 

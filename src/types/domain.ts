@@ -45,6 +45,21 @@ export interface NutritionLog extends Base {
 export interface Habit extends Base { name: string; icon?: string; archived: boolean; }
 export interface HabitLog extends Base { date: ISODate; habitId: string; done: boolean; }
 
+export type MindfulnessType = 'box_breathing' | '4_7_8_breathing' | 'meditation';
+export interface MindfulnessSession extends Base {
+  date: ISODate;
+  type: MindfulnessType;
+  durationMin: number;
+}
+export interface JournalEntry extends Base {
+  date: ISODate;
+  text: string;
+}
+export interface GratitudeEntry extends Base {
+  date: ISODate;
+  items: string[];
+}
+
 export type ExperimentMetric = 'concentration' | 'mood' | 'energy' | 'stress' | 'focusRating';
 export interface Experiment extends Base {
   title: string; hypothesis: string; changeDescription: string; metric: ExperimentMetric;

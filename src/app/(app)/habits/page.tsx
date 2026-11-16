@@ -7,8 +7,11 @@ import { HabitsSkeleton, HabitsWorkspace } from "@/features/habits/components/Ha
 import { DEFAULT_HABIT_NAMES, HABITS_SEEDED_KEY } from "@/features/habits/habitUtils";
 import {
   useCheckins,
+  useGratitudeEntries,
   useHabitLogs,
   useHabits,
+  useJournalEntries,
+  useMindfulnessSessions,
   useMovementLogs,
   useNutritionLogs,
   useSettings,
@@ -16,15 +19,22 @@ import {
 } from "@/lib/db/hooks";
 import {
   checkinRepository,
+  getGratitudeByDate,
+  gratitudeRepository,
   habitLogRepository,
   habitRepository,
+  journalRepository,
+  mindfulnessRepository,
   movementRepository,
   nutritionRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
 import type {
   DailyCheckin,
+  GratitudeEntry,
   ISODate,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
@@ -38,6 +48,9 @@ export default function HabitsPage() {
   const nutrition = useNutritionLogs();
   const habits = useHabits();
   const habitLogs = useHabitLogs();
+  const mindfulness = useMindfulnessSessions();
+  const journal = useJournalEntries();
+  const gratitude = useGratitudeEntries();
   const seededAttemptRef = useRef(false);
 
   // Seed the 4 default habits exactly once on first use if no habits exist yet.
@@ -143,6 +156,51 @@ export default function HabitsPage() {
     await habitRepository.remove(id);
   }, []);
 
+  const onCreateMindfulness = useCallback(
+    async (values: Omit<MindfulnessSession, "id" | "createdAt" | "updatedAt">) => {
+      await mindfulnessRepository.create(values);
+    },
+    [],
+  );
+
+  const onDeleteMindfulness = useCallback(
+    (id: string) => mindfulnessRepository.remove(id),
+    [],
+  );
+
+  const onCreateJournal = useCallback(
+    async (values: Omit<JournalEntry, "id" | "createdAt" | "updatedAt">) => {
+      await journalRepository.create(values);
+    },
+    [],
+  );
+
+  const onUpdateJournal = useCallback(
+    async (id: string, values: Omit<JournalEntry, "id" | "createdAt" | "updatedAt">) => {
+      await journalRepository.update(id, values);
+    },
+    [],
+  );
+
+  const onDeleteJournal = useCallback((id: string) => journalRepository.remove(id), []);
+
+  const onSaveGratitude = useCallback(
+    async (
+      values: Omit<GratitudeEntry, "id" | "createdAt" | "updatedAt">,
+    ): Promise<"created" | "updated"> => {
+      const existing = await getGratitudeByDate(values.date);
+      if (existing) {
+        await gratitudeRepository.update(existing.id, { items: values.items });
+        return "updated";
+      }
+      await gratitudeRepository.create(values);
+      return "created";
+    },
+    [],
+  );
+
+  const onDeleteGratitude = useCallback((id: string) => gratitudeRepository.remove(id), []);
+
   const isLoading =
     settings.isLoading ||
     checkins.isLoading ||
@@ -150,7 +208,10 @@ export default function HabitsPage() {
     movement.isLoading ||
     nutrition.isLoading ||
     habits.isLoading ||
-    habitLogs.isLoading;
+    habitLogs.isLoading ||
+    mindfulness.isLoading ||
+    journal.isLoading ||
+    gratitude.isLoading;
 
   if (
     isLoading ||
@@ -160,7 +221,10 @@ export default function HabitsPage() {
     !movement.data ||
     !nutrition.data ||
     !habits.data ||
-    !habitLogs.data
+    !habitLogs.data ||
+    !mindfulness.data ||
+    !journal.data ||
+    !gratitude.data
   ) {
     return <HabitsSkeleton />;
   }
@@ -174,6 +238,9 @@ export default function HabitsPage() {
       nutritionLogs={nutrition.data}
       habits={habits.data}
       habitLogs={habitLogs.data}
+      mindfulnessSessions={mindfulness.data}
+      journalEntries={journal.data}
+      gratitudeEntries={gratitude.data}
       onSaveCheckin={onSaveCheckin}
       onDeleteCheckin={onDeleteCheckin}
       onCreateSleep={onCreateSleep}
@@ -190,6 +257,13 @@ export default function HabitsPage() {
       onRenameHabit={onRenameHabit}
       onArchiveHabit={onArchiveHabit}
       onDeleteHabit={onDeleteHabit}
+      onCreateMindfulness={onCreateMindfulness}
+      onDeleteMindfulness={onDeleteMindfulness}
+      onCreateJournal={onCreateJournal}
+      onUpdateJournal={onUpdateJournal}
+      onDeleteJournal={onDeleteJournal}
+      onSaveGratitude={onSaveGratitude}
+      onDeleteGratitude={onDeleteGratitude}
     />
   );
 }

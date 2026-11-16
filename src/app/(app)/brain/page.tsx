@@ -11,6 +11,7 @@ import {
   useFocusSessions,
   useHabitLogs,
   useHabits,
+  useMindfulnessSessions,
   useMovementLogs,
   useSleepLogs,
 } from "@/lib/db/hooks";
@@ -21,13 +22,15 @@ export default function BrainPage() {
   const sleep = useSleepLogs();
   const habits = useHabits();
   const habitLogs = useHabitLogs();
+  const mindfulness = useMindfulnessSessions();
 
   const isLoading =
     focus.isLoading ||
     movement.isLoading ||
     sleep.isLoading ||
     habits.isLoading ||
-    habitLogs.isLoading;
+    habitLogs.isLoading ||
+    mindfulness.isLoading;
 
   const derived = useMemo(() => {
     if (
@@ -36,7 +39,8 @@ export default function BrainPage() {
       !movement.data ||
       !sleep.data ||
       !habits.data ||
-      !habitLogs.data
+      !habitLogs.data ||
+      !mindfulness.data
     ) {
       return null;
     }
@@ -47,8 +51,17 @@ export default function BrainPage() {
       sleep: sleep.data,
       habits: habits.data,
       habitLogs: habitLogs.data,
+      mindfulness: mindfulness.data,
     });
-  }, [isLoading, focus.data, movement.data, sleep.data, habits.data, habitLogs.data]);
+  }, [
+    isLoading,
+    focus.data,
+    movement.data,
+    sleep.data,
+    habits.data,
+    habitLogs.data,
+    mindfulness.data,
+  ]);
 
   if (!derived) {
     return <BrainExplorerSkeleton />;

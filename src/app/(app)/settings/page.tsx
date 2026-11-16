@@ -9,7 +9,7 @@ import {
 } from "@/features/settings/components/SettingsWorkspace";
 import { FOCUS_STORAGE_KEY } from "@/features/focus/timerUtils";
 import { HABITS_SEEDED_KEY } from "@/features/habits/habitUtils";
-import { exportAll, importAll, type BackupMode } from "@/lib/db/backup";
+import { SCHEMA_VERSION, exportAll, importAll, type BackupMode } from "@/lib/db/backup";
 import { useSettings } from "@/lib/db/hooks";
 import { settingsRepository } from "@/lib/db/repositories";
 
@@ -46,13 +46,11 @@ export default function SettingsPage() {
     [],
   );
 
-  const schemaVersion = settings.data?.schemaVersion ?? 1;
-
   const onDeleteAllData = useCallback(async () => {
     if (typeof indexedDB === "undefined") return;
     await importAll(
       JSON.stringify({
-        schemaVersion,
+        schemaVersion: SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
         tables: {
           settings: [],
@@ -64,6 +62,9 @@ export default function SettingsPage() {
           habits: [],
           habitLogs: [],
           experiments: [],
+          mindfulnessSessions: [],
+          journalEntries: [],
+          gratitudeEntries: [],
         },
       }),
       "replace",
@@ -73,7 +74,7 @@ export default function SettingsPage() {
       window.localStorage.removeItem(HABITS_SEEDED_KEY);
     }
     await settingsRepository.ensure();
-  }, [schemaVersion]);
+  }, []);
 
   if (settings.isLoading || !settings.data) {
     return <SettingsSkeleton />;

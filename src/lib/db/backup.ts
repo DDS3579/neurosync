@@ -6,14 +6,21 @@ import type {
   DailyCheckin,
   Experiment,
   FocusSession,
+  GratitudeEntry,
   Habit,
   HabitLog,
   ISODateTime,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
   UserSettings,
 } from "@/types/domain";
+
+export { SCHEMA_VERSION };
+
+const MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
 const isoDate = z
   .string()
@@ -132,19 +139,51 @@ const experimentSchema = z.object({
   reflection: z.string().optional(),
 });
 
+const mindfulnessSchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  type: z.enum(["box_breathing", "4_7_8_breathing", "meditation"]),
+  durationMin: z.number().positive(),
+});
+
+const journalEntrySchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  text: z.string().trim().min(1),
+});
+
+const gratitudeEntrySchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  items: z.array(z.string().trim().min(1)).min(1).max(3),
+});
+
+const v1TablesShape = {
+  settings: z.array(settingsSchema),
+  sleepLogs: z.array(sleepSchema),
+  checkins: z.array(checkinSchema),
+  focusSessions: z.array(focusSchema),
+  movementLogs: z.array(movementSchema),
+  nutritionLogs: z.array(nutritionSchema),
+  habits: z.array(habitSchema),
+  habitLogs: z.array(habitLogSchema),
+  experiments: z.array(experimentSchema),
+};
+
+const v1BackupFileSchema = z.object({
+  schemaVersion: z.literal(1),
+  exportedAt: isoDateTime,
+  tables: z.object(v1TablesShape),
+});
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
   tables: z.object({
-    settings: z.array(settingsSchema),
-    sleepLogs: z.array(sleepSchema),
-    checkins: z.array(checkinSchema),
-    focusSessions: z.array(focusSchema),
-    movementLogs: z.array(movementSchema),
-    nutritionLogs: z.array(nutritionSchema),
-    habits: z.array(habitSchema),
-    habitLogs: z.array(habitLogSchema),
-    experiments: z.array(experimentSchema),
+    ...v1TablesShape,
+    mindfulnessSessions: z.array(mindfulnessSchema),
+    journalEntries: z.array(journalEntrySchema),
+    gratitudeEntries: z.array(gratitudeEntrySchema),
   }),
 });
 
@@ -158,6 +197,9 @@ export interface BackupTables {
   habits: Habit[];
   habitLogs: HabitLog[];
   experiments: Experiment[];
+  mindfulnessSessions: MindfulnessSession[];
+  journalEntries: JournalEntry[];
+  gratitudeEntries: GratitudeEntry[];
 }
 
 export interface BackupFile {
@@ -191,6 +233,9 @@ const TABLE_NAMES = [
   "habits",
   "habitLogs",
   "experiments",
+  "mindfulnessSessions",
+  "journalEntries",
+  "gratitudeEntries",
 ] as const satisfies readonly (keyof BackupTables)[];
 
 /** Reads every table into one plain object. */
@@ -207,6 +252,9 @@ export async function buildBackup(): Promise<BackupFile> {
     habits: await db.habits.toArray(),
     habitLogs: await db.habitLogs.toArray(),
     experiments: await db.experiments.toArray(),
+    mindfulnessSessions: await db.mindfulnessSessions.toArray(),
+    journalEntries: await db.journalEntries.toArray(),
+    gratitudeEntries: await db.gratitudeEntries.toArray(),
   };
 
   return {
@@ -233,16 +281,42 @@ function parseBackup(text: string): BackupFile {
 
   const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
 
-  if (typeof version !== "number") {
+  if (typeof version !== "number" || !Number.isInteger(version)) {
     throw new BackupError(
       "This file does not look like a NeuroSync backup: it has no schemaVersion.",
     );
   }
 
-  if (version !== SCHEMA_VERSION) {
+  if (version < MIN_SUPPORTED_SCHEMA_VERSION || version > SCHEMA_VERSION) {
     throw new BackupError(
-      `This backup uses schema version ${version}, but this app reads version ${SCHEMA_VERSION}. Nothing was imported.`,
+      `This backup uses schema version ${version}, but this app supports versions ${MIN_SUPPORTED_SCHEMA_VERSION}–${SCHEMA_VERSION}. Nothing was imported.`,
     );
+  }
+
+  if (version === 1) {
+    const parsedV1 = v1BackupFileSchema.safeParse(raw);
+    if (!parsedV1.success) {
+      const firstIssue = parsedV1.error.issues[0];
+      const location = firstIssue?.path.join(".") || "unknown field";
+      throw new BackupError(
+        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
+      );
+    }
+
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: parsedV1.data.exportedAt,
+      tables: {
+        ...parsedV1.data.tables,
+        settings: parsedV1.data.tables.settings.map((row) => ({
+          ...row,
+          schemaVersion: SCHEMA_VERSION,
+        })),
+        mindfulnessSessions: [],
+        journalEntries: [],
+        gratitudeEntries: [],
+      },
+    };
   }
 
   const parsed = backupFileSchema.safeParse(raw);

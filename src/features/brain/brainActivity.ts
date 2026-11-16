@@ -8,6 +8,7 @@ import type {
   HabitLog,
   ISODate,
   LearningMethod,
+  MindfulnessSession,
   MovementLog,
   RegionId,
   SleepLog,
@@ -58,6 +59,7 @@ export function deriveWeeklyBrainActivity(params: {
   sleep: readonly SleepLog[];
   habits: readonly Habit[];
   habitLogs: readonly HabitLog[];
+  mindfulness?: readonly MindfulnessSession[];
   today?: Date;
 }): {
   activity: Partial<Record<RegionId, number>>;
@@ -103,6 +105,10 @@ export function deriveWeeklyBrainActivity(params: {
       const habitName = habitNameById.get(hl.habitId) ?? "";
       add(inferHabitActivityKind(habitName), 15);
     }
+  }
+
+  for (const ms of params.mindfulness ?? []) {
+    if (inRange(ms.date)) add("mindfulness", ms.durationMin);
   }
 
   const items: LoggedActivitySummary[] = [...counts.entries()]

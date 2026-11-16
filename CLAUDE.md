@@ -27,3 +27,12 @@ text #E6EAF5, muted #8A93AD. Geist Sans + Mono. Cyan = information, violet = emp
 
 ## 3D coordinates
 x +right, y +up, z +front. Brain normalized to about [-1,1].
+
+## Workflow (v0.2)
+- Each task: create branch `v0.2/<short-feature-name>` off `v0.2` (note: if Git disallows `v0.2/<name>` while branch `v0.2` exists as a ref, use `v0.2-<short-feature-name>`), commit in small conventional commits, and when all checks pass merge into `v0.2` (no force-push, no pushing to remote unless asked).
+- Before finishing every task run: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. Report the REAL results. If a command is blocked by the environment, say so explicitly; never claim a pass you didn't observe.
+- Any new persisted data: add a new Dexie version with a migration, bump the backup `schemaVersion`, keep importing older backups, extend the backup validation, and add tests (including importing a v0.1 backup).
+- New pure logic gets Vitest tests. New UI follows the existing design tokens and `nx` primitives; no new UI libraries without telling the user why.
+- Keep the honesty/privacy rules in this file: no brain scores, no claims of measuring the brain, no network calls with user data, no encryption claims.
+- Add an entry per feature to `CHANGELOG.md` (create it).
+- End every task with: what changed (files), verification results, anything unverified, and suggested next step.

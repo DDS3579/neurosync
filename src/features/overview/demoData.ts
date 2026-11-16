@@ -1,7 +1,7 @@
 import { format, startOfDay, subDays } from "date-fns";
 
 import { activityToRegionIntensity } from "@/data/brainRegions";
-import { importAll } from "@/lib/db/backup";
+import { SCHEMA_VERSION, importAll } from "@/lib/db/backup";
 import {
   checkinRepository,
   focusRepository,
@@ -22,6 +22,7 @@ import type {
   HabitLog,
   ISODate,
   LearningMethod,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
@@ -47,12 +48,12 @@ export function isDemoId(id: string): boolean {
 
 export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> {
   if (typeof indexedDB === "undefined") return;
-  const currentSettings = await settingsRepository.ensure();
+  await settingsRepository.ensure();
   const demo = generateDemoData(DEMO_DAYS, DEMO_SEED, today);
 
   await importAll(
     JSON.stringify({
-      schemaVersion: currentSettings.schemaVersion,
+      schemaVersion: SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       tables: {
         settings: [],
@@ -64,6 +65,9 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         habits: demo.habits,
         habitLogs: demo.habitLogs,
         experiments: [],
+        mindfulnessSessions: [],
+        journalEntries: [],
+        gratitudeEntries: [],
       },
     }),
     "merge",
@@ -101,6 +105,7 @@ export interface OverviewAggregationInput {
   nutrition: NutritionLog[];
   habits: Habit[];
   habitLogs: HabitLog[];
+  mindfulness?: MindfulnessSession[];
   today?: Date;
 }
 
@@ -134,6 +139,7 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
 
   const todayFocus = input.focus.filter((row) => row.date === todayISO);
   const todayMovement = input.movement.filter((row) => row.date === todayISO);
+  const todayMindfulness = (input.mindfulness ?? []).filter((row) => row.date === todayISO);
   const todaySleep = sleepByDate.get(todayISO);
 
   const activityItems: { kind: ActivityKind; minutes: number }[] = [];
@@ -142,6 +148,9 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
   }
   for (const m of todayMovement) {
     activityItems.push({ kind: "exercise", minutes: m.durationMin });
+  }
+  for (const ms of todayMindfulness) {
+    activityItems.push({ kind: "mindfulness", minutes: ms.durationMin });
   }
   if (todaySleep) {
     activityItems.push({ kind: "sleep_rest", minutes: Math.min(120, Math.round(todaySleep.durationMin / 4)) });

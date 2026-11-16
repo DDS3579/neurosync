@@ -4,8 +4,11 @@ export type { CreateInput, DateRange, Repository, UpdateInput } from "./base";
 export { checkinRepository, getCheckinByDate } from "./checkins";
 export { experimentRepository } from "./experiments";
 export { focusRepository } from "./focus";
+export { getGratitudeByDate, gratitudeRepository } from "./gratitude";
 export { habitLogRepository } from "./habitLogs";
 export { habitRepository } from "./habits";
+export { journalRepository } from "./journal";
+export { mindfulnessRepository } from "./mindfulness";
 export { movementRepository } from "./movement";
 export { nutritionRepository } from "./nutrition";
 export {

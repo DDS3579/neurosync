@@ -277,9 +277,11 @@ export function SettingsWorkspace({
             <h2 className="text-section font-medium text-foreground">Backup & restore</h2>
 
             <p className="rounded-control border border-border bg-surface-2 p-3 text-caption leading-relaxed text-muted-foreground">
-              Data is stored locally in this browser (IndexedDB) and is{" "}
+              Data — including your journal entries, gratitude notes, and mindfulness sessions —
+              lives only in this browser (IndexedDB), is{" "}
               <strong className="font-medium text-foreground">not encrypted</strong> on your
-              device. Export a JSON backup anytime to keep a copy or move between devices.
+              device, and is included in JSON exports. Export a backup anytime to keep a copy or
+              move between devices.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -329,9 +331,9 @@ export function SettingsWorkspace({
               <h2 className="text-section font-medium text-foreground">Delete local data</h2>
             </div>
             <p className="text-caption text-muted-foreground">
-              Permanently removes all check-ins, sleep logs, focus sessions, habits, and
-              experiments from this browser. This cannot be undone unless you exported a JSON
-              backup.
+              Permanently removes all check-ins, sleep logs, focus sessions, habits, mindfulness
+              sessions, journal entries, gratitude notes, and experiments from this browser. This
+              cannot be undone unless you exported a JSON backup.
             </p>
             <Button
               type="button"
