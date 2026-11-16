@@ -300,7 +300,7 @@ export function WeeklyReportWorkspace({
           <ul className="mt-3 space-y-2 text-body text-muted-foreground">
             {report.reflectionPrompts.map((prompt, idx) => (
               <li key={idx} className="flex gap-2">
-                <span aria-hidden className="text-violet">
+                <span aria-hidden className="text-violet-text">
                   ?
                 </span>
                 <span>{prompt}</span>
@@ -373,6 +373,19 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Sleep"
             description={`Target ${sleepTargetHours.toFixed(1)}h per night`}
+            summary={
+              report.sleep.nightsLogged > 0 && report.sleep.avgMin !== null
+                ? `Average ${formatMinutesLabel(report.sleep.avgMin)} across ${report.sleep.nightsLogged} of 7 nights (${report.sleep.nightsBelowTarget} under target).`
+                : undefined
+            }
+            tableData={{
+              caption: "Weekly sleep duration by day",
+              columns: ["Day", "Sleep (hours)"],
+              rows: sleepSeries.map((row) => [
+                row.day,
+                row.hours === null ? "—" : row.hours.toFixed(1),
+              ]),
+            }}
             empty={report.sleep.nightsLogged === 0}
             emptyMessage="No sleep logged this week. Add wake-up logs in Daily Habits → Sleep to see averages and bedtime spread."
             footer={
@@ -397,6 +410,16 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Focus"
             description="Minutes per day"
+            summary={
+              report.focus.sessions > 0
+                ? `${formatMinutesLabel(report.focus.totalMin)} logged across ${report.focus.sessions} session(s).`
+                : undefined
+            }
+            tableData={{
+              caption: "Weekly focus minutes by day",
+              columns: ["Day", "Minutes"],
+              rows: focusSeries.map((row) => [row.day, row.minutes]),
+            }}
             empty={report.focus.sessions === 0}
             emptyMessage="No focus sessions logged this week. Use Focus Lab to record session minutes and focus ratings."
             footer={
@@ -421,6 +444,16 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Learning methods"
             description="Minutes per method logged in Focus Lab"
+            summary={
+              methodSeries.length > 0
+                ? `${methodSeries.length} method(s) used this week (${report.focus.retrievalSessions} with retrieval practice).`
+                : undefined
+            }
+            tableData={{
+              caption: "Minutes by learning method",
+              columns: ["Method", "Minutes"],
+              rows: methodSeries.map((row) => [row.method, row.minutes]),
+            }}
             empty={methodSeries.length === 0}
             emptyMessage="No learning methods logged this week. Complete a Focus Lab session to see how your study methods distribute."
             footer={
@@ -443,6 +476,16 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Movement"
             description="Daily movement minutes"
+            summary={
+              report.movement.daysActive > 0
+                ? `${formatMinutesLabel(report.movement.totalMin)} across ${report.movement.daysActive} active day(s).`
+                : undefined
+            }
+            tableData={{
+              caption: "Daily movement minutes",
+              columns: ["Day", "Minutes"],
+              rows: movementSeries.map((row) => [row.day, row.minutes]),
+            }}
             empty={report.movement.daysActive === 0}
             emptyMessage="No movement logged this week. Walks, runs, stretches, or workouts logged in Daily Habits → Movement appear here."
             footer={
@@ -467,6 +510,24 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Wellbeing & nutrition"
             description="Check-in ratings (1–5) and daily nutrition notes"
+            summary={
+              report.wellbeing.checkins > 0
+                ? `${report.wellbeing.checkins} check-in(s): mean mood ${report.wellbeing.avgMood ?? "—"}/5, energy ${report.wellbeing.avgEnergy ?? "—"}/5.`
+                : undefined
+            }
+            tableData={
+              report.wellbeing.checkins > 0
+                ? {
+                    caption: "Daily mood and concentration ratings",
+                    columns: ["Day", "Mood", "Concentration"],
+                    rows: moodSeries.map((row) => [
+                      row.day,
+                      row.mood === null ? "—" : `${row.mood}/5`,
+                      row.concentration === null ? "—" : `${row.concentration}/5`,
+                    ]),
+                  }
+                : undefined
+            }
             empty={report.wellbeing.checkins === 0 && report.nutrition.daysLogged === 0}
             emptyMessage="No check-ins or nutrition logs recorded this week. Log in Daily Habits → Check-in or Nutrition."
             footer={
@@ -497,6 +558,12 @@ export function WeeklyReportWorkspace({
           <ChartCard
             title="Activities & mind"
             description="Mindfulness sessions, journal, gratitude, and non-study activities"
+            summary={`${report.mind.mindfulnessSessions} mindfulness session(s) and ${report.activities.totalLogs} non-study activity log(s) this week.`}
+            tableData={{
+              caption: "Daily mindfulness and non-study activity minutes",
+              columns: ["Day", "Minutes"],
+              rows: mindActivitySeries.map((row) => [row.day, row.minutes]),
+            }}
             empty={
               report.mind.mindfulnessSessions === 0 &&
               report.mind.journalEntries === 0 &&
