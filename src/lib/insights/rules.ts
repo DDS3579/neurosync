@@ -9,10 +9,12 @@ import type {
   Pillar,
   SleepLog,
 } from '@/types/domain';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, getDay, parseISO, subDays } from 'date-fns';
+import { buildConfidence } from './confidence';
 import {
   circularMeanMinutes,
   circularStdMinutes,
+  clamp,
   groupByDate,
   linearSlope,
   mean,
@@ -27,6 +29,8 @@ export interface InsightRule {
   pillar: Pillar;
   /** Minimum size of the rule's primary series; run() enforces this and any extra thresholds. */
   minSamples: number;
+  /** Optional shared topic key; computeInsights keeps only the highest-ranked rule per group. */
+  dedupeGroup?: string;
   run(input: InsightInput, today: ISODate): Insight | null;
 }
 
@@ -112,6 +116,13 @@ function focusSignalByDate(input: InsightInput, today: ISODate): Map<ISODate, nu
 const minOf = (xs: readonly number[]): number => xs.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
 const maxOf = (xs: readonly number[]): number => xs.reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
 
+/** Shortest signed minute delta on a 24-hour clock, in (-720, 720]. */
+function signedClockDiffMin(aMin: number, bMin: number): number {
+  let diff = ((aMin - bMin) % 1440 + 1440) % 1440;
+  if (diff > 720) diff -= 1440;
+  return diff;
+}
+
 // ---------- rules (registration order is the tiebreak for insight ordering) ----------
 
 export const RULES: readonly InsightRule[] = [
@@ -145,6 +156,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Sleep is associated with memory consolidation, a process that commonly involves the hippocampus.',
         regions: ['hippocampus'],
+        confidence: buildConfidence({ sampleSize: nights.length, unit: 'night', windowDays: 7 }),
       };
     },
   },
@@ -152,6 +164,7 @@ export const RULES: readonly InsightRule[] = [
     id: 'bedtime_irregular',
     pillar: 'sleep',
     minSamples: 5,
+    dedupeGroup: 'sleep_timing',
     run(input, today) {
       const nights = lastNDays(input.sleep, today, 7);
       if (nights.length < 5) return null;
@@ -175,6 +188,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Regular sleep timing is associated with steadier circadian rhythms; sleep itself is associated with memory consolidation that commonly involves the hippocampus.',
         regions: ['hippocampus'],
+        confidence: buildConfidence({ sampleSize: nights.length, unit: 'night', windowDays: 7 }),
       };
     },
   },
@@ -214,6 +228,12 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Sleep is associated with memory consolidation that commonly involves the hippocampus, while sustained attention commonly involves prefrontal and parietal regions.',
         regions: ['hippocampus', 'prefrontal', 'parietal'],
+        confidence: buildConfidence({
+          sampleSize: pairs.length,
+          unit: 'day',
+          paired: true,
+          effectStrength: Math.abs(r),
+        }),
       };
     },
   },
@@ -252,6 +272,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Moment-to-moment concentration commonly involves prefrontal and parietal networks, and it naturally fluctuates with context.',
         regions: ['prefrontal', 'parietal'],
+        confidence: buildConfidence({ sampleSize: recent.length, unit: 'day' }),
       };
     },
   },
@@ -288,6 +309,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Sustained attention commonly involves prefrontal and parietal regions, and vigilance naturally dips during long, unbroken stretches.',
         regions: ['prefrontal', 'parietal'],
+        confidence: buildConfidence({ sampleSize: ordered.length, unit: 'session', windowDays: 7 }),
       };
     },
   },
@@ -316,6 +338,7 @@ export const RULES: readonly InsightRule[] = [
         ],
         caveat:
           'Self-reported flags over a few days; "regular" means whatever it meant to you when logging. This is an invitation to notice, not to change anything.',
+        confidence: buildConfidence({ sampleSize: days.length, unit: 'day', windowDays: 7 }),
       };
     },
   },
@@ -345,6 +368,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Movement coordination commonly involves the cerebellum, and physical activity is associated with benefits for mood and memory.',
         regions: ['cerebellum', 'hippocampus'],
+        confidence: buildConfidence({ sampleSize: days.length, unit: 'day', windowDays: 7 }),
       };
     },
   },
@@ -374,6 +398,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Retrieval practice and spaced repetition are associated with more durable memory, and forming new memories commonly involves the hippocampus.',
         regions: ['hippocampus', 'prefrontal'],
+        confidence: buildConfidence({ sampleSize: sessions.length, unit: 'session', windowDays: 14 }),
       };
     },
   },
@@ -401,6 +426,7 @@ export const RULES: readonly InsightRule[] = [
         ],
         caveat:
           'Check-ins are self-reported snapshots of moments, not measurements of anything deeper. They are for you — not a report card.',
+        confidence: buildConfidence({ sampleSize: days.length, unit: 'day', windowDays: 7 }),
       };
     },
   },
@@ -431,6 +457,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Unfamiliar and varied experiences are commonly associated with prefrontal attention networks and hippocampal memory context.',
         regions: ['prefrontal', 'hippocampus'],
+        confidence: buildConfidence({ sampleSize: logs.length, unit: 'entry', windowDays: 7 }),
       };
     },
   },
@@ -475,6 +502,7 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Time away from demanding tasks and supportive social contact are commonly associated with emotional regulation across prefrontal and amygdala networks.',
         regions: ['prefrontal', 'amygdala'],
+        confidence: buildConfidence({ sampleSize: focusSessions.length, unit: 'session', windowDays: 7 }),
       };
     },
   },
@@ -509,7 +537,381 @@ export const RULES: readonly InsightRule[] = [
         education:
           'Retrieval practice (recalling ideas from memory rather than re-reading) is associated with more durable memory, which commonly involves the hippocampus and prefrontal cortex.',
         regions: ['hippocampus', 'prefrontal'],
+        confidence: buildConfidence({ sampleSize: sessions.length, unit: 'session', windowDays: 14 }),
       };
+    },
+  },
+  {
+    id: 'session_length_vs_focus',
+    pillar: 'focus',
+    minSamples: 6,
+    run(input, today) {
+      const sessions = lastNDays(input.focus, today, 30);
+      if (sessions.length < 6) return null;
+      const durations = sessions.map((s) => s.durationMin);
+      const ratings = sessions.map((s) => s.focusRating);
+      const r = pearson(durations, ratings);
+      if (r === null || Math.abs(r) < 0.3) return null;
+
+      const shorter = sessions.filter((s) => s.durationMin <= 45).map((s) => s.focusRating);
+      const longer = sessions.filter((s) => s.durationMin > 45).map((s) => s.focusRating);
+      const avgShort = mean(shorter);
+      const avgLong = mean(longer);
+
+      const body =
+        r > 0
+          ? `Across ${sessions.length} sessions in the last 30 days, longer study blocks tended to coincide with higher self-rated focus. That often happens when you schedule longer blocks on days with more energy or lighter distractions — it is a correlation to notice, not a rule to chase.`
+          : `Across ${sessions.length} sessions in the last 30 days, shorter study blocks tended to coincide with higher self-rated focus. Brief blocks can align with clearer boundaries or fresher attention, though topic difficulty and fatigue could explain the pattern just as easily.`;
+
+      const evidence = [
+        `Sessions examined: ${sessions.length} (last 30 days)`,
+        `Pearson r = ${r.toFixed(2)} (duration vs. self-rated focus)`,
+        `Session durations ranged from ${fmtDur(minOf(durations))} to ${fmtDur(maxOf(durations))}`,
+      ];
+      if (avgShort !== null && avgLong !== null) {
+        evidence.push(`Mean focus: ${round1(avgShort)}/5 (<=45m) vs. ${round1(avgLong)}/5 (>45m)`);
+      }
+
+      return {
+        id: 'session_length_vs_focus',
+        pillar: 'focus',
+        kind: 'observation',
+        title:
+          r > 0
+            ? 'Longer sessions and higher focus ratings aligned lately'
+            : 'Shorter sessions and steadier focus ratings aligned lately',
+        body,
+        evidence,
+        caveat:
+          'Correlation does not imply causation: self-reported focus can reflect energy, subject difficulty, or picking longer blocks when you already felt settled.',
+        education:
+          'Sustained attention commonly involves prefrontal and parietal networks, and comfortable session lengths differ from day to day.',
+        regions: ['prefrontal', 'parietal'],
+        confidence: buildConfidence({
+          sampleSize: sessions.length,
+          unit: 'session',
+          paired: true,
+          effectStrength: Math.abs(r),
+        }),
+      };
+    },
+  },
+  {
+    id: 'weekday_vs_weekend_pattern',
+    pillar: 'sleep',
+    minSamples: 6,
+    run(input, today) {
+      const nights = lastNDays(input.sleep, today, 21);
+      if (nights.length < 6) return null;
+
+      const weekdays: SleepLog[] = [];
+      const weekends: SleepLog[] = [];
+      for (const night of nights) {
+        const dow = getDay(parseISO(night.date));
+        if (dow === 0 || dow === 6) weekends.push(night);
+        else weekdays.push(night);
+      }
+      if (weekdays.length < 4 || weekends.length < 2) return null;
+
+      const wdDur = mean(weekdays.map((n) => n.durationMin));
+      const weDur = mean(weekends.map((n) => n.durationMin));
+      const wdBed = circularMeanMinutes(weekdays.map(bedtimeMinutes));
+      const weBed = circularMeanMinutes(weekends.map(bedtimeMinutes));
+      if (wdDur === null || weDur === null || wdBed === null || weBed === null) return null;
+
+      const durDiff = weDur - wdDur;
+      const bedDiff = signedClockDiffMin(weBed, wdBed);
+      if (Math.abs(durDiff) < 30 && Math.abs(bedDiff) < 40) return null;
+
+      const parts: string[] = [];
+      if (Math.abs(bedDiff) >= 40) {
+        parts.push(
+          `bedtimes landed roughly ${fmtDur(Math.abs(bedDiff))} ${bedDiff > 0 ? 'later' : 'earlier'} on weekend mornings (${fmtClock(weBed)} vs. ${fmtClock(wdBed)})`,
+        );
+      }
+      if (Math.abs(durDiff) >= 30) {
+        parts.push(
+          `nights ran about ${fmtDur(Math.abs(durDiff))} ${durDiff > 0 ? 'longer' : 'shorter'} on weekends (${fmtDur(weDur)} vs. ${fmtDur(wdDur)})`,
+        );
+      }
+
+      return {
+        id: 'weekday_vs_weekend_pattern',
+        pillar: 'sleep',
+        kind: 'observation',
+        title: 'Weekday and weekend sleep patterns differ in your logs',
+        body: `Over the last three weeks, ${parts.join(' and ')}. Schedules naturally flex between workdays and days off — this is simply a picture of how your calendar shapes your week.`,
+        evidence: [
+          `Nights compared: ${weekdays.length} weekday vs. ${weekends.length} weekend (last 21 days)`,
+          `Weekday avg: ${fmtDur(wdDur)} · typical bedtime ${fmtClock(wdBed)}`,
+          `Weekend avg: ${fmtDur(weDur)} · typical bedtime ${fmtClock(weBed)}`,
+        ],
+        caveat:
+          'Self-reported wake dates and bedtimes over a small window. Weekend rhythms naturally shift with social plans, errands, and rest.',
+        education:
+          'Sleep timing shifts are associated with circadian rhythms, and sleep itself is associated with memory consolidation that commonly involves the hippocampus.',
+        regions: ['hippocampus'],
+        confidence: buildConfidence({
+          sampleSize: nights.length,
+          unit: 'night',
+          paired: true,
+          effectStrength: clamp(Math.max(Math.abs(durDiff) / 90, Math.abs(bedDiff) / 120), 0, 1),
+        }),
+      };
+    },
+  },
+  {
+    id: 'outdoor_time_mood_energy',
+    pillar: 'wellbeing',
+    minSamples: 6,
+    run(input, today) {
+      const checkins = lastNDays(input.checkins, today, 30).filter(
+        (c): c is DailyCheckin & { outdoorMin: number } =>
+          typeof c.outdoorMin === 'number' && Number.isFinite(c.outdoorMin),
+      );
+      if (checkins.length < 6) return null;
+
+      const byDate = new Map<ISODate, DailyCheckin & { outdoorMin: number }>();
+      for (const c of checkins) byDate.set(c.date, c);
+      const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+      if (days.length < 6) return null;
+
+      const outdoors = days.map((d) => d.outdoorMin);
+      const rMood = pearson(outdoors, days.map((d) => d.mood));
+      const rEnergy = pearson(outdoors, days.map((d) => d.energy));
+
+      let label: 'mood' | 'energy' | null = null;
+      let rVal: number | null = null;
+      if (rMood !== null && (rEnergy === null || Math.abs(rMood) >= Math.abs(rEnergy))) {
+        label = 'mood';
+        rVal = rMood;
+      } else if (rEnergy !== null) {
+        label = 'energy';
+        rVal = rEnergy;
+      }
+      if (label === null || rVal === null || Math.abs(rVal) < 0.3) return null;
+
+      const direction = rVal > 0 ? 'higher' : 'lower';
+      return {
+        id: 'outdoor_time_mood_energy',
+        pillar: 'wellbeing',
+        kind: 'observation',
+        title: `Outdoor time and ${label} moved together lately`,
+        body: `Across ${days.length} check-in days in the last 30 days, days with more logged outdoor minutes tended to coincide with ${direction} ${label} ratings. Weather, free time, and energy itself can easily pull both numbers together, so treat this as a descriptive snapshot rather than a cause.`,
+        evidence: [
+          `Matched check-in days: ${days.length} (last 30 days)`,
+          `Pearson r = ${rVal.toFixed(2)} (outdoor minutes vs. ${label})`,
+          `Logged outdoor time ranged from ${minOf(outdoors)}m to ${maxOf(outdoors)}m`,
+        ],
+        caveat:
+          'Correlation is not causation: self-reported estimates over a modest sample can be shaped by daylight, schedule flexibility, and workload.',
+        education:
+          'Daylight and time outdoors are commonly associated with alertness and emotional regulation networks involving prefrontal regions.',
+        regions: ['prefrontal'],
+        confidence: buildConfidence({
+          sampleSize: days.length,
+          unit: 'day',
+          paired: true,
+          effectStrength: Math.abs(rVal),
+        }),
+      };
+    },
+  },
+  {
+    id: 'mindfulness_vs_stress',
+    pillar: 'wellbeing',
+    minSamples: 6,
+    run(input, today) {
+      const checkins = lastNDays(input.checkins, today, 30);
+      const mindful = lastNDays(input.mindfulness ?? [], today, 30);
+      if (checkins.length < 6 || mindful.length === 0) return null;
+
+      const byDate = new Map<ISODate, DailyCheckin>();
+      for (const c of checkins) byDate.set(c.date, c);
+      const mindfulDates = new Set(mindful.map((m) => m.date));
+
+      const withStress: number[] = [];
+      const withoutStress: number[] = [];
+      for (const [date, c] of byDate) {
+        if (mindfulDates.has(date)) withStress.push(c.stress);
+        else withoutStress.push(c.stress);
+      }
+      if (withStress.length < 3 || withoutStress.length < 3) return null;
+
+      const avgWith = mean(withStress);
+      const avgWithout = mean(withoutStress);
+      if (avgWith === null || avgWithout === null) return null;
+
+      const diff = avgWith - avgWithout;
+      if (Math.abs(diff) < 0.4) return null;
+
+      const totalDays = withStress.length + withoutStress.length;
+      return {
+        id: 'mindfulness_vs_stress',
+        pillar: 'wellbeing',
+        kind: 'observation',
+        title:
+          diff < 0
+            ? 'Check-in stress tended to be lower on mindfulness days'
+            : 'Mindfulness sessions showed up more often on fuller-stress days',
+        body:
+          diff < 0
+            ? `Across ${totalDays} check-in days in the last 30 days, self-reported stress averaged ${round1(avgWith)}/5 on days when you logged breathing or meditation compared to ${round1(avgWithout)}/5 on other days. Calmer schedules may leave more room to pause, so this association does not tell us which led to which.`
+            : `Across ${totalDays} check-in days in the last 30 days, self-reported stress averaged ${round1(avgWith)}/5 on days with breathing or meditation logs compared to ${round1(avgWithout)}/5 on other days. People often reach for a breathing session on tense days, which is a natural rhythm to notice.`,
+        evidence: [
+          `Days with mindfulness + check-in: ${withStress.length} (avg stress ${round1(avgWith)}/5)`,
+          `Check-in days without mindfulness: ${withoutStress.length} (avg stress ${round1(avgWithout)}/5)`,
+        ],
+        caveat:
+          'Self-reported ratings over a small window; schedule load and stressors can affect both stress ratings and when you pause to log a session. Not medical advice.',
+        education:
+          'Paced breathing and mindfulness practices are commonly associated with emotion-regulation circuits involving prefrontal and amygdala networks.',
+        regions: ['prefrontal', 'amygdala'],
+        confidence: buildConfidence({
+          sampleSize: totalDays,
+          unit: 'day',
+          paired: true,
+          effectStrength: clamp(Math.abs(diff) / 2, 0, 1),
+        }),
+      };
+    },
+  },
+  {
+    id: 'activity_variety_mood',
+    pillar: 'wellbeing',
+    minSamples: 6,
+    run(input, today) {
+      const checkins = lastNDays(input.checkins, today, 30);
+      const activities = lastNDays(input.activities ?? [], today, 30);
+      if (checkins.length < 6 || activities.length < 4) return null;
+
+      const distinctOverall = new Set(activities.map((a) => a.type)).size;
+      if (distinctOverall < 2) return null;
+
+      const byDate = new Map<ISODate, DailyCheckin>();
+      for (const c of checkins) byDate.set(c.date, c);
+      const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+      if (days.length < 6) return null;
+
+      const activitiesByDate = groupByDate(activities);
+      const varieties: number[] = [];
+      const moods: number[] = [];
+
+      for (const day of days) {
+        const typesInWindow = new Set<PersonalActivityType>();
+        for (let offset = 0; offset < 3; offset += 1) {
+          const dKey = format(subDays(parseISO(day.date), offset), 'yyyy-MM-dd');
+          for (const entry of activitiesByDate.get(dKey) ?? []) {
+            typesInWindow.add(entry.type);
+          }
+        }
+        varieties.push(typesInWindow.size);
+        moods.push(day.mood);
+      }
+
+      const r = pearson(varieties, moods);
+      if (r === null || Math.abs(r) < 0.3) return null;
+
+      const higherVarietyMoods = moods.filter((_, i) => (varieties[i] ?? 0) >= 2);
+      const lowerVarietyMoods = moods.filter((_, i) => (varieties[i] ?? 0) < 2);
+      const avgHigh = mean(higherVarietyMoods);
+      const avgLow = mean(lowerVarietyMoods);
+
+      const evidence = [
+        `Check-in days analyzed: ${days.length} (last 30 days)`,
+        `Activity types logged across period: ${distinctOverall}`,
+        `Pearson r = ${r.toFixed(2)} (3-day activity variety vs. mood)`,
+      ];
+      if (avgHigh !== null && avgLow !== null) {
+        evidence.push(`Mean mood: ${round1(avgHigh)}/5 (2+ recent types) vs. ${round1(avgLow)}/5 (<2 types)`);
+      }
+
+      return {
+        id: 'activity_variety_mood',
+        pillar: 'wellbeing',
+        kind: 'observation',
+        title:
+          r > 0
+            ? 'Varied personal activities and mood aligned in your logs'
+            : 'Activity variety and mood moved inversely lately',
+        body:
+          r > 0
+            ? `Over the last 30 days, check-in days paired with more varied non-study activities tended to coincide with higher self-reported mood ratings. Having free time or steady energy can invite both variety and a lighter mood, so this stays a descriptive clue rather than a rule.`
+            : `Over the last 30 days, check-in days paired with more varied activities tended to coincide with slightly lower mood ratings — small-sample noise or reaching for hobbies on harder days can easily produce that pattern.`,
+        evidence,
+        caveat:
+          'Correlation does not imply causation: both self-reported mood and non-study activities are shaped by free time, workload, and life events.',
+        education:
+          'Varied and novel personal experiences are commonly associated with prefrontal attention networks and hippocampal memory context.',
+        regions: ['prefrontal', 'hippocampus'],
+        confidence: buildConfidence({
+          sampleSize: days.length,
+          unit: 'day',
+          paired: true,
+          effectStrength: Math.abs(r),
+        }),
+      };
+    },
+  },
+  {
+    id: 'sleep_consistency_long_window',
+    pillar: 'sleep',
+    minSamples: 14,
+    dedupeGroup: 'sleep_timing',
+    run(input, today) {
+      const nights = lastNDays(input.sleep, today, 28);
+      if (nights.length < 14) return null;
+
+      const bedtimes = nights.map(bedtimeMinutes);
+      const spread = circularStdMinutes(bedtimes);
+      const center = circularMeanMinutes(bedtimes);
+      const avgDur = mean(nights.map((n) => n.durationMin));
+      if (spread === null || center === null || avgDur === null) return null;
+
+      if (spread <= 45) {
+        return {
+          id: 'sleep_consistency_long_window',
+          pillar: 'sleep',
+          kind: 'milestone',
+          title: 'A steady bedtime rhythm across the month',
+          body: `Across ${nights.length} logged nights over the last 28 days, your bedtimes stayed within about ${fmtDur(spread)} of ${fmtClock(center)}. That kind of steadiness takes shape around real-world routines without needing rigid rules.`,
+          evidence: [
+            `Nights logged (last 28 days): ${nights.length}`,
+            `Typical bedtime: about ${fmtClock(center)}`,
+            `Circular bedtime variation: about ${Math.round(spread)} min`,
+            `Average duration: ${fmtDur(avgDur)}`,
+          ],
+          caveat:
+            'Derived from self-reported bedtimes over 28 days. Steady timing is simply a description of your routine, not a metric or requirement.',
+          education:
+            'Steady sleep timing is associated with aligned circadian rhythms; sleep is associated with memory consolidation involving the hippocampus.',
+          regions: ['hippocampus'],
+          confidence: buildConfidence({ sampleSize: nights.length, unit: 'night', windowDays: 28 }),
+        };
+      }
+
+      if (spread > 65) {
+        return {
+          id: 'sleep_consistency_long_window',
+          pillar: 'sleep',
+          kind: 'observation',
+          title: 'Bedtimes varied across the last month',
+          body: `Over ${nights.length} logged nights in the last 28 days, your bedtimes varied by roughly ${fmtDur(spread)} around ${fmtClock(center)}. Multi-week schedules shift for plenty of reasons — deadlines, travel, or late evenings — so this is just a calm look at the longer arc.`,
+          evidence: [
+            `Nights logged (last 28 days): ${nights.length}`,
+            `Typical bedtime: about ${fmtClock(center)}`,
+            `Circular bedtime variation: about ${Math.round(spread)} min`,
+          ],
+          caveat:
+            'Self-reported bedtimes over a 28-day window. Timing spread is descriptive only and is not linked to any verdict here.',
+          education:
+            'Regular sleep timing is associated with steadier circadian rhythms, and sleep is associated with memory consolidation involving the hippocampus.',
+          regions: ['hippocampus'],
+          confidence: buildConfidence({ sampleSize: nights.length, unit: 'night', windowDays: 28 }),
+        };
+      }
+
+      return null;
     },
   },
 ];
