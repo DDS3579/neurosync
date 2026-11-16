@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { isIndexedDbAvailable } from "@/lib/db/dexie";
+import { SETTINGS_ID, isIndexedDbAvailable } from "@/lib/db/dexie";
 import {
   ALL_TIME,
   checkinRepository,
@@ -80,8 +81,16 @@ export function useExperiments(): LiveResult<Experiment> {
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {
+  useEffect(() => {
+    if (!isIndexedDbAvailable()) return;
+    void settingsRepository.ensure();
+  }, []);
+
   const data = useLiveQuery(
-    () => (isIndexedDbAvailable() ? settingsRepository.ensure() : Promise.resolve(undefined)),
+    () =>
+      isIndexedDbAvailable()
+        ? settingsRepository.getById(SETTINGS_ID)
+        : Promise.resolve(undefined),
     ["settings"],
   );
 
