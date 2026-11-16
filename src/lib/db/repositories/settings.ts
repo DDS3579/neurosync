@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS_INPUT: SettingsInput = {
   focusDefaultMin: DEFAULT_FOCUS_MIN,
   breakDefaultMin: DEFAULT_BREAK_MIN,
   onboarded: false,
+  reducedMotion: false,
+  highContrast: false,
+  textSize: "md",
   reminders: DEFAULT_REMINDER_SETTINGS,
   schemaVersion: SCHEMA_VERSION,
 };
