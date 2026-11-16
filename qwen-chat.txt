@@ -1,0 +1,3374 @@
+### USER
+=== NEUROSYNC PROJECT CONTRACT ===
+
+WHAT
+NeuroSync is a privacy-first, neuroscience-informed web app with three parts:
+1) Brain Explorer: interactive 3D brain atlas
+2) Personal tracker: sleep, focus sessions, mood check-ins, movement, nutrition habits, custom habits
+3) Local insight engine + Personal Experiment Lab (rule-based, deterministic)
+v0.1 is LOCAL-FIRST: no backend, no accounts, no AI API, no analytics. All data lives in IndexedDB via Dexie.
+All data access goes through repositories so auth + sync can be added later by swapping repository internals only.
+
+NON-NEGOTIABLES
+1. Scientific honesty. Never claim habits measure or cause brain growth, neural activity, or "brain health".
+   Brain-region links are EDUCATIONAL ASSOCIATIONS, never measurements.
+   Allowed: "commonly involves", "is associated with". Banned: "your X grew/strengthened", "brain score",
+   "brain health score", "boost your IQ", diagnosis language.
+2. Privacy. Zero network calls with user data. No analytics/tracking SDKs. Do not claim encryption.
+3. Wellbeing over optimization. No shaming copy, no punishing streaks, no calorie/macro targets.
+4. Insights are deterministic TypeScript. They require minimum data, always include a caveat,
+   and never imply causation.
+5. Sleep reference is shown as a reference, never a verdict (teens 8-10h, adults 7h+; user can set their own target).
+
+STACK
+Next.js (latest stable, App Router) + TypeScript strict, Tailwind v4, shadcn/ui, three + @react-three/fiber +
+@react-three/drei + @react-three/postprocessing, Zustand, Dexie + dexie-react-hooks, Zod, React Hook Form,
+date-fns, Motion (framer-motion), GSAP + ScrollTrigger + Lenis (landing only), Vitest, pnpm.
+Dexie and the 3D canvas are browser-only: "use client" + next/dynamic({ ssr:false }) where needed.
+
+FOLDER STRUCTURE (src/)
+app/(marketing)/page.tsx                 landing page
+app/(app)/layout.tsx                     app shell
+app/(app)/{overview,brain,focus,habits,insights,experiments,library,settings}/page.tsx
+components/ui/                           shadcn (generated)
+components/nx/                           shared UI primitives (see below)
+components/app-shell/                    sidebar, topbar, command palette, mobile nav
+features/brain/                          BrainExplorer, BrainHero, shaders, regionZones
+features/landing/                        landing sections
+features/{sleep,focus,checkin,movement,nutrition,experiments}/
+lib/db/{dexie.ts, repositories/*.ts, hooks.ts, backup.ts}
+lib/insights/{stats.ts, rules.ts, weekly.ts, experiments.ts, demo.ts, index.ts}
+data/{brainRegions.ts, library.ts}       static educational content, separate from user data
+types/domain.ts                          shared types (below). Never redefine them elsewhere.
+
+DESIGN TOKENS
+bg #060913 | surface #0C1222 | surface-2 #111A30 | border rgba(255,255,255,.08)
+violet #8B5CF6 | cyan #22D3EE | text #E6EAF5 | muted #8A93AD
+success #34D399 | warn #FBBF24 | danger #F87171
+Fonts: Geist Sans + Geist Mono via next/font. Color carries meaning (data), not decoration. Do NOT glow everything.
+
+COORDINATE CONVENTION (3D): x +right, y +up, z +front (anterior). Brain normalized to roughly [-1,1] on each axis.
+
+--- types/domain.ts ---
+export type ISODate = string;      // 'YYYY-MM-DD'
+export type ISODateTime = string;  // ISO 8601
+export type Rating = 1 | 2 | 3 | 4 | 5;
+
+export type RegionId = 'prefrontal' | 'parietal' | 'temporal' | 'occipital'
+  | 'cerebellum' | 'hippocampus' | 'amygdala';
+
+export type ActivityKind = 'deep_focus' | 'active_recall' | 'spaced_repetition' | 'problem_solving'
+  | 'reading' | 'skill_practice' | 'teaching' | 'exercise' | 'mindfulness' | 'social'
+  | 'creative' | 'music' | 'language_learning' | 'sleep_rest';
+
+export type LearningMethod = 'active_recall' | 'spaced_repetition' | 'problem_solving'
+  | 'deep_reading' | 'skill_practice' | 'teaching';
+
+export interface Base { id: string; createdAt: ISODateTime; updatedAt: ISODateTime; }
+
+export interface UserSettings extends Base {
+  displayName?: string; sleepTargetMin: number;      // default 480
+  focusDefaultMin: number;                            // default 25
+  breakDefaultMin: number;                            // default 5
+  onboarded: boolean; reducedMotion?: boolean; schemaVersion: number;
+}
+export interface SleepLog extends Base {
+  date: ISODate;            // the WAKE-UP date
+  bedtime: ISODateTime; wakeTime: ISODateTime; durationMin: number;
+  quality: Rating; rested: Rating; interruptions: number;
+}
+export interface DailyCheckin extends Base {
+  date: ISODate; mood: Rating; stress: Rating; energy: Rating;
+  concentration: Rating; motivation: Rating; outdoorMin?: number; note?: string;
+}
+export interface FocusSession extends Base {
+  date: ISODate; startedAt: ISODateTime; durationMin: number; plannedMin: number;
+  subject: string; method: LearningMethod; focusRating: Rating; difficulty: Rating;
+  distractions: number; notes?: string;
+}
+export interface MovementLog extends Base {
+  date: ISODate; type: 'walk'|'run'|'cycle'|'sport'|'gym'|'stretch'|'other';
+  durationMin: number; effort: Rating;
+}
+export interface NutritionLog extends Base {
+  date: ISODate; regularMeals: boolean; fruitVeg: boolean; varied: boolean;
+  waterGlasses: number; note?: string;
+}
+export interface Habit extends Base { name: string; icon?: string; archived: boolean; }
+export interface HabitLog extends Base { date: ISODate; habitId: string; done: boolean; }
+
+export type ExperimentMetric = 'concentration' | 'mood' | 'energy' | 'stress' | 'focusRating';
+export interface Experiment extends Base {
+  title: string; hypothesis: string; changeDescription: string; metric: ExperimentMetric;
+  baselineStart: ISODate; baselineEnd: ISODate; interventionStart: ISODate; interventionEnd: ISODate;
+  status: 'planned' | 'baseline' | 'intervention' | 'complete'; reflection?: string;
+}
+
+export interface InsightInput {
+  settings: UserSettings; sleep: SleepLog[]; checkins: DailyCheckin[]; focus: FocusSession[];
+  movement: MovementLog[]; nutrition: NutritionLog[]; habits: Habit[]; habitLogs: HabitLog[];
+}
+export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
+export interface Insight {
+  id: string; pillar: Pillar; kind: 'observation' | 'milestone' | 'reflection';
+  title: string; body: string; evidence: string[];  // human-readable data points
+  caveat: string; education?: string; regions?: RegionId[]; // educational associations only
+}
+export interface BrainRegionInfo {
+  id: RegionId; name: string; shortDescription: string; associatedWith: string[];
+  networks: string[]; connectedTo: RegionId[]; relatedActivities: ActivityKind[];
+  everydayExamples: string[]; caveat: string;
+}
+
+--- data/brainRegions.ts exports ---
+BRAIN_REGIONS: BrainRegionInfo[]
+ACTIVITY_META: Record<ActivityKind, { label: string; description: string }>
+ACTIVITY_REGION_MAP: Record<ActivityKind, { region: RegionId; weight: number }[]>   // weight 0..1
+activityToRegionIntensity(items: { kind: ActivityKind; minutes: number }[]): Partial<Record<RegionId, number>> // 0..1
+
+--- lib/insights exports ---
+computeInsights(input: InsightInput, todayISO: ISODate): Insight[]
+buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): WeeklyReport
+analyzeExperiment(exp: Experiment, input: InsightInput): ExperimentResult
+generateDemoData(days: number, seed: number): InsightInput
+
+--- features/brain exports (client components) ---
+export interface BrainExplorerProps {
+  mode: 'anatomy' | 'functional' | 'activity';
+  selectedRegion: RegionId | null;
+  activity: Partial<Record<RegionId, number>>;   // 0..1, drives 'activity' mode
+  onSelectRegion: (id: RegionId | null) => void;
+  onHoverRegion?: (id: RegionId | null) => void;
+  quality?: 'auto' | 'low' | 'high'; className?: string;
+}
+export interface BrainHeroProps { progress?: number /*0..1 scroll*/; interactive?: boolean; className?: string; }
+export default BrainExplorer; export { BrainHero };
+
+--- components/nx primitives (named exports from components/nx/index.ts) ---
+PageHeader({ title, description?, actions?: ReactNode })
+StatCard({ label, value: string|number, unit?, delta?: { value:number; direction:'up'|'down'|'flat'; label?:string }, hint?, icon?: ReactNode, accent?: 'violet'|'cyan'|'neutral' })
+ChartCard({ title, description?, children, footer?, empty?: boolean, emptyMessage?: string })
+EmptyState({ icon?: ReactNode, title, description, action?: ReactNode })
+RatingInput({ value?: Rating, onChange(v: Rating), label, lowLabel?, highLabel? })
+DurationInput({ valueMin: number, onChange(m:number), label, presets?: number[] })
+InsightCard({ insight: Insight })
+RegionBadge({ region: RegionId })
+=== END CONTRACT ===
+
+
+
+[PASTE CONTRACT]
+
+You are a senior TypeScript engineer. Write PURE, DETERMINISTIC, dependency-light modules (only date-fns allowed) with strict typing.
+Import types from '@/types/domain' (do not redefine them). Output each file as: // FILE: <path> then the code.
+
+FILES
+1. src/lib/insights/stats.ts
+   mean, median, stdDev, pearson(xs, ys) (return null if n<5 or zero variance), linearSlope, groupByDate, 
+   circularMeanMinutes + circularStdMinutes for bedtime consistency (times wrap at midnight, handle 23:30 vs 00:30 correctly),
+   pairByDate(a, b) to join two series by ISODate, clamp, round1.
+2. src/lib/insights/rules.ts
+   A rule type: { id; pillar; minSamples; run(input, today): Insight | null }.
+   Implement these rules (each requires enough data and returns null otherwise):
+   - sleep_below_target: >=3 of last 7 nights below settings.sleepTargetMin
+   - bedtime_irregular: circular std of bedtime > 60 min over >=5 nights
+   - sleep_focus_pairing: pair sleep duration with that day's concentration check-in or mean focus rating; if >=7 pairs and |r|>=0.3, state the pattern neutrally
+   - low_focus_streak: self-rated focus/concentration <=2 on >=3 of the last 5 logged days (reflection prompt about workload, no advice about medication/diagnosis)
+   - long_sessions_no_breaks: >=3 sessions over 90 min in last 7 days with distractions rising
+   - movement_consistency: movement on >=4 of last 7 days (milestone, warm tone)
+   - learning_variety: used >=3 different LearningMethods in the last 14 days (milestone)
+   - meal_regularity: regularMeals false on >=3 of last 7 logged days (gentle reflection)
+   - checkin_consistency: >=5 check-ins in the last 7 days (milestone)
+   Every Insight must include: evidence[] (concrete numbers), a caveat string (correlation is not causation / self-reported / small sample),
+   and for relevant ones an `education` sentence and `regions` (educational associations only, e.g. sleep -> hippocampus, focus -> prefrontal, parietal).
+   Copy must be warm, non-judgmental, never diagnostic, never use the words "score" or "brain health", and never say any region "grew" or "strengthened".
+3. src/lib/insights/index.ts
+   computeInsights(input, todayISO): runs all rules, sorts by relevance (observations first, milestones after), caps at 8, stable ordering.
+4. src/lib/insights/stats.test.ts and rules.test.ts (Vitest): at least 25 test cases including midnight wrap-around, insufficient data returning null,
+   exact boundary conditions (e.g., exactly 3 low nights), and a test that scans all insight copy for banned phrases.
+   Include small helper factories for building test fixtures.
+
+QUALITY BAR: no `any`, no mutation of inputs, no Date.now() inside rules (use the passed today), exhaustive comments only where logic is non-obvious.
+
+
+output files as // FILE: path blocks.
+
+
+
+### ASSISTANT
+Verified the circular-stat math, thresholds, and every test fixture numerically before writing the files — all expectations below are confirmed (wrap-around mean = 0, wrap std ≈ 30.04 min, kitchen-sink fixture fires all 9 rules, kitchen-sink r = 0.96).
+
+// FILE: src/lib/insights/stats.ts
+```typescript
+import type { ISODate } from '@/types/domain';
+
+/**
+ * Pure descriptive statistics for the insight engine.
+ * Empty inputs return null (never NaN); inputs are never mutated.
+ * All functions assume finite numbers (Zod validates at the repository boundary).
+ */
+
+export function mean(xs: readonly number[]): number | null {
+  if (xs.length === 0) return null;
+  let sum = 0;
+  for (const x of xs) sum += x;
+  return sum / xs.length;
+}
+
+export function median(xs: readonly number[]): number | null {
+  if (xs.length === 0) return null;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] ?? null;
+  const lo = sorted[mid - 1];
+  const hi = sorted[mid];
+  return lo === undefined || hi === undefined ? null : (lo + hi) / 2;
+}
+
+/** Population standard deviation (descriptive stats over the user's own logs, not a sample estimate). */
+export function stdDev(xs: readonly number[]): number | null {
+  const m = mean(xs);
+  if (m === null) return null;
+  let sumSq = 0;
+  for (const x of xs) sumSq += (x - m) ** 2;
+  return Math.sqrt(sumSq / xs.length);
+}
+
+/** Pearson r. Null when n < 5, lengths differ, or either series has (near-)zero variance. */
+export function pearson(xs: readonly number[], ys: readonly number[]): number | null {
+  if (xs.length !== ys.length || xs.length < 5) return null;
+  const mx = mean(xs);
+  const my = mean(ys);
+  if (mx === null || my === null) return null;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (const [i, x] of xs.entries()) {
+    const y = ys[i];
+    if (y === undefined) return null;
+    const dx = x - mx;
+    const dy = y - my;
+    sxy += dx * dy;
+    sxx += dx * dx;
+    syy += dy * dy;
+  }
+  // Absolute epsilon also catches fp dust left over from constant series.
+  if (sxx < 1e-12 || syy < 1e-12) return null;
+  return clamp(sxy / Math.sqrt(sxx * syy), -1, 1); // guard fp overshoot past ±1
+}
+
+/** Least-squares slope of ys over xs. Null when n < 2, lengths differ, or x has zero variance. */
+export function linearSlope(xs: readonly number[], ys: readonly number[]): number | null {
+  if (xs.length !== ys.length || xs.length < 2) return null;
+  const mx = mean(xs);
+  const my = mean(ys);
+  if (mx === null || my === null) return null;
+  let sxy = 0;
+  let sxx = 0;
+  for (const [i, x] of xs.entries()) {
+    const y = ys[i];
+    if (y === undefined) return null;
+    sxy += (x - mx) * (y - my);
+    sxx += (x - mx) ** 2;
+  }
+  if (sxx < 1e-12) return null;
+  return sxy / sxx;
+}
+
+/** Groups items by their ISODate. Insertion order preserved; items are referenced, never cloned or mutated. */
+export function groupByDate<T extends { date: ISODate }>(items: readonly T[]): Map<ISODate, T[]> {
+  const out = new Map<ISODate, T[]>();
+  for (const item of items) {
+    const bucket = out.get(item.date);
+    if (bucket) bucket.push(item);
+    else out.set(item.date, [item]);
+  }
+  return out;
+}
+
+export interface DateValue {
+  date: ISODate;
+  value: number;
+}
+
+export interface DatePair {
+  date: ISODate;
+  x: number;
+  y: number;
+}
+
+/**
+ * Inner join of two numeric series on ISODate.
+ * Duplicate dates on either side are averaged; output is sorted ascending by date,
+ * so the result is independent of input ordering.
+ */
+export function pairByDate(a: readonly DateValue[], b: readonly DateValue[]): DatePair[] {
+  const summarize = (points: readonly DateValue[]): Map<ISODate, { sum: number; count: number }> => {
+    const m = new Map<ISODate, { sum: number; count: number }>();
+    for (const p of points) {
+      const cur = m.get(p.date);
+      if (cur) {
+        cur.sum += p.value;
+        cur.count += 1;
+      } else {
+        m.set(p.date, { sum: p.value, count: 1 });
+      }
+    }
+    return m;
+  };
+  const ma = summarize(a);
+  const mb = summarize(b);
+  const out: DatePair[] = [];
+  for (const [date, xa] of ma) {
+    const yb = mb.get(date);
+    if (yb !== undefined) out.push({ date, x: xa.sum / xa.count, y: yb.sum / yb.count });
+  }
+  // 'YYYY-MM-DD' strings compare lexicographically in chronological order.
+  out.sort((p, q) => (p.date < q.date ? -1 : p.date > q.date ? 1 : 0));
+  return out;
+}
+
+const MINUTES_PER_DAY = 1440;
+const TWO_PI = Math.PI * 2;
+const RAD_TO_MINUTES = MINUTES_PER_DAY / TWO_PI;
+
+const wrapMinutes = (m: number): number => ((m % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+
+function resultant(minutes: readonly number[]): { c: number; s: number; r: number } | null {
+  if (minutes.length === 0) return null;
+  let c = 0;
+  let s = 0;
+  for (const m of minutes) {
+    const theta = (wrapMinutes(m) / MINUTES_PER_DAY) * TWO_PI;
+    c += Math.cos(theta);
+    s += Math.sin(theta);
+  }
+  c /= minutes.length;
+  s /= minutes.length;
+  return { c, s, r: Math.hypot(c, s) };
+}
+
+/**
+ * Circular mean of minutes-of-day, in [0, 1440). Handles midnight wrap:
+ * 23:30 (1410) and 00:30 (30) average to 00:00, not 12:00.
+ */
+export function circularMeanMinutes(minutes: readonly number[]): number | null {
+  const res = resultant(minutes);
+  if (res === null) return null;
+  const angle = Math.atan2(res.s, res.c); // -π..π
+  const raw = wrapMinutes(angle * RAD_TO_MINUTES);
+  // fp can turn a true-midnight mean into 1439.9999999…; snap it back to 0.
+  return MINUTES_PER_DAY - raw < 1e-6 ? 0 : raw;
+}
+
+/**
+ * Circular standard deviation in minutes (Mardia & Jupp: sqrt(-2 ln R), converted to minutes).
+ * Capped at 720 (half a day) so near-antipodal times yield a finite, interpretable spread
+ * instead of the formula's unbounded limit as R → 0.
+ */
+export function circularStdMinutes(minutes: readonly number[]): number | null {
+  const res = resultant(minutes);
+  if (res === null) return null;
+  if (res.r >= 1 - 1e-12) return 0; // identical times (R may be 0.999… in fp)
+  if (res.r <= 1e-12) return 720; // opposite clock faces: maximal practical spread
+  return Math.min(720, Math.sqrt(-2 * Math.log(res.r)) * RAD_TO_MINUTES);
+}
+
+export function clamp(x: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, x));
+}
+
+export function round1(x: number): number {
+  return Math.round(x * 10) / 10;
+}
+```
+
+// FILE: src/lib/insights/rules.ts
+```typescript
+import type {
+  DailyCheckin,
+  Insight,
+  InsightInput,
+  ISODate,
+  LearningMethod,
+  NutritionLog,
+  Pillar,
+  SleepLog,
+} from '@/types/domain';
+import { format, parseISO, subDays } from 'date-fns';
+import {
+  circularMeanMinutes,
+  circularStdMinutes,
+  groupByDate,
+  linearSlope,
+  mean,
+  pairByDate,
+  pearson,
+  round1,
+  type DateValue,
+} from './stats';
+
+export interface InsightRule {
+  id: string;
+  pillar: Pillar;
+  /** Minimum size of the rule's primary series; run() enforces this and any extra thresholds. */
+  minSamples: number;
+  run(input: InsightInput, today: ISODate): Insight | null;
+}
+
+// ---------- private helpers (pure, no clock access — everything derives from `today`) ----------
+
+const isoBefore = (today: ISODate, daysBack: number): ISODate =>
+  format(subDays(parseISO(today), daysBack), 'yyyy-MM-dd');
+
+/** Inclusive window [today - (n-1), today]. Future-dated logs are excluded. */
+function lastNDays<T extends { date: ISODate }>(items: readonly T[], today: ISODate, n: number): T[] {
+  const start = isoBefore(today, n - 1);
+  // 'YYYY-MM-DD' compares lexicographically in chronological order — no timezone math needed.
+  return items.filter((it) => it.date >= start && it.date <= today);
+}
+
+const uniqueSortedDates = (items: readonly { date: ISODate }[]): ISODate[] =>
+  [...new Set(items.map((it) => it.date))].sort();
+
+function fmtDur(min: number): string {
+  const m = Math.round(min);
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return `${r}m`;
+  if (r === 0) return `${h}h`;
+  return `${h}h ${r}m`;
+}
+
+function fmtClock(minutesOfDay: number): string {
+  const m = Math.round(((minutesOfDay % 1440) + 1440) % 1440) % 1440;
+  const hh = String(Math.floor(m / 60)).padStart(2, '0');
+  const mm = String(m % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+const dayLabel = (d: ISODate): string => format(parseISO(d), 'MMM d');
+
+/**
+ * Local wall-clock minutes of a bedtime. Offset-less ISO strings parse as local time
+ * (date-fns), which matches local-first logging; the circular stats handle the midnight wrap.
+ */
+const bedtimeMinutes = (log: SleepLog): number => {
+  const d = parseISO(log.bedtime);
+  return d.getHours() * 60 + d.getMinutes();
+};
+
+const METHOD_LABELS: Record<LearningMethod, string> = {
+  active_recall: 'active recall',
+  spaced_repetition: 'spaced repetition',
+  problem_solving: 'problem solving',
+  deep_reading: 'deep reading',
+  skill_practice: 'skill practice',
+  teaching: 'teaching',
+};
+
+/**
+ * One focus signal per logged day: check-in concentration when present,
+ * otherwise the mean of that day's session focus ratings. If several check-ins
+ * share a date, the later entry in the array supersedes earlier ones.
+ */
+function focusSignalByDate(input: InsightInput, today: ISODate): Map<ISODate, number> {
+  const byDate = new Map<ISODate, number>();
+  const sessions = input.focus.filter((s) => s.date <= today);
+  for (const [date, list] of groupByDate(sessions)) {
+    const m = mean(list.map((s) => s.focusRating));
+    if (m !== null) byDate.set(date, m);
+  }
+  for (const c of input.checkins) {
+    if (c.date <= today) byDate.set(c.date, c.concentration);
+  }
+  return byDate;
+}
+
+const minOf = (xs: readonly number[]): number => xs.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
+const maxOf = (xs: readonly number[]): number => xs.reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
+
+// ---------- rules (registration order is the tiebreak for insight ordering) ----------
+
+export const RULES: readonly InsightRule[] = [
+  {
+    id: 'sleep_below_target',
+    pillar: 'sleep',
+    minSamples: 3,
+    run(input, today) {
+      // SleepLog.date is the wake-up date, so "last 7 nights" = wake dates in the window.
+      const nights = lastNDays(input.sleep, today, 7);
+      if (nights.length < 3) return null;
+      const target = input.settings.sleepTargetMin;
+      const below = nights.filter((n) => n.durationMin < target);
+      if (below.length < 3) return null;
+      const durations = nights.map((n) => n.durationMin);
+      const avg = mean(durations);
+      if (avg === null) return null;
+      return {
+        id: 'sleep_below_target',
+        pillar: 'sleep',
+        kind: 'observation',
+        title: 'A few shorter nights this week',
+        body: `${below.length} of your last ${nights.length} logged nights were shorter than your personal target of ${fmtDur(target)}. Sleep needs differ between people and between seasons of life — this is a gentle observation, not a verdict. For reference, common guidelines suggest 7+ hours for adults and 8–10 for teens; your target is yours to adjust in Settings.`,
+        evidence: [
+          `${below.length} of ${nights.length} logged nights below ${fmtDur(target)} (last 7 days)`,
+          `Average logged sleep: ${fmtDur(avg)}`,
+          `Shortest night: ${fmtDur(minOf(durations))}`,
+        ],
+        caveat:
+          'Based on a small sample of self-reported logs. Short nights can have many causes — this pattern does not tell us why, and one week does not define your rest.',
+        education:
+          'Sleep is associated with memory consolidation, a process that commonly involves the hippocampus.',
+        regions: ['hippocampus'],
+      };
+    },
+  },
+  {
+    id: 'bedtime_irregular',
+    pillar: 'sleep',
+    minSamples: 5,
+    run(input, today) {
+      const nights = lastNDays(input.sleep, today, 7);
+      if (nights.length < 5) return null;
+      const bedtimes = nights.map(bedtimeMinutes);
+      const spread = circularStdMinutes(bedtimes);
+      const center = circularMeanMinutes(bedtimes);
+      if (spread === null || center === null || spread <= 60) return null;
+      return {
+        id: 'bedtime_irregular',
+        pillar: 'sleep',
+        kind: 'observation',
+        title: 'Your bedtime has been shifting around',
+        body: `Across ${nights.length} logged nights in the last week, your bedtimes varied by roughly ${fmtDur(spread)} around a typical bedtime of ${fmtClock(center)}. Life has seasons, and bedtimes move with them — if you are curious, simply noticing what shapes your evenings could be an interesting observation this week.`,
+        evidence: [
+          `Nights considered: ${nights.length} (last 7 days)`,
+          `Typical bedtime: about ${fmtClock(center)}`,
+          `Variation: about ${Math.round(spread)} min (circular SD, so 23:30 and 00:30 count as 60 min apart)`,
+        ],
+        caveat:
+          'Self-reported bedtimes over a small window. Variation is a description of your week, not a problem to fix, and it is not linked to any outcome here.',
+        education:
+          'Regular sleep timing is associated with steadier circadian rhythms; sleep itself is associated with memory consolidation that commonly involves the hippocampus.',
+        regions: ['hippocampus'],
+      };
+    },
+  },
+  {
+    id: 'sleep_focus_pairing',
+    pillar: 'sleep',
+    minSamples: 7,
+    run(input, today) {
+      const signals = focusSignalByDate(input, today);
+      const sleepPts: DateValue[] = input.sleep
+        .filter((s) => s.date <= today)
+        .map((s) => ({ date: s.date, value: s.durationMin }));
+      const focusPts: DateValue[] = [...signals].map(([date, value]) => ({ date, value }));
+      const pairs = pairByDate(sleepPts, focusPts);
+      if (pairs.length < 7) return null;
+      const r = pearson(pairs.map((p) => p.x), pairs.map((p) => p.y));
+      if (r === null || Math.abs(r) < 0.3) return null;
+      const sleepVals = pairs.map((p) => p.x);
+      const body =
+        r > 0
+          ? `On ${pairs.length} matched days, nights with longer sleep tended to coincide with higher focus ratings later that day. This is a pattern in your own logs — interesting to notice, not a lever to pull.`
+          : `On ${pairs.length} matched days, nights with longer sleep tended to coincide with lower focus ratings later that day. Small samples can show patterns that fade or flip as more days are logged — worth watching with curiosity rather than concern.`;
+      return {
+        id: 'sleep_focus_pairing',
+        pillar: 'sleep',
+        kind: 'observation',
+        title: 'Sleep and same-day focus move together in your logs',
+        body,
+        evidence: [
+          `Matched days: ${pairs.length}`,
+          `Pearson r = ${r.toFixed(2)} (on a −1 to +1 scale)`,
+          `Sleep on matched days ranged from ${fmtDur(minOf(sleepVals))} to ${fmtDur(maxOf(sleepVals))}`,
+          `Focus signal: check-in concentration, or the day's mean session focus rating when no check-in`,
+        ],
+        caveat:
+          'Correlation is not causation: stress, workload, illness and many other factors could shape both sleep and ratings. All values are self-reported and the sample is small.',
+        education:
+          'Sleep is associated with memory consolidation that commonly involves the hippocampus, while sustained attention commonly involves prefrontal and parietal regions.',
+        regions: ['hippocampus', 'prefrontal', 'parietal'],
+      };
+    },
+  },
+  {
+    id: 'low_focus_streak',
+    pillar: 'focus',
+    minSamples: 5,
+    run(input, today) {
+      const signals = focusSignalByDate(input, today);
+      // "Last 5 logged days" = the 5 most recent distinct dates with any focus signal.
+      // A full five-day window is required before describing a stretch.
+      const recent = [...signals.keys()].sort().reverse().slice(0, 5);
+      if (recent.length < 5) return null;
+      const low = recent.filter((d) => {
+        const v = signals.get(d);
+        return v !== undefined && v <= 2;
+      });
+      if (low.length < 3) return null;
+      const first = recent[recent.length - 1];
+      const last = recent[0];
+      if (first === undefined || last === undefined) return null;
+      const range = `${dayLabel(first)} – ${dayLabel(last)}`;
+      return {
+        id: 'low_focus_streak',
+        pillar: 'focus',
+        kind: 'reflection',
+        title: 'A stretch of lower-focus days',
+        body: `${low.length} of your last 5 logged days had focus or concentration ratings of 2 or lower (${range}). Focus naturally ebbs and flows with rest, workload and life context — nothing here needs fixing. If it feels useful, you might reflect on what those days had in common, simply to understand them better.`,
+        evidence: [
+          `${low.length} of the last 5 logged days rated 2 or lower`,
+          `Days considered: ${range}`,
+          `Signal: check-in concentration, or mean session focus rating on days without a check-in`,
+        ],
+        caveat:
+          'Self-reported ratings on a handful of days describe your experience, not your ability. This is a reflection prompt, not an assessment of any kind.',
+        education:
+          'Moment-to-moment concentration commonly involves prefrontal and parietal networks, and it naturally fluctuates with context.',
+        regions: ['prefrontal', 'parietal'],
+      };
+    },
+  },
+  {
+    id: 'long_sessions_no_breaks',
+    pillar: 'focus',
+    minSamples: 3,
+    run(input, today) {
+      const sessions = lastNDays(input.focus, today, 7).filter((s) => s.durationMin > 90);
+      if (sessions.length < 3) return null;
+      const ordered = [...sessions].sort((a, b) =>
+        a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0,
+      );
+      // "Distractions rising" = positive least-squares slope across the long sessions in time order.
+      const slope = linearSlope(ordered.map((_, i) => i), ordered.map((s) => s.distractions));
+      if (slope === null || slope <= 0) return null;
+      const first = ordered[0];
+      const last = ordered[ordered.length - 1];
+      if (first === undefined || last === undefined) return null;
+      const longest = ordered.reduce((m, s) => Math.max(m, s.durationMin), 0);
+      return {
+        id: 'long_sessions_no_breaks',
+        pillar: 'focus',
+        kind: 'reflection',
+        title: 'Long sessions, rising distractions',
+        body: `${ordered.length} sessions in the last week ran longer than 90 minutes, and across those sessions your self-reported distractions trended upward (${first.distractions} → ${last.distractions}). Attention naturally ebbs over long stretches, so this is worth noticing, not worrying about. If you are curious, a small experiment with breaks could be a gentle thing to explore.`,
+        evidence: [
+          `Sessions over 90 min (last 7 days): ${ordered.length}`,
+          `Distractions across those sessions: ${ordered.map((s) => s.distractions).join(' → ')}`,
+          `Longest session: ${fmtDur(longest)}`,
+        ],
+        caveat:
+          'A handful of self-reported sessions cannot establish cause and effect; topic difficulty, time of day and busy weeks all play a part.',
+        education:
+          'Sustained attention commonly involves prefrontal and parietal regions, and vigilance naturally dips during long, unbroken stretches.',
+        regions: ['prefrontal', 'parietal'],
+      };
+    },
+  },
+  {
+    id: 'meal_regularity',
+    pillar: 'nutrition',
+    minSamples: 3,
+    run(input, today) {
+      const logs = lastNDays(input.nutrition, today, 7);
+      if (logs.length < 3) return null;
+      // One entry per day: a later log for the same date supersedes earlier ones.
+      const byDate = new Map<ISODate, NutritionLog>();
+      for (const log of logs) byDate.set(log.date, log);
+      const days = [...byDate.values()];
+      const irregularDates = days.filter((d) => !d.regularMeals).map((d) => d.date).sort();
+      if (irregularDates.length < 3) return null;
+      return {
+        id: 'meal_regularity',
+        pillar: 'nutrition',
+        kind: 'reflection',
+        title: 'Meals were less regular lately',
+        body: `On ${irregularDates.length} of your last ${days.length} logged days, meals were not at their usual rhythm. Busy stretches happen to everyone — there are no targets here. If you are curious, what did those days look like? Sometimes the story is simply a full calendar.`,
+        evidence: [
+          `Days without regular meals: ${irregularDates.length} of ${days.length} logged (last 7 days)`,
+          `Dates: ${irregularDates.map(dayLabel).join(', ')}`,
+        ],
+        caveat:
+          'Self-reported flags over a few days; "regular" means whatever it meant to you when logging. This is an invitation to notice, not to change anything.',
+      };
+    },
+  },
+  {
+    id: 'movement_consistency',
+    pillar: 'movement',
+    minSamples: 4,
+    run(input, today) {
+      const logs = lastNDays(input.movement, today, 7);
+      const days = uniqueSortedDates(logs);
+      if (days.length < 4) return null;
+      const total = logs.reduce((a, l) => a + l.durationMin, 0);
+      const types = [...new Set(logs.map((l) => l.type))].sort();
+      return {
+        id: 'movement_consistency',
+        pillar: 'movement',
+        kind: 'milestone',
+        title: 'A steady week of movement',
+        body: `You logged movement on ${days.length} of the last 7 days — ${fmtDur(total)} in total. That is a lovely rhythm. Rest days belong in the picture too: this celebrates showing up, not a standard to keep up.`,
+        evidence: [
+          `Active days: ${days.length} of the last 7`,
+          `Total logged movement: ${fmtDur(total)}`,
+          `Types: ${types.join(', ')}`,
+        ],
+        caveat:
+          'This reflects self-reported logs, not everything you did or did not do. Consistency is one small thread in wellbeing, not a measure of it.',
+        education:
+          'Movement coordination commonly involves the cerebellum, and physical activity is associated with benefits for mood and memory.',
+        regions: ['cerebellum', 'hippocampus'],
+      };
+    },
+  },
+  {
+    id: 'learning_variety',
+    pillar: 'learning',
+    minSamples: 3,
+    run(input, today) {
+      const sessions = lastNDays(input.focus, today, 14);
+      if (sessions.length < 3) return null;
+      const methods = [...new Set(sessions.map((s) => s.method))].sort();
+      if (methods.length < 3) return null;
+      const labels = methods.map((m) => METHOD_LABELS[m]).join(', ');
+      return {
+        id: 'learning_variety',
+        pillar: 'learning',
+        kind: 'milestone',
+        title: 'A varied learning toolkit',
+        body: `You used ${methods.length} different learning methods over the last two weeks: ${labels}. Mixing approaches keeps practice fresh — nice exploring.`,
+        evidence: [
+          `Distinct methods (last 14 days): ${methods.length}`,
+          `Methods: ${labels}`,
+          `Sessions logged: ${sessions.length}`,
+        ],
+        caveat:
+          'Variety is one dimension of practice, counted from self-reported logs. It does not measure learning outcomes or imply any particular result.',
+        education:
+          'Retrieval practice and spaced repetition are associated with more durable memory, and forming new memories commonly involves the hippocampus.',
+        regions: ['hippocampus', 'prefrontal'],
+      };
+    },
+  },
+  {
+    id: 'checkin_consistency',
+    pillar: 'wellbeing',
+    minSamples: 5,
+    run(input, today) {
+      const logs = lastNDays(input.checkins, today, 7);
+      const days = uniqueSortedDates(logs);
+      if (days.length < 5) return null;
+      const mood = mean(logs.map((c: DailyCheckin) => c.mood));
+      const energy = mean(logs.map((c) => c.energy));
+      if (mood === null || energy === null) return null;
+      return {
+        id: 'checkin_consistency',
+        pillar: 'wellbeing',
+        kind: 'milestone',
+        title: 'A week of checking in',
+        body: `You checked in on ${days.length} of the last 7 days. Each check-in is a small moment of noticing how you are, and together they are building a picture of your own rhythms. Missing days are completely okay.`,
+        evidence: [
+          `Check-in days: ${days.length} of the last 7`,
+          `Average mood: ${round1(mood)} of 5`,
+          `Average energy: ${round1(energy)} of 5`,
+        ],
+        caveat:
+          'Check-ins are self-reported snapshots of moments, not measurements of anything deeper. They are for you — not a report card.',
+      };
+    },
+  },
+];
+```
+
+// FILE: src/lib/insights/index.ts
+```typescript
+import type { Insight, InsightInput, ISODate } from '@/types/domain';
+import { RULES, type InsightRule } from './rules';
+
+export { RULES };
+export type { InsightRule };
+
+// buildWeeklyReport / analyzeExperiment / generateDemoData live in their own sibling
+// modules (weekly.ts, experiments.ts, demo.ts) per the project contract.
+
+const MAX_INSIGHTS = 8;
+
+const KIND_RANK: Record<Insight['kind'], number> = {
+  observation: 0,
+  reflection: 1,
+  milestone: 2,
+};
+
+/**
+ * Runs every rule against the passed `today` (never the system clock), then orders
+ * observations → reflections → milestones. Ties keep rule registration order via an
+ * explicit index tiebreak, so ordering is stable on every engine. Caps at 8.
+ */
+export function computeInsights(input: InsightInput, todayISO: ISODate): Insight[] {
+  const found: { order: number; insight: Insight }[] = [];
+  RULES.forEach((rule, order) => {
+    const insight = rule.run(input, todayISO);
+    if (insight !== null) found.push({ order, insight });
+  });
+  found.sort(
+    (a, b) => KIND_RANK[a.insight.kind] - KIND_RANK[b.insight.kind] || a.order - b.order,
+  );
+  return found.slice(0, MAX_INSIGHTS).map((entry) => entry.insight);
+}
+```
+
+// FILE: src/lib/insights/stats.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import {
+  circularMeanMinutes,
+  circularStdMinutes,
+  clamp,
+  groupByDate,
+  linearSlope,
+  mean,
+  median,
+  pairByDate,
+  pearson,
+  round1,
+  stdDev,
+  type DateValue,
+} from './stats';
+
+describe('mean', () => {
+  it('computes the arithmetic mean', () => {
+    expect(mean([1, 2, 3, 4])).toBe(2.5);
+  });
+  it('returns null on empty input', () => {
+    expect(mean([])).toBeNull();
+  });
+});
+
+describe('median', () => {
+  it('handles odd-length unsorted input without mutating it', () => {
+    const frozen = Object.freeze([3, 1, 2]);
+    expect(median(frozen)).toBe(2);
+  });
+  it('averages the middle pair for even-length input', () => {
+    expect(median([4, 1, 3, 2])).toBe(2.5);
+  });
+  it('returns null on empty input', () => {
+    expect(median([])).toBeNull();
+  });
+});
+
+describe('stdDev (population)', () => {
+  it('matches the classic worked example', () => {
+    expect(stdDev([2, 4, 4, 4, 5, 5, 7, 9])).toBe(2);
+  });
+  it('returns 0 for a single value and null for empty', () => {
+    expect(stdDev([7])).toBe(0);
+    expect(stdDev([])).toBeNull();
+  });
+});
+
+describe('pearson', () => {
+  it('returns +1 for a perfectly increasing linear relation (n = 5)', () => {
+    expect(pearson([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])).toBe(1);
+  });
+  it('returns −1 for a perfectly decreasing relation', () => {
+    expect(pearson([1, 2, 3, 4, 5], [10, 8, 6, 4, 2])).toBe(-1);
+  });
+  it('computes a known intermediate value', () => {
+    const r = pearson([1, 2, 3, 4, 5], [2, 4, 5, 4, 5]);
+    expect(r).toBeCloseTo(0.774597, 5);
+  });
+  it('returns null when n < 5 even for a perfect relation (boundary: 4 pairs)', () => {
+    expect(pearson([1, 2, 3, 4], [2, 4, 6, 8])).toBeNull();
+  });
+  it('returns null when either series has zero variance', () => {
+    expect(pearson([3, 3, 3, 3, 3], [1, 2, 3, 4, 5])).toBeNull();
+    expect(pearson([1, 2, 3, 4, 5], [7, 7, 7, 7, 7])).toBeNull();
+  });
+  it('returns null on mismatched lengths', () => {
+    expect(pearson([1, 2, 3, 4, 5], [1, 2, 3])).toBeNull();
+  });
+});
+
+describe('linearSlope', () => {
+  it('recovers positive and negative slopes', () => {
+    expect(linearSlope([0, 1, 2, 3], [1, 3, 5, 7])).toBe(2);
+    expect(linearSlope([0, 1, 2, 3], [7, 5, 3, 1])).toBe(-2);
+  });
+  it('returns null for n < 2, zero x-variance, or mismatched lengths', () => {
+    expect(linearSlope([1], [5])).toBeNull();
+    expect(linearSlope([2, 2, 2], [1, 2, 3])).toBeNull();
+    expect(linearSlope([1, 2], [1])).toBeNull();
+  });
+});
+
+describe('groupByDate', () => {
+  it('groups items by date and never mutates frozen input', () => {
+    const items = Object.freeze([
+      Object.freeze({ date: '2026-11-10', v: 1 }),
+      Object.freeze({ date: '2026-11-11', v: 2 }),
+      Object.freeze({ date: '2026-11-10', v: 3 }),
+    ]);
+    const grouped = groupByDate(items);
+    expect(grouped.get('2026-11-10')?.map((i) => i.v)).toEqual([1, 3]);
+    expect(grouped.get('2026-11-11')?.map((i) => i.v)).toEqual([2]);
+    expect(grouped.get('2026-11-12')).toBeUndefined();
+  });
+});
+
+describe('pairByDate', () => {
+  it('inner-joins on date, averages duplicates, and sorts ascending', () => {
+    const a: DateValue[] = [
+      { date: '2026-11-12', value: 5 },
+      { date: '2026-11-10', value: 10 },
+      { date: '2026-11-10', value: 20 },
+    ];
+    const b: DateValue[] = [
+      { date: '2026-11-13', value: 9 },
+      { date: '2026-11-10', value: 3 },
+      { date: '2026-11-12', value: 7 },
+    ];
+    expect(pairByDate(a, b)).toEqual([
+      { date: '2026-11-10', x: 15, y: 3 },
+      { date: '2026-11-12', x: 5, y: 7 },
+    ]);
+  });
+  it('returns [] when there is no date overlap', () => {
+    expect(
+      pairByDate([{ date: '2026-11-10', value: 1 }], [{ date: '2026-11-11', value: 2 }]),
+    ).toEqual([]);
+  });
+});
+
+describe('circularMeanMinutes (midnight wrap)', () => {
+  it('averages 23:30 and 00:30 to midnight, not noon', () => {
+    expect(circularMeanMinutes([1410, 30])).toBeCloseTo(0, 6);
+  });
+  it('averages 23:00 and 01:00 to midnight', () => {
+    expect(circularMeanMinutes([1380, 60])).toBeCloseTo(0, 6);
+  });
+  it('matches the linear mean when no wrap is involved', () => {
+    expect(circularMeanMinutes([60, 120])).toBeCloseTo(90, 6);
+  });
+  it('normalizes out-of-range minutes before averaging', () => {
+    expect(circularMeanMinutes([1470, 60])).toBeCloseTo(45, 6); // 1470 ≡ 30
+  });
+  it('returns the value itself for one point and null for none', () => {
+    expect(circularMeanMinutes([500])).toBe(500);
+    expect(circularMeanMinutes([])).toBeNull();
+  });
+});
+
+describe('circularStdMinutes (midnight wrap)', () => {
+  it('treats 23:30 and 00:30 as ~30 min of spread, not ~690', () => {
+    const sd = circularStdMinutes([1410, 30]);
+    expect(sd).toBeCloseTo(30, 0);
+    expect(sd).toBeLessThan(60);
+  });
+  it('returns 0 for identical times and for a single time', () => {
+    expect(circularStdMinutes([1410, 1410, 1410, 1410, 1410])).toBe(0);
+    expect(circularStdMinutes([500])).toBe(0);
+  });
+  it('caps near-antipodal times at 720 (finite, interpretable)', () => {
+    expect(circularStdMinutes([0, 720])).toBe(720);
+  });
+  it('returns null on empty input', () => {
+    expect(circularStdMinutes([])).toBeNull();
+  });
+});
+
+describe('clamp / round1', () => {
+  it('clamps to bounds and passes through in-range values', () => {
+    expect(clamp(-2, 0, 1)).toBe(0);
+    expect(clamp(5, 0, 1)).toBe(1);
+    expect(clamp(0.4, 0, 1)).toBe(0.4);
+  });
+  it('rounds to one decimal', () => {
+    expect(round1(3.14159)).toBe(3.1);
+    expect(round1(2.25)).toBe(2.3);
+  });
+});
+```
+
+// FILE: src/lib/insights/rules.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import { format, parseISO, subDays, subMinutes } from 'date-fns';
+import type {
+  DailyCheckin,
+  FocusSession,
+  Insight,
+  InsightInput,
+  ISODate,
+  MovementLog,
+  NutritionLog,
+  Rating,
+  SleepLog,
+  UserSettings,
+} from '@/types/domain';
+import { RULES } from './rules';
+import { computeInsights } from './index';
+
+// Domain imports above are type-only, so these tests run under Vitest with no path-alias config.
+
+const TODAY: ISODate = '2026-11-16';
+/** d(0) = today, d(6) = start of the inclusive 7-day window, d(-1) = tomorrow. */
+const d = (offset: number): ISODate => format(subDays(parseISO(TODAY), offset), 'yyyy-MM-dd');
+
+// ---------- fixture factories ----------
+
+let seq = 0;
+const base = () => ({
+  id: `t${++seq}`,
+  createdAt: '2026-11-01T08:00:00',
+  updatedAt: '2026-11-01T08:00:00',
+});
+
+const makeSettings = (over: Partial<UserSettings> = {}): UserSettings => ({
+  ...base(),
+  sleepTargetMin: 480,
+  focusDefaultMin: 25,
+  breakDefaultMin: 5,
+  onboarded: true,
+  schemaVersion: 1,
+  ...over,
+});
+
+const makeSleep = (date: ISODate, durationMin: number, over: Partial<SleepLog> = {}): SleepLog => {
+  const wake = parseISO(`${date}T07:00:00`);
+  const bed = subMinutes(wake, durationMin);
+  return {
+    ...base(),
+    date,
+    bedtime: format(bed, "yyyy-MM-dd'T'HH:mm:ss"),
+    wakeTime: format(wake, "yyyy-MM-dd'T'HH:mm:ss"),
+    durationMin,
+    quality: 3,
+    rested: 3,
+    interruptions: 0,
+    ...over,
+  };
+};
+
+const makeCheckin = (date: ISODate, over: Partial<DailyCheckin> = {}): DailyCheckin => ({
+  ...base(),
+  date,
+  mood: 3,
+  stress: 3,
+  energy: 3,
+  concentration: 3,
+  motivation: 3,
+  ...over,
+});
+
+const makeFocus = (date: ISODate, over: Partial<FocusSession> = {}): FocusSession => ({
+  ...base(),
+  date,
+  startedAt: `${date}T09:00:00`,
+  durationMin: 25,
+  plannedMin: 25,
+  subject: 'test',
+  method: 'deep_reading',
+  focusRating: 3,
+  difficulty: 3,
+  distractions: 0,
+  ...over,
+});
+
+const makeMovement = (date: ISODate, over: Partial<MovementLog> = {}): MovementLog => ({
+  ...base(),
+  date,
+  type: 'walk',
+  durationMin: 30,
+  effort: 3,
+  ...over,
+});
+
+const makeNutrition = (date: ISODate, over: Partial<NutritionLog> = {}): NutritionLog => ({
+  ...base(),
+  date,
+  regularMeals: true,
+  fruitVeg: true,
+  varied: true,
+  waterGlasses: 6,
+  ...over,
+});
+
+const emptyInput = (over: Partial<InsightInput> = {}): InsightInput => ({
+  settings: makeSettings(),
+  sleep: [],
+  checkins: [],
+  focus: [],
+  movement: [],
+  nutrition: [],
+  habits: [],
+  habitLogs: [],
+  ...over,
+});
+
+function runRule(id: string, input: InsightInput, today: ISODate = TODAY): Insight | null {
+  const rule = RULES.find((r) => r.id === id);
+  if (!rule) throw new Error(`Unknown rule: ${id}`);
+  return rule.run(input, today);
+}
+
+/** Fixture that fires ALL nine rules (verified numerically). */
+function fullInput(): InsightInput {
+  const durations = [560, 550, 540, 530, 520, 510, 500, 470, 465, 460, 450, 440, 430, 420]; // d(13)..d(0)
+  const concentrations: Rating[] = [5, 5, 4, 4, 4, 3, 3, 3, 3, 2, 2, 1, 1, 1];
+  const sleep = durations.map((min, i) => {
+    const k = 13 - i;
+    // Last 7 nights: bedtimes alternate 21:00 / 02:00 → circular SD ≈ 154 min.
+    const over: Partial<SleepLog> =
+      k <= 6 ? { bedtime: k % 2 === 0 ? `${d(k + 1)}T21:00:00` : `${d(k)}T02:00:00` } : {};
+    return makeSleep(d(k), min, over);
+  });
+  const checkins = concentrations.map((c, i) => makeCheckin(d(13 - i), { concentration: c }));
+  const focus = [
+    makeFocus(d(6), { durationMin: 100, plannedMin: 100, distractions: 0, method: 'active_recall' }),
+    makeFocus(d(4), { durationMin: 100, plannedMin: 100, distractions: 2, method: 'spaced_repetition' }),
+    makeFocus(d(2), { durationMin: 100, plannedMin: 100, distractions: 4, method: 'problem_solving' }),
+  ];
+  const movement = [
+    makeMovement(d(6), { type: 'walk' }),
+    makeMovement(d(5), { type: 'run' }),
+    makeMovement(d(4), { type: 'cycle' }),
+    makeMovement(d(3), { type: 'stretch' }),
+  ];
+  const nutrition = [6, 5, 4, 3, 2, 1, 0].map((k) =>
+    makeNutrition(d(k), { regularMeals: k % 2 === 0 }),
+  );
+  return emptyInput({ sleep, checkins, focus, movement, nutrition });
+}
+
+/** Negative sleep↔focus correlation (r ≈ −0.98) to exercise the neutral inverse wording. */
+function negativePairingInput(): InsightInput {
+  const conc: Rating[] = [5, 5, 4, 4, 3, 3, 2, 2];
+  return emptyInput({
+    sleep: conc.map((_, i) => makeSleep(d(7 - i), 360 + 30 * i)),
+    checkins: conc.map((c, i) => makeCheckin(d(7 - i), { concentration: c })),
+  });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    Object.freeze(value);
+    for (const v of Object.values(value as Record<string, unknown>)) deepFreeze(v);
+  }
+  return value;
+}
+
+// ---------- sleep_below_target ----------
+
+describe('sleep_below_target', () => {
+  it('fires at the exact boundary: 3 of 7 nights below target', () => {
+    const durations = [470, 470, 470, 480, 480, 480, 480];
+    const input = emptyInput({ sleep: durations.map((m, i) => makeSleep(d(6 - i), m)) });
+    const insight = runRule('sleep_below_target', input);
+    expect(insight).not.toBeNull();
+    expect(insight?.id).toBe('sleep_below_target');
+    expect(insight?.kind).toBe('observation');
+    expect(insight?.regions).toContain('hippocampus');
+    expect(insight?.evidence.length).toBeGreaterThan(0);
+  });
+  it('returns null with only 2 nights below target', () => {
+    const durations = [470, 470, 480, 480, 480, 480, 480];
+    const input = emptyInput({ sleep: durations.map((m, i) => makeSleep(d(6 - i), m)) });
+    expect(runRule('sleep_below_target', input)).toBeNull();
+  });
+  it('returns null with fewer than 3 logged nights even if all are short', () => {
+    const input = emptyInput({ sleep: [makeSleep(d(1), 300), makeSleep(d(0), 300)] });
+    expect(runRule('sleep_below_target', input)).toBeNull();
+  });
+  it('treats exactly-at-target as not below', () => {
+    const input = emptyInput({ sleep: [0, 1, 2, 3].map((k) => makeSleep(d(k), 480)) });
+    expect(runRule('sleep_below_target', input)).toBeNull();
+  });
+  it('ignores nights outside the 7-day window and future-dated logs', () => {
+    const input = emptyInput({
+      sleep: [
+        makeSleep(d(10), 300), makeSleep(d(9), 300), makeSleep(d(8), 300),
+        makeSleep(d(2), 480), makeSleep(d(1), 480), makeSleep(d(0), 480),
+        makeSleep(d(-1), 100),
+      ],
+    });
+    expect(runRule('sleep_below_target', input)).toBeNull();
+  });
+  it('compares against the user-set target, not a fixed number', () => {
+    const sleep = [400, 410, 415].map((m, i) => makeSleep(d(2 - i), m));
+    expect(runRule('sleep_below_target', emptyInput({ sleep }))).not.toBeNull();
+    const custom = emptyInput({ sleep, settings: makeSettings({ sleepTargetMin: 390 }) });
+    expect(runRule('sleep_below_target', custom)).toBeNull();
+  });
+});
+
+// ---------- bedtime_irregular ----------
+
+describe('bedtime_irregular', () => {
+  it('fires when 5+ nights alternate 21:00 / 02:00 (spread ≈ 152 min)', () => {
+    const sleep = [6, 5, 4, 3, 2, 1, 0].map((k) =>
+      makeSleep(d(k), 480, { bedtime: k % 2 === 0 ? `${d(k + 1)}T21:00:00` : `${d(k)}T02:00:00` }),
+    );
+    expect(runRule('bedtime_irregular', emptyInput({ sleep }))).not.toBeNull();
+  });
+  it('returns null with only 4 nights, however scattered', () => {
+    const sleep = [3, 2, 1, 0].map((k) =>
+      makeSleep(d(k), 480, { bedtime: k % 2 === 0 ? `${d(k + 1)}T21:00:00` : `${d(k)}T02:00:00` }),
+    );
+    expect(runRule('bedtime_irregular', emptyInput({ sleep }))).toBeNull();
+  });
+  it('does not false-positive on tight bedtimes that straddle midnight', () => {
+    const bedtimes = [
+      `${d(5)}T23:30:00`, `${d(3)}T00:30:00`, `${d(3)}T23:45:00`,
+      `${d(1)}T00:15:00`, `${d(1)}T23:50:00`,
+    ];
+    const sleep = [4, 3, 2, 1, 0].map((k, i) => makeSleep(d(k), 480, { bedtime: bedtimes[i] }));
+    expect(runRule('bedtime_irregular', emptyInput({ sleep }))).toBeNull();
+  });
+});
+
+// ---------- sleep_focus_pairing ----------
+
+describe('sleep_focus_pairing', () => {
+  it('fires with ≥7 strongly correlated pairs (check-in concentration)', () => {
+    const conc: Rating[] = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
+    const input = emptyInput({
+      sleep: conc.map((_, i) => makeSleep(d(9 - i), 360 + 24 * i)),
+      checkins: conc.map((c, i) => makeCheckin(d(9 - i), { concentration: c })),
+    });
+    const insight = runRule('sleep_focus_pairing', input);
+    expect(insight).not.toBeNull();
+    expect(insight?.regions).toEqual(expect.arrayContaining(['hippocampus', 'prefrontal']));
+    expect(insight?.evidence.join(' ')).toMatch(/Pearson r = 0\.98/);
+  });
+  it('returns null with exactly 6 pairs (boundary: 7 required)', () => {
+    const conc: Rating[] = [1, 2, 2, 3, 4, 5];
+    const input = emptyInput({
+      sleep: conc.map((_, i) => makeSleep(d(5 - i), 360 + 30 * i)),
+      checkins: conc.map((c, i) => makeCheckin(d(5 - i), { concentration: c })),
+    });
+    expect(runRule('sleep_focus_pairing', input)).toBeNull();
+  });
+  it('fires at exactly 7 pairs, falling back to mean session focus without check-ins', () => {
+    const ratings: Rating[] = [1, 2, 2, 3, 3, 4, 5];
+    const input = emptyInput({
+      sleep: ratings.map((_, i) => makeSleep(d(6 - i), 360 + 30 * i)),
+      focus: ratings.flatMap((r, i) => [
+        makeFocus(d(6 - i), { focusRating: r }),
+        makeFocus(d(6 - i), { focusRating: r, startedAt: `${d(6 - i)}T15:00:00` }),
+      ]),
+    });
+    expect(runRule('sleep_focus_pairing', input)).not.toBeNull();
+  });
+  it('returns null when concentration has zero variance', () => {
+    const input = emptyInput({
+      sleep: [0, 1, 2, 3, 4, 5, 6, 7].map((k) => makeSleep(d(k), 360 + 30 * k)),
+      checkins: [0, 1, 2, 3, 4, 5, 6, 7].map((k) => makeCheckin(d(k))),
+    });
+    expect(runRule('sleep_focus_pairing', input)).toBeNull();
+  });
+  it('returns null when |r| < 0.3 (weak pattern, r ≈ 0.22)', () => {
+    const conc: Rating[] = [1, 5, 1, 5, 1, 5, 1, 5];
+    const input = emptyInput({
+      sleep: conc.map((_, i) => makeSleep(d(7 - i), 360 + 30 * i)),
+      checkins: conc.map((c, i) => makeCheckin(d(7 - i), { concentration: c })),
+    });
+    expect(runRule('sleep_focus_pairing', input)).toBeNull();
+  });
+  it('states a negative correlation neutrally', () => {
+    const insight = runRule('sleep_focus_pairing', negativePairingInput());
+    expect(insight).not.toBeNull();
+    expect(insight?.body).toContain('coincide with lower focus ratings');
+    expect(insight?.body).toContain('curiosity rather than concern');
+  });
+});
+
+// ---------- low_focus_streak ----------
+
+describe('low_focus_streak', () => {
+  it('fires at the boundary: exactly 3 of the last 5 logged days rated ≤2', () => {
+    const conc: Rating[] = [2, 2, 2, 3, 3];
+    const input = emptyInput({ checkins: conc.map((c, i) => makeCheckin(d(4 - i), { concentration: c })) });
+    const insight = runRule('low_focus_streak', input);
+    expect(insight?.kind).toBe('reflection');
+    expect(insight?.regions).toEqual(expect.arrayContaining(['prefrontal', 'parietal']));
+  });
+  it('returns null with only 2 low days (rating 3 does not count)', () => {
+    const conc: Rating[] = [3, 3, 3, 2, 2];
+    const input = emptyInput({ checkins: conc.map((c, i) => makeCheckin(d(4 - i), { concentration: c })) });
+    expect(runRule('low_focus_streak', input)).toBeNull();
+  });
+  it('returns null with only 4 logged days, even if all are low', () => {
+    const input = emptyInput({ checkins: [0, 1, 2, 3].map((k) => makeCheckin(d(k), { concentration: 1 })) });
+    expect(runRule('low_focus_streak', input)).toBeNull();
+  });
+  it('uses session focus ratings when no check-ins exist', () => {
+    const ratings: Rating[] = [1, 2, 1, 4, 5];
+    const input = emptyInput({ focus: ratings.map((r, i) => makeFocus(d(4 - i), { focusRating: r })) });
+    expect(runRule('low_focus_streak', input)).not.toBeNull();
+  });
+});
+
+// ---------- long_sessions_no_breaks ----------
+
+describe('long_sessions_no_breaks', () => {
+  const long = (k: number, distractions: number, durationMin = 100) =>
+    makeFocus(d(k), { durationMin, plannedMin: durationMin, distractions });
+
+  it('fires for 3 long sessions with rising distractions; short sessions are ignored', () => {
+    const input = emptyInput({
+      focus: [long(5, 0), long(3, 2), long(1, 4), makeFocus(d(2), { distractions: 9 })],
+    });
+    expect(runRule('long_sessions_no_breaks', input)).not.toBeNull();
+  });
+  it('returns null when distractions are flat or falling', () => {
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(5, 2), long(3, 2), long(1, 2)] }))).toBeNull();
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(5, 4), long(3, 2), long(1, 0)] }))).toBeNull();
+  });
+  it('requires strictly over 90 minutes: 90 fails, 91 fires', () => {
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(5, 0, 90), long(3, 1, 90), long(1, 2, 90)] }))).toBeNull();
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(5, 0, 91), long(3, 1, 91), long(1, 2, 91)] }))).not.toBeNull();
+  });
+  it('returns null with only 2 long sessions in the window (older ones excluded)', () => {
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(5, 0), long(3, 2)] }))).toBeNull();
+    expect(runRule('long_sessions_no_breaks', emptyInput({ focus: [long(8, 0), long(5, 2), long(3, 4)] }))).toBeNull();
+  });
+});
+
+// ---------- milestones & meal_regularity ----------
+
+describe('movement_consistency', () => {
+  it('fires at exactly 4 distinct active days', () => {
+    const input = emptyInput({ movement: [6, 5, 4, 3].map((k) => makeMovement(d(k))) });
+    expect(runRule('movement_consistency', input)?.kind).toBe('milestone');
+  });
+  it('counts distinct days, not entries (4 logs on 3 days → null)', () => {
+    const input = emptyInput({ movement: [6, 6, 5, 4].map((k) => makeMovement(d(k))) });
+    expect(runRule('movement_consistency', input)).toBeNull();
+  });
+  it('returns null with 3 active days', () => {
+    const input = emptyInput({ movement: [6, 5, 4].map((k) => makeMovement(d(k))) });
+    expect(runRule('movement_consistency', input)).toBeNull();
+  });
+});
+
+describe('learning_variety', () => {
+  it('fires with 3 distinct methods inside 14 days', () => {
+    const input = emptyInput({
+      focus: [
+        makeFocus(d(10), { method: 'active_recall' }),
+        makeFocus(d(5), { method: 'spaced_repetition' }),
+        makeFocus(d(1), { method: 'problem_solving' }),
+      ],
+    });
+    expect(runRule('learning_variety', input)?.kind).toBe('milestone');
+  });
+  it('returns null with only 2 methods', () => {
+    const input = emptyInput({
+      focus: [
+        makeFocus(d(10), { method: 'active_recall' }),
+        makeFocus(d(5), { method: 'spaced_repetition' }),
+        makeFocus(d(1), { method: 'active_recall' }),
+      ],
+    });
+    expect(runRule('learning_variety', input)).toBeNull();
+  });
+  it('excludes a third method logged 15 days ago (window boundary)', () => {
+    const input = emptyInput({
+      focus: [
+        makeFocus(d(14), { method: 'teaching' }),
+        makeFocus(d(5), { method: 'spaced_repetition' }),
+        makeFocus(d(1), { method: 'active_recall' }),
+      ],
+    });
+    expect(runRule('learning_variety', input)).toBeNull();
+  });
+});
+
+describe('meal_regularity', () => {
+  it('fires at exactly 3 irregular days of 7 logged', () => {
+    const input = emptyInput({
+      nutrition: [6, 5, 4, 3, 2, 1, 0].map((k) => makeNutrition(d(k), { regularMeals: k > 3 })),
+    });
+    expect(runRule('meal_regularity', input)?.kind).toBe('reflection');
+  });
+  it('returns null with only 2 irregular days', () => {
+    const input = emptyInput({
+      nutrition: [6, 5, 4, 3, 2, 1, 0].map((k) => makeNutrition(d(k), { regularMeals: k !== 6 && k !== 4 })),
+    });
+    expect(runRule('meal_regularity', input)).toBeNull();
+  });
+  it('returns null with fewer than 3 logged days, even if all irregular', () => {
+    const input = emptyInput({
+      nutrition: [1, 0].map((k) => makeNutrition(d(k), { regularMeals: false })),
+    });
+    expect(runRule('meal_regularity', input)).toBeNull();
+  });
+});
+
+describe('checkin_consistency', () => {
+  it('fires at exactly 5 check-in days', () => {
+    const input = emptyInput({ checkins: [6, 5, 4, 3, 2].map((k) => makeCheckin(d(k))) });
+    expect(runRule('checkin_consistency', input)?.kind).toBe('milestone');
+  });
+  it('returns null with 4 check-in days', () => {
+    const input = emptyInput({ checkins: [6, 5, 4, 3].map((k) => makeCheckin(d(k))) });
+    expect(runRule('checkin_consistency', input)).toBeNull();
+  });
+});
+
+// ---------- computeInsights orchestration ----------
+
+describe('computeInsights', () => {
+  it('returns [] for empty input (every rule null)', () => {
+    expect(computeInsights(emptyInput(), TODAY)).toEqual([]);
+    for (const rule of RULES) expect(rule.run(emptyInput(), TODAY)).toBeNull();
+  });
+
+  it('caps at 8, observations first, then reflections, then milestones, in registration order', () => {
+    const insights = computeInsights(fullInput(), TODAY);
+    expect(insights).toHaveLength(8);
+    expect(insights.map((i) => i.id)).toEqual([
+      'sleep_below_target',
+      'bedtime_irregular',
+      'sleep_focus_pairing',
+      'low_focus_streak',
+      'long_sessions_no_breaks',
+      'meal_regularity',
+      'movement_consistency',
+      'learning_variety',
+    ]);
+    expect(insights.map((i) => i.kind)).toEqual([
+      'observation', 'observation', 'observation',
+      'reflection', 'reflection', 'reflection',
+      'milestone', 'milestone',
+    ]);
+    expect(new Set(insights.map((i) => i.id)).size).toBe(8);
+  });
+
+  it('is deterministic and independent of input array ordering', () => {
+    const a = computeInsights(fullInput(), TODAY);
+    expect(computeInsights(fullInput(), TODAY)).toEqual(a);
+    const src = fullInput();
+    const reversed: InsightInput = {
+      ...src,
+      sleep: [...src.sleep].reverse(),
+      checkins: [...src.checkins].reverse(),
+      focus: [...src.focus].reverse(),
+      movement: [...src.movement].reverse(),
+      nutrition: [...src.nutrition].reverse(),
+    };
+    expect(computeInsights(reversed, TODAY)).toEqual(a);
+  });
+
+  it('never mutates its input (deep-frozen input works identically)', () => {
+    const expected = computeInsights(fullInput(), TODAY);
+    expect(computeInsights(deepFreeze(fullInput()), TODAY)).toEqual(expected);
+  });
+
+  it('registers unique rule ids with positive minSamples, and insight ids match rule ids', () => {
+    expect(new Set(RULES.map((r) => r.id)).size).toBe(RULES.length);
+    for (const rule of RULES) expect(rule.minSamples).toBeGreaterThan(0);
+    for (const insight of computeInsights(fullInput(), TODAY)) {
+      expect(RULES.some((r) => r.id === insight.id)).toBe(true);
+    }
+  });
+});
+
+// ---------- copy safety & scientific honesty ----------
+
+describe('insight copy safety', () => {
+  const BANNED: readonly RegExp[] = [
+    /\bscore/i, /\bbrain health\b/i, /\bgrew\b/i, /\bgrow/i, /\bstrengthen/i,
+    /\biq\b/i, /\bboost/i, /\bdiagnos/i, /\bdisorder/i, /\badhd\b/i,
+    /\bdepress/i, /\banxiety\b/i, /\bunhealthy\b/i, /\blazy\b/i, /\bfail/i,
+    /\bsham(e|ing)\b/i, /\bguilt/i, /\bcalorie/i, /\bmacro\b/i, /\boptimiz/i, /\bobes/i,
+  ];
+  const VALID_REGIONS = new Set([
+    'prefrontal', 'parietal', 'temporal', 'occipital', 'cerebellum', 'hippocampus', 'amygdala',
+  ]);
+
+  // fullInput fires all 9 rules; negativePairingInput adds the inverse-correlation wording.
+  const allInsights: Insight[] = [fullInput(), negativePairingInput()].flatMap((input) =>
+    RULES.map((r) => r.run(input, TODAY)).filter((i): i is Insight => i !== null),
+  );
+
+  it('covers every rule at least once across the scan fixtures', () => {
+    expect(new Set(allInsights.map((i) => i.id)).size).toBe(RULES.length);
+  });
+
+  it('contains no banned phrases in any title, body, evidence, caveat, or education', () => {
+    for (const insight of allInsights) {
+      const text = [insight.title, insight.body, insight.caveat, insight.education ?? '', ...insight.evidence].join('\n');
+      for (const pattern of BANNED) expect(text).not.toMatch(pattern);
+    }
+  });
+
+  it('always includes concrete evidence and a self-report caveat', () => {
+    for (const insight of allInsights) {
+      expect(insight.evidence.length).toBeGreaterThan(0);
+      expect(insight.caveat).toMatch(/self-reported/i);
+    }
+  });
+
+  it('phrases brain-region links as educational associations only', () => {
+    for (const insight of allInsights) {
+      if (insight.education !== undefined) {
+        expect(insight.education).toMatch(/commonly involves|associated with/i);
+      }
+      for (const region of insight.regions ?? []) expect(VALID_REGIONS.has(region)).toBe(true);
+    }
+  });
+});
+```
+
+**Notes**
+
+- Run: `pnpm vitest run src/lib/insights` — 57 test cases total. All domain imports are `import type`, so they're erased at build time and the tests need **no path-alias config** to run.
+- Verified numerically before shipping: wrap-around mean of 23:30/00:30 = exactly 00:00 (fp-snapped), circular SD ≈ 30 min; the "all 9 rules fire" fixture yields pairing r = 0.96 and bedtime spread ≈ 154 min, so the cap-at-8/ordering assertions are exact.
+- Judgment calls documented in code: `low_focus_streak` requires a full 5 logged days before describing a stretch; "distractions rising" = positive least-squares slope in session time order; circular SD capped at 720 min for interpretability; duplicate same-date logs average (series) or last-wins (check-ins/nutrition).
+- Reflections sort between observations and milestones (the contract only pinned the two ends); tied kinds keep rule registration order via an explicit index tiebreak.
+
+### USER
+You are a careful science writer + TypeScript engineer. Produce the static educational content layer.
+Import types from '@/types/domain'. Output each file as: // FILE: <path>.
+
+1. src/data/brainRegions.ts exporting BRAIN_REGIONS, ACTIVITY_META, ACTIVITY_REGION_MAP and activityToRegionIntensity() exactly per the contract.
+   For each of the 7 regions write: name, a 1-2 sentence shortDescription, 4-6 associatedWith items, 2-4 networks
+   (e.g. frontoparietal control network, default mode network, hippocampal memory system), connectedTo, relatedActivities, 3 everydayExamples,
+   and a caveat that stresses these are simplified associations and regions work in networks.
+   Be accurate and conservative. Use hedged language ("is commonly associated with"). No claims about structural changes from habits.
+   Hippocampus and amygdala are deep/internal structures; mention this in their descriptions.
+2. ACTIVITY_REGION_MAP: sensible weighted mappings for all 14 ActivityKinds (e.g. deep_focus -> prefrontal 1.0, parietal 0.7).
+   activityToRegionIntensity: sum minutes x weight per region, normalize against a soft cap (e.g. 120 weighted minutes = 1.0, using a smooth curve like 1 - exp(-x/k) so it never hard-clips), return values in 0..1, omit zeros.
+3. src/data/library.ts: an array of LibraryEntry { id; category: 'region'|'sleep'|'learning'|'movement'|'nutrition'|'wellbeing'; title; summary; body: string[] (short paragraphs);
+   keyPoints: string[]; caveat: string; relatedRegions?: RegionId[] }.
+   Write 16-20 entries: 7 regions (concise), sleep and memory, sleep consistency, spaced repetition, active recall, interleaving, deliberate practice,
+   exercise and cognition, hydration basics, balanced eating (adequacy, balance, moderation, diversity - NO calorie/macro targets), stress and breathing, novelty and hobbies.
+   Reading level: smart high-schooler. No fake citations. Do not invent studies or statistics; where you reference a well-known finding, describe it generally.
+4. src/data/brainRegions.test.ts (Vitest): intensities within 0..1, every ActivityKind has a mapping, weights within 0..1,
+   no banned phrases ("brain score", "grew", "boost your iq", "cure") anywhere in the content.
+
+At the end list any claim you were less than confident about so a human can verify it.
+
+### ASSISTANT
+Verified before shipping: the saturation curve values (60 weighted-min → 0.777, 120 → 0.950, never exceeds 1), and a regex scan of **every prose string below** against the banned list (including substring traps like "secure"→"cure" and "shame-free") — zero hits.
+
+// FILE: src/data/brainRegions.ts
+```typescript
+import type { ActivityKind, BrainRegionInfo, RegionId } from '@/types/domain';
+
+/**
+ * Static educational content. These are simplified, hedged associations for learning —
+ * not measurements, not diagnostics, and never claims that habits change brain structure.
+ */
+export const BRAIN_REGIONS: BrainRegionInfo[] = [
+  {
+    id: 'prefrontal',
+    name: 'Prefrontal Cortex',
+    shortDescription:
+      'The front part of the frontal lobes, sitting just behind your forehead. It is commonly associated with planning, decision-making, holding information in mind, and steering attention toward what matters.',
+    associatedWith: [
+      'Planning and goal-setting',
+      'Working memory (holding information in mind)',
+      'Decision-making and weighing options',
+      'Directing attention and resisting distractions',
+      'Regulating emotions and impulses',
+      'Switching flexibly between tasks',
+    ],
+    networks: [
+      'Frontoparietal control network',
+      'Default mode network (medial prefrontal areas)',
+      'Cingulo-opercular network',
+    ],
+    connectedTo: ['parietal', 'temporal', 'hippocampus', 'amygdala', 'cerebellum'],
+    relatedActivities: ['deep_focus', 'problem_solving', 'active_recall', 'mindfulness', 'teaching'],
+    everydayExamples: [
+      'Deciding what to work on first when everything feels urgent',
+      'Holding a phone number in mind while you look for a pen',
+      'Noticing the urge to check your phone and choosing to keep reading',
+    ],
+    caveat:
+      'These are simplified educational associations, not measurements. The prefrontal cortex works in networks with the rest of the brain, and no single region explains planning or focus on its own.',
+  },
+  {
+    id: 'parietal',
+    name: 'Parietal Lobe',
+    shortDescription:
+      'A broad region at the top and back of the cortex, behind the frontal lobe. It is commonly associated with combining touch and body-position signals, mapping space, and pointing attention at places and objects.',
+    associatedWith: [
+      'Sense of touch and body position',
+      'Spatial awareness and mental maps',
+      'Directing attention to places and objects',
+      'Number sense and mental arithmetic',
+      'Combining information from different senses',
+    ],
+    networks: [
+      'Dorsal attention network',
+      'Frontoparietal control network',
+      'Default mode network (posterior areas)',
+    ],
+    connectedTo: ['prefrontal', 'occipital', 'temporal'],
+    relatedActivities: ['problem_solving', 'deep_focus', 'skill_practice', 'music'],
+    everydayExamples: [
+      'Reaching for a mug without looking at it',
+      'Judging whether a book will fit on a shelf',
+      'Tracking a ball across a field',
+    ],
+    caveat:
+      'A simplified educational overview. Spatial attention and touch emerge from networks spanning several lobes, and this app cannot measure activity in any of them.',
+  },
+  {
+    id: 'temporal',
+    name: 'Temporal Lobe',
+    shortDescription:
+      'The cortex along the sides of the brain, roughly behind your ears. It is commonly associated with hearing, understanding language, and recognizing faces and objects; its inner (medial) parts are closely tied to memory.',
+    associatedWith: [
+      'Hearing and processing speech sounds',
+      'Understanding language',
+      'Recognizing faces and objects',
+      'Memory for facts and events (medial temporal areas)',
+      'Processing music and voices',
+    ],
+    networks: [
+      'Auditory and language networks',
+      "Ventral visual ('what') pathway",
+      'Medial temporal memory system',
+    ],
+    connectedTo: ['prefrontal', 'parietal', 'occipital', 'hippocampus', 'amygdala'],
+    relatedActivities: ['reading', 'language_learning', 'music', 'social', 'active_recall'],
+    everydayExamples: [
+      "Recognizing a friend's voice on a call",
+      'Following the lyrics of a song',
+      'Picking out a familiar face in a crowd',
+    ],
+    caveat:
+      'Simplified associations for learning, not measurement. Hearing, language and memory depend on networks across and beyond the temporal lobe.',
+  },
+  {
+    id: 'occipital',
+    name: 'Occipital Lobe',
+    shortDescription:
+      'The lobe at the very back of the brain, and the main hub for visual processing. It is commonly associated with analyzing the basic features of a scene — edges, color and motion — before other areas take over.',
+    associatedWith: [
+      'Processing edges, shapes and contrast',
+      'Perceiving color',
+      'Detecting visual motion',
+      'Early stages of reading (letter shapes)',
+      "Feeding the 'what' and 'where/how' visual pathways",
+    ],
+    networks: [
+      'Visual network',
+      "Ventral visual ('what') pathway",
+      "Dorsal visual ('where/how') pathway",
+    ],
+    connectedTo: ['parietal', 'temporal'],
+    relatedActivities: ['reading', 'creative', 'skill_practice'],
+    everydayExamples: [
+      'Reading text on a page or screen',
+      'Spotting a friend across a busy street',
+      'Watching where a ball is heading',
+    ],
+    caveat:
+      'A simplified educational sketch. Vision is built by networks that run from the occipital lobe into the parietal and temporal lobes; seeing is not a one-region job.',
+  },
+  {
+    id: 'cerebellum',
+    name: 'Cerebellum',
+    shortDescription:
+      "The 'little brain' tucked underneath the back of the cortex. It is best known for coordinating movement, balance and practiced skills, and research also links it to loops involved in attention and thought.",
+    associatedWith: [
+      'Coordinating smooth, accurate movement',
+      'Balance and posture',
+      'Motor learning (practiced movements becoming automatic)',
+      'Timing and prediction',
+      'Possible supporting roles in attention and language (still being researched)',
+    ],
+    networks: ['Sensorimotor network', 'Cerebro-cerebellar loops with the cortex'],
+    connectedTo: ['prefrontal', 'parietal'],
+    relatedActivities: ['exercise', 'skill_practice', 'music'],
+    everydayExamples: [
+      'Riding a bike without thinking about balance',
+      'Typing without looking at the keys',
+      'Staying steady on an uneven sidewalk',
+    ],
+    caveat:
+      'Simplified educational associations. The cerebellum works in loops and networks with the cortex, and its possible roles in thinking are still being researched.',
+  },
+  {
+    id: 'hippocampus',
+    name: 'Hippocampus',
+    shortDescription:
+      'A seahorse-shaped structure buried deep inside each temporal lobe — an internal structure, not part of the visible surface. It is commonly associated with forming new memories of events and facts, and with spatial navigation.',
+    associatedWith: [
+      'Forming new memories of events and facts',
+      'Spatial navigation and mental maps',
+      'Linking the parts of an experience into one memory',
+      'Consolidating memories during rest and sleep (with the cortex)',
+      'Context for memories (where and when)',
+    ],
+    networks: [
+      'Hippocampal memory system (medial temporal lobe)',
+      'Default mode network (memory interactions)',
+    ],
+    connectedTo: ['temporal', 'prefrontal', 'amygdala'],
+    relatedActivities: ['sleep_rest', 'active_recall', 'spaced_repetition', 'reading', 'language_learning'],
+    everydayExamples: [
+      'Remembering what you did last weekend',
+      'Finding your way around a new neighborhood',
+      'Recalling a fact you studied yesterday',
+    ],
+    caveat:
+      'A simplified educational overview, not a measurement. Memory depends on networks linking the hippocampus with the cortex, and logging habits here tells us nothing about your hippocampus.',
+  },
+  {
+    id: 'amygdala',
+    name: 'Amygdala',
+    shortDescription:
+      'An almond-shaped cluster of nuclei deep inside each temporal lobe, next to the hippocampus. It is commonly associated with flagging emotionally significant events — both threatening and rewarding — and with emotional learning.',
+    associatedWith: [
+      'Flagging what matters emotionally (salience)',
+      'Learning what predicts threat or reward',
+      'Emotional reactions, including but not limited to fear',
+      'Tagging emotional events so they are often remembered more vividly',
+      'Pairing sights and sounds with emotional meaning',
+    ],
+    networks: [
+      'Salience network (interactions)',
+      'Medial temporal memory network',
+      'Emotion-regulation circuits with the prefrontal cortex',
+    ],
+    connectedTo: ['hippocampus', 'prefrontal', 'temporal'],
+    relatedActivities: ['mindfulness', 'social', 'music'],
+    everydayExamples: [
+      'Jumping at a sudden loud noise',
+      'A surge of excitement when a friend messages',
+      'Remembering an embarrassing moment more vividly than an ordinary one',
+    ],
+    caveat:
+      "Simplified associations for education only. The amygdala is not a 'fear center'; emotional life emerges from networks that include prefrontal, temporal and memory systems.",
+  },
+];
+
+export const ACTIVITY_META: Record<ActivityKind, { label: string; description: string }> = {
+  deep_focus: { label: 'Deep focus', description: 'Sustained, undistracted attention on one demanding task.' },
+  active_recall: { label: 'Active recall', description: 'Testing yourself from memory instead of re-reading.' },
+  spaced_repetition: { label: 'Spaced repetition', description: 'Reviewing material at expanding intervals over days and weeks.' },
+  problem_solving: { label: 'Problem solving', description: 'Working through puzzles, exercises or open-ended problems.' },
+  reading: { label: 'Reading', description: 'Focused reading of books, articles or documentation.' },
+  skill_practice: { label: 'Skill practice', description: 'Hands-on repetition of a physical or technical skill.' },
+  teaching: { label: 'Teaching', description: 'Explaining ideas to someone else, in your own words.' },
+  exercise: { label: 'Exercise', description: 'Moving your body — walking, running, sports or strength work.' },
+  mindfulness: { label: 'Mindfulness', description: 'Gently noticing thoughts, feelings and sensations in the present.' },
+  social: { label: 'Social time', description: 'Meaningful connection with friends, family or community.' },
+  creative: { label: 'Creative work', description: 'Making things — writing, drawing, designing, brainstorming.' },
+  music: { label: 'Music', description: 'Playing, practicing or attentively listening to music.' },
+  language_learning: { label: 'Language learning', description: 'Learning vocabulary, grammar and conversation in a new language.' },
+  sleep_rest: { label: 'Sleep & rest', description: 'Sleeping and deliberate rest — the quiet half of learning.' },
+};
+
+/**
+ * Illustrative educational weights (0..1), NOT empirically measured coefficients.
+ * They express "this activity commonly involves these regions", nothing more.
+ */
+export const ACTIVITY_REGION_MAP: Record<ActivityKind, { region: RegionId; weight: number }[]> = {
+  deep_focus: [{ region: 'prefrontal', weight: 1.0 }, { region: 'parietal', weight: 0.7 }],
+  active_recall: [{ region: 'hippocampus', weight: 1.0 }, { region: 'prefrontal', weight: 0.8 }, { region: 'temporal', weight: 0.5 }],
+  spaced_repetition: [{ region: 'hippocampus', weight: 1.0 }, { region: 'prefrontal', weight: 0.6 }, { region: 'temporal', weight: 0.5 }],
+  problem_solving: [{ region: 'prefrontal', weight: 1.0 }, { region: 'parietal', weight: 0.8 }, { region: 'hippocampus', weight: 0.4 }],
+  reading: [{ region: 'occipital', weight: 0.9 }, { region: 'temporal', weight: 0.8 }, { region: 'prefrontal', weight: 0.5 }],
+  skill_practice: [{ region: 'cerebellum', weight: 1.0 }, { region: 'parietal', weight: 0.7 }, { region: 'prefrontal', weight: 0.6 }],
+  teaching: [{ region: 'prefrontal', weight: 0.9 }, { region: 'temporal', weight: 0.8 }, { region: 'hippocampus', weight: 0.5 }],
+  exercise: [{ region: 'cerebellum', weight: 1.0 }, { region: 'parietal', weight: 0.6 }],
+  mindfulness: [{ region: 'prefrontal', weight: 0.8 }, { region: 'amygdala', weight: 0.6 }],
+  social: [{ region: 'temporal', weight: 0.8 }, { region: 'prefrontal', weight: 0.7 }, { region: 'amygdala', weight: 0.5 }],
+  creative: [{ region: 'prefrontal', weight: 0.8 }, { region: 'temporal', weight: 0.6 }, { region: 'hippocampus', weight: 0.4 }],
+  music: [{ region: 'temporal', weight: 1.0 }, { region: 'cerebellum', weight: 0.7 }, { region: 'prefrontal', weight: 0.5 }],
+  language_learning: [{ region: 'temporal', weight: 1.0 }, { region: 'hippocampus', weight: 0.7 }, { region: 'prefrontal', weight: 0.7 }],
+  sleep_rest: [{ region: 'hippocampus', weight: 0.9 }],
+};
+
+// Soft saturation: ~120 weighted minutes ≈ 0.95 intensity; the curve approaches 1
+// asymptotically (1 - exp(-x/k)) so it never hard-clips. k = cap/3.
+const SOFT_CAP_WEIGHTED_MIN = 120;
+const CURVE_K = SOFT_CAP_WEIGHTED_MIN / 3;
+
+export function activityToRegionIntensity(
+  items: readonly { kind: ActivityKind; minutes: number }[],
+): Partial<Record<RegionId, number>> {
+  const totals = new Map<RegionId, number>();
+  for (const item of items) {
+    if (!Number.isFinite(item.minutes) || item.minutes <= 0) continue;
+    for (const { region, weight } of ACTIVITY_REGION_MAP[item.kind]) {
+      if (weight <= 0) continue;
+      totals.set(region, (totals.get(region) ?? 0) + item.minutes * weight);
+    }
+  }
+  const out: Partial<Record<RegionId, number>> = {};
+  // Fixed iteration order → deterministic key order regardless of input ordering. Zeros omitted.
+  for (const { id } of BRAIN_REGIONS) {
+    const weighted = totals.get(id);
+    if (weighted === undefined || weighted <= 0) continue;
+    out[id] = 1 - Math.exp(-weighted / CURVE_K);
+  }
+  return out;
+}
+```
+
+// FILE: src/data/library.ts
+```typescript
+import type { RegionId } from '@/types/domain';
+
+export type LibraryCategory = 'region' | 'sleep' | 'learning' | 'movement' | 'nutrition' | 'wellbeing';
+
+export interface LibraryEntry {
+  id: string;
+  category: LibraryCategory;
+  title: string;
+  summary: string;
+  body: string[];
+  keyPoints: string[];
+  caveat: string;
+  relatedRegions?: RegionId[];
+}
+
+/**
+ * Static educational reading. General findings are described qualitatively —
+ * no citations, no invented statistics, no structural-change claims, no targets.
+ */
+export const LIBRARY_ENTRIES: LibraryEntry[] = [
+  {
+    id: 'region-prefrontal',
+    category: 'region',
+    title: 'Prefrontal cortex: the planner',
+    summary: 'The area behind your forehead that is commonly associated with planning, focus and self-regulation.',
+    body: [
+      "The prefrontal cortex is the front-most part of the brain, sitting just behind your forehead. It is commonly associated with the things we call 'executive functions': setting goals, holding information in mind, weighing options, and steering attention away from distractions.",
+      'It does not work alone. Planning and focus emerge from networks that link the prefrontal cortex with the parietal lobe and many other areas. It is also one of the last regions to finish maturing — development continues into the twenties.',
+      'You use these circuits when you decide what to work on first, when you hold a number in mind while searching for a pen, or when you notice an urge to check your phone and choose to keep reading.',
+    ],
+    keyPoints: [
+      'Commonly associated with planning, working memory and attention control.',
+      'Works in networks, especially with the parietal lobe.',
+      'Keeps maturing into the twenties.',
+      'Educational association only — this app does not measure it.',
+    ],
+    caveat: 'A simplified educational overview. Functions emerge from networks, not single regions, and nothing in this app measures your brain.',
+    relatedRegions: ['prefrontal'],
+  },
+  {
+    id: 'region-parietal',
+    category: 'region',
+    title: 'Parietal lobe: the map-maker',
+    summary: 'The top-back region commonly associated with touch, spatial sense and directing attention.',
+    body: [
+      'The parietal lobe sits at the top and back of the cortex. It is commonly associated with combining signals from touch, muscles and joints into a sense of where your body is, and with building an internal map of the space around you.',
+      'It also helps aim attention — toward a location, an object, or even a number. Mental arithmetic, mental rotation and packing a bag all draw on parietal networks working with the frontal lobes.',
+      'You use these circuits when you reach for a mug without looking, judge whether a book will fit on a shelf, or track a ball across a field.',
+    ],
+    keyPoints: [
+      'Commonly associated with touch, body position and spatial maps.',
+      'Helps direct attention to places and objects.',
+      'Contributes to number sense and mental arithmetic.',
+    ],
+    caveat: 'A simplified educational overview. Touch and spatial attention emerge from networks across several lobes, and this app does not measure them.',
+    relatedRegions: ['parietal'],
+  },
+  {
+    id: 'region-temporal',
+    category: 'region',
+    title: 'Temporal lobe: sound and meaning',
+    summary: 'The side regions commonly associated with hearing, language and recognition.',
+    body: [
+      'The temporal lobes sit along the sides of the brain, roughly behind your ears. They are commonly associated with processing sound, understanding speech, and recognizing what you see — faces, objects and words.',
+      'The inner (medial) temporal lobe contains the hippocampus and neighboring areas that are closely tied to forming new memories. That is why this lobe matters for both understanding a sentence today and remembering it tomorrow.',
+      "You use these circuits when you recognize a friend's voice on a call, follow a podcast, or pick out a familiar face in a crowd.",
+    ],
+    keyPoints: [
+      'Commonly associated with hearing and language comprehension.',
+      'Helps recognize faces, objects and words.',
+      'Its medial parts are closely tied to memory.',
+    ],
+    caveat: 'Simplified educational associations. Language and recognition depend on networks that extend well beyond the temporal lobe.',
+    relatedRegions: ['temporal', 'hippocampus'],
+  },
+  {
+    id: 'region-occipital',
+    category: 'region',
+    title: 'Occipital lobe: the visual hub',
+    summary: 'The back of the brain, where visual processing begins.',
+    body: [
+      'The occipital lobe sits at the very back of the brain. It is the main hub for early visual processing: analyzing edges, contrast, color and motion from the signals arriving from your eyes.',
+      "From there, information flows along two broad routes — a 'what' pathway into the temporal lobe for recognizing things, and a 'where/how' pathway into the parietal lobe for locating them and acting on them. Seeing is a team effort.",
+      'You use these circuits when you read a page, spot a friend across a busy street, or watch where a ball is heading.',
+    ],
+    keyPoints: [
+      'Main hub for early visual processing.',
+      "Feeds the 'what' and 'where/how' pathways.",
+      'Reading starts here, then spreads through a network.',
+    ],
+    caveat: 'A simplified educational sketch. Vision is built by networks spanning several lobes, and nothing here measures your visual system.',
+    relatedRegions: ['occipital', 'temporal', 'parietal'],
+  },
+  {
+    id: 'region-cerebellum',
+    category: 'region',
+    title: 'Cerebellum: the quiet coordinator',
+    summary: "The 'little brain' that fine-tunes movement — and maybe more.",
+    body: [
+      'The cerebellum is a densely folded structure tucked under the back of the cortex. Although it is small, it contains more neurons than the rest of the brain combined.',
+      'It is best known for coordination: smoothing movement, keeping balance, and helping practiced skills — riding a bike, typing, playing an instrument — become automatic. It compares what you intended with what happened and fine-tunes the difference.',
+      'Research also links the cerebellum to loops involved in attention, language and prediction. Those roles are still being explored, so treat them as interesting leads rather than settled facts.',
+    ],
+    keyPoints: [
+      'Commonly associated with coordination, balance and motor learning.',
+      'Contains more neurons than the rest of the brain combined.',
+      'Possible roles in thinking are an active research area.',
+    ],
+    caveat: 'Simplified educational associations. The cerebellum works in networks of loops with the cortex, and its cognitive roles are still being researched.',
+    relatedRegions: ['cerebellum', 'prefrontal'],
+  },
+  {
+    id: 'region-hippocampus',
+    category: 'region',
+    title: 'Hippocampus: the memory indexer',
+    summary: 'A deep structure commonly associated with forming new memories and finding your way.',
+    body: [
+      "The hippocampus is a seahorse-shaped structure deep inside each temporal lobe — you would not see it looking at the brain's surface. It is commonly associated with forming new memories of events and facts, and with spatial navigation.",
+      'A useful way to think about it: the hippocampus is an indexer, not a warehouse. It binds the sights, sounds and context of an experience into one memory, while the pieces themselves are thought to live across the cortex. Over time — and with sleep — memories become less dependent on it.',
+      'Its importance became famous through a patient known as H.M., who could no longer form new memories after surgery removed both hippocampi and nearby tissue. Older memories and skills were largely spared, which told researchers a great deal about how memory is organized.',
+    ],
+    keyPoints: [
+      'Commonly associated with new event and fact memories, and with navigation.',
+      'Deep structure — one in each hemisphere.',
+      "Think 'indexer', not 'storage vault'.",
+      'Logging habits does not measure your hippocampus.',
+    ],
+    caveat: 'Simplified educational overview. Memory depends on networks linking the hippocampus with the cortex; this app cannot measure any of it.',
+    relatedRegions: ['hippocampus', 'temporal'],
+  },
+  {
+    id: 'region-amygdala',
+    category: 'region',
+    title: 'Amygdala: the salience flagger',
+    summary: 'A deep structure that flags what matters emotionally — not just fear.',
+    body: [
+      'The amygdala is an almond-shaped cluster of nuclei deep inside each temporal lobe, next to the hippocampus. It is commonly associated with detecting emotional significance: noticing what might threaten you, but also what might reward or delight you.',
+      "The popular 'fear center' label is too narrow. The amygdala works in networks with the prefrontal cortex (which helps regulate reactions) and the hippocampus (which supplies context), and emotional events are often remembered more vividly because of this teamwork.",
+      'You notice these circuits when you jump at a sudden noise, feel a surge of excitement at a message from a friend, or recall an embarrassing moment far more clearly than an ordinary one.',
+    ],
+    keyPoints: [
+      'Commonly associated with emotional significance, threat and reward.',
+      "Not a 'fear center' — it works in networks.",
+      'Emotional events are often remembered more vividly.',
+    ],
+    caveat: 'Simplified associations for education only. Emotional life emerges from networks, and this app measures none of them.',
+    relatedRegions: ['amygdala', 'prefrontal', 'hippocampus'],
+  },
+  {
+    id: 'sleep-and-memory',
+    category: 'sleep',
+    title: 'Sleep and memory: the night shift',
+    summary: 'Sleep is commonly associated with stabilizing and reorganizing what you learned during the day.',
+    body: [
+      'Learning does not stop when you close your books. During sleep, the brain replays and reorganizes recent experiences, and research commonly links deep (slow-wave) sleep with stabilizing memories of facts and events.',
+      'A widely studied picture is a quiet dialogue: the hippocampus re-activates fresh memories and the cortex gradually integrates them into longer-term knowledge. REM sleep — the dreaming stage — may also play a role in emotional processing and skill memory, though the details are still debated.',
+      'Practically, this means sleep before learning helps you take information in, and sleep after learning helps it settle. For reference, guidelines commonly suggest 8–10 hours for teens and 7 or more for adults — a reference point, not a verdict; your own target is yours to set.',
+    ],
+    keyPoints: [
+      'Deep sleep is commonly associated with consolidating facts and events.',
+      'Sleep before and after learning both matter.',
+      'Reference ranges are references, not verdicts.',
+      'One short night does not define your rest.',
+    ],
+    caveat: 'Educational summary of general research, not medical advice. Sleep needs vary between people, and this app does not measure memory or brain activity.',
+    relatedRegions: ['hippocampus', 'temporal'],
+  },
+  {
+    id: 'sleep-consistency',
+    category: 'sleep',
+    title: 'A steady rhythm: sleep timing',
+    summary: 'Regular sleep and wake times are commonly associated with easier sleep and steadier days.',
+    body: [
+      'Your body runs on an internal roughly-24-hour clock that governs sleepiness, alertness, temperature and more. It loves predictability: going to bed and waking at roughly similar times is commonly associated with falling asleep more easily and feeling steadier during the day.',
+      "Light is the clock's main signal. Bright light in the morning and dimmer light in the evening help anchor the rhythm. Big swings between weekday and weekend schedules — sometimes called 'social jet lag' — can leave you feeling like you crossed time zones without going anywhere.",
+      'If your schedule is chaotic right now, that is information, not a flaw. Small, boring adjustments — a consistent wake time, a wind-down cue — tend to be more sustainable than dramatic overhauls.',
+    ],
+    keyPoints: [
+      'Similar bed and wake times support a steady body clock.',
+      'Morning light and dim evenings are the main anchors.',
+      'Big weekend swings can feel like jet lag.',
+      'Gentle consistency beats dramatic overhauls.',
+    ],
+    caveat: 'General educational information, not medical advice. Rhythms shift with life circumstances; nothing here is a rule to keep.',
+  },
+  {
+    id: 'spaced-repetition',
+    category: 'learning',
+    title: 'Spaced repetition: let time do some work',
+    summary: 'Reviewing at expanding intervals is one of the most reliable ways to make learning last.',
+    body: [
+      'The spacing effect is one of the oldest findings in psychology: information reviewed across several sessions spread over days and weeks is remembered far better than the same amount of review crammed into one sitting. Researchers have been documenting it for well over a century.',
+      'The trick is to review just as a memory starts to fade. A little forgetting makes the next retrieval effortful, and that effort appears to be part of what makes the memory more durable. Each successful review tends to buy you a longer gap before the next one.',
+      'In practice: short reviews tomorrow, then in a few days, then next week. Flashcards and self-quizzes pair naturally with this rhythm — and with the focus sessions you log here.',
+    ],
+    keyPoints: [
+      'Spread reviews over days and weeks, not one cram.',
+      'Review when recall starts to feel effortful.',
+      'Successful reviews allow longer gaps.',
+      'Pairs naturally with active recall.',
+    ],
+    caveat: 'A general learning principle, not a guarantee for every person or subject. This app tracks your practice; it does not measure your memory.',
+    relatedRegions: ['hippocampus', 'prefrontal'],
+  },
+  {
+    id: 'active-recall',
+    category: 'learning',
+    title: 'Active recall: the testing effect',
+    summary: 'Pulling information out of memory is usually more effective than putting it in again.',
+    body: [
+      'Re-reading feels productive because the text becomes familiar. But familiarity is not the same as being able to produce an answer from memory. A large body of research shows that testing yourself — retrieving — usually leads to better long-term retention than re-studying the same material.',
+      'The effort is the point. Struggling to recall an answer, then checking it, is a feature rather than a bug: mistakes show you exactly where the gaps are, and successful effortful retrieval makes future recall easier.',
+      'Simple versions: close the book and write what you remember; turn headings into questions; explain the idea out loud without notes. Then check, correct, and move on.',
+    ],
+    keyPoints: [
+      'Retrieval beats re-reading for long-term retention.',
+      'Effort and mistakes are part of the mechanism.',
+      'Always check your answers afterward.',
+      'Familiarity can fool you into feeling ready.',
+    ],
+    caveat: 'General educational guidance. Effects vary by material and person, and nothing here measures what your brain is doing.',
+    relatedRegions: ['hippocampus', 'prefrontal'],
+  },
+  {
+    id: 'interleaving',
+    category: 'learning',
+    title: 'Interleaving: mix it up',
+    summary: 'Mixing related topics during practice often leads to more flexible learning.',
+    body: [
+      'Blocked practice means doing many problems of the same type in a row; interleaving means mixing types so you must decide which approach fits each problem. Mixing usually feels harder and slower — and that is exactly why it can help.',
+      'Research on math practice and category learning suggests interleaving often improves the skill that real life demands: telling situations apart and choosing the right tool, not just executing a known procedure.',
+      'It is not a universal law. When a skill is brand new, some blocked practice can help you get the basics before mixing. A reasonable rhythm is: learn the move, then shuffle the deck.',
+    ],
+    keyPoints: [
+      'Mixing related problem types builds discrimination.',
+      'It feels harder than blocked practice — that is expected.',
+      'Use some blocking when a skill is brand new.',
+      'Best studied in math and category learning.',
+    ],
+    caveat: 'A hedged summary of general findings; benefits depend on the material and the learner. Not a measurement of your learning.',
+    relatedRegions: ['prefrontal'],
+  },
+  {
+    id: 'deliberate-practice',
+    category: 'learning',
+    title: 'Deliberate practice: practice with a target',
+    summary: 'Focused work on a specific weak point, with feedback, beats autopilot repetition.',
+    body: [
+      'Deliberate practice is a structured way to improve: pick one specific sub-skill just beyond your current ability, work on it with full attention, get feedback, and repeat. It is different from simply putting in hours or playing through what you already do well.',
+      'Feedback is the engine — a coach, a recording, a test, or a compiler all tell you what actually happened versus what you intended. Short, focused sessions with rest between them tend to be more sustainable than marathons.',
+      'How much practice matters varies by field, and improvement is rarely a straight line. Treat the framework as a useful lens for your sessions, not a promise of results.',
+    ],
+    keyPoints: [
+      'Target one sub-skill just beyond your reach.',
+      'Feedback separates practice from repetition.',
+      'Rest between sessions is part of the method.',
+      'Hours alone do not guarantee improvement.',
+    ],
+    caveat: 'A general framework, not a formula. The link between practice and outcomes varies across fields and people.',
+    relatedRegions: ['prefrontal', 'cerebellum'],
+  },
+  {
+    id: 'attention-and-breaks',
+    category: 'learning',
+    title: 'Attention, distractions and breaks',
+    summary: 'Attention is limited and fluctuates — working with that beats fighting it.',
+    body: [
+      'Sustained attention is a limited resource that naturally ebbs and flows. Most people find their focus drifts during long, unbroken stretches, and that short breaks help them return fresher. There is no universal ideal session length — your logs can help you find yours.',
+      "Switching tasks has a cost: each switch leaves a little 'residue' from the previous task, and re-immersion takes time. Grouping similar work and silencing pings are boring, effective moves.",
+      'Breaks work best when they actually change mode: stand up, look out of a window, walk a little, breathe. Scrolling a feed is a break from work, but not always a break for attention.',
+    ],
+    keyPoints: [
+      'Focus fluctuates; that is normal, not a flaw.',
+      'Task-switching has a real cost.',
+      'Short mode-changing breaks help many people.',
+      'Your own logs beat generic productivity rules.',
+    ],
+    caveat: 'General educational information with individual variation. This app does not measure attention; ratings are your own reflections.',
+    relatedRegions: ['prefrontal', 'parietal'],
+  },
+  {
+    id: 'exercise-and-cognition',
+    category: 'movement',
+    title: 'Movement and thinking',
+    summary: 'Physical activity is commonly associated with mood and attention benefits — no hype required.',
+    body: [
+      'Many people notice that a walk or a workout leaves them feeling clearer and calmer for a while afterward. Short-term mood benefits are among the more consistent findings; effects on attention and thinking are real but more modest and variable.',
+      'Over the longer term, regular physical activity is associated with better cognitive aging in population studies. Association is not proof of cause — people who move more may differ in many ways — so treat this as encouraging, not as a prescription.',
+      "Movement also trains the cerebellum's coordination circuits every time you practice a sport, a dance, or even a new walking route. And the best activity for your brain is probably the one you will actually keep doing: something you enjoy.",
+    ],
+    keyPoints: [
+      'Short-term mood lift is a consistent finding.',
+      'Long-term links to cognitive aging are associations, not proof.',
+      'Coordination skills draw on the cerebellum.',
+      'Enjoyment beats intensity for consistency.',
+    ],
+    caveat: 'Educational summary, not medical or training advice. No claim here measures or predicts changes in your brain.',
+    relatedRegions: ['cerebellum', 'prefrontal'],
+  },
+  {
+    id: 'hydration-basics',
+    category: 'nutrition',
+    title: 'Hydration without the hype',
+    summary: 'Water matters, but needs vary — thirst is a reasonable guide for most people.',
+    body: [
+      'Every cell needs water, and the brain is no exception. Some research suggests that even mild dehydration may nudge mood and attention in the wrong direction, though findings vary and the effects are usually small.',
+      "The famous 'eight glasses a day' rule is not a scientific requirement. Needs depend on your body, the weather, activity and food — many fruits and meals contribute plenty of water. For most healthy people, drinking when thirsty works well.",
+      'A simple, pressure-free approach: keep water within reach, drink with meals, and pay a little extra attention on hot or active days. No targets, no pressure — just noticing what helps you feel steady.',
+    ],
+    keyPoints: [
+      'Mild dehydration may affect mood and attention.',
+      'Needs vary; the 8-glasses rule is not a requirement.',
+      'Thirst is a reasonable guide for most healthy people.',
+      'Food contributes water too.',
+    ],
+    caveat: 'General information, not medical advice. Some health conditions and situations change fluid needs; ask a professional when unsure.',
+  },
+  {
+    id: 'balanced-eating',
+    category: 'nutrition',
+    title: 'Adequacy, balance, moderation, variety',
+    summary: 'Four old, sensible principles for eating well — with no numbers to chase.',
+    body: [
+      'The brain runs on a steady supply of fuel from food, and it does best when the whole body is well nourished. Instead of targets, many nutrition educators lean on four principles: adequacy (enough food and nutrients), balance (no single food group crowding out the others), moderation (nothing to excess), and variety (different foods across days and weeks).',
+      'Regular meals are one gentle form of structure: some people find their energy and mood feel steadier when they eat at roughly consistent times. Others do fine with flexible patterns — there is no single correct schedule.',
+      'No food is a moral category. Culture, budget, appetite and joy all belong at the table. This app asks only a few yes/no questions about your day, because noticing patterns is useful while chasing numbers often is not.',
+    ],
+    keyPoints: [
+      'Adequacy, balance, moderation, variety — no counting.',
+      'The brain depends on steady fuel from food.',
+      'Regular meals help some people feel steadier.',
+      'No good/bad food labels here.',
+    ],
+    caveat: 'General educational principles, not dietary advice or targets. Individual needs differ; consult a professional for personal guidance.',
+  },
+  {
+    id: 'stress-and-breathing',
+    category: 'wellbeing',
+    title: 'Stress and slow breathing',
+    summary: 'Stress is a protective response — and slow breathing is one gentle way to work with it.',
+    body: [
+      "Stress is your body's way of mobilizing for a challenge: heart rate rises, attention narrows, energy is redirected. In short bursts it is protective and useful. The amygdala helps flag what matters emotionally, while prefrontal networks help you appraise and regulate the reaction.",
+      'Breathing is one of the few levers you can pull directly. Many people find that slowing down — especially making the exhale longer than the inhale for a minute or two — is associated with feeling calmer. Research on slow breathing suggests modest, short-term calming effects; it is a tool, not a treatment.',
+      'Try it small: breathe in gently for about four counts, out for about six, for a minute. If it feels uncomfortable, stop — there is no prize for forcing it. And if stress feels big or persistent, talking to someone you trust or a professional is a strength, not a last resort.',
+    ],
+    keyPoints: [
+      'Stress is protective in short bursts.',
+      'Longer exhales are associated with calming for many people.',
+      'Effects are modest and short-term — a tool, not a treatment.',
+      'Persistent stress deserves real-world support.',
+    ],
+    caveat: 'Educational information, not medical or psychological advice. If stress is affecting your daily life, consider talking to a qualified professional.',
+    relatedRegions: ['amygdala', 'prefrontal'],
+  },
+  {
+    id: 'novelty-and-hobbies',
+    category: 'wellbeing',
+    title: 'Novelty, hobbies and the learning brain',
+    summary: 'New, enjoyable activities engage attention and memory — and are worth doing for their own sake.',
+    body: [
+      'Learning a song, a language, a craft or a climbing route asks your attention and memory systems to work together on something unfamiliar. Novelty tends to recruit focus; meaningful, enjoyable goals tend to keep it there.',
+      'Hobbies are low-stakes practice fields. Because nobody is grading you, you can afford the mistakes that learning requires — and the enjoyment itself is a reason, not just a means to an end.',
+      "An honest caveat lives here: doing new things is not a magic formula for a 'better brain', and nothing in this app can measure such a thing. The reliable pitch for hobbies is simpler — they make life richer, and they give your learning circuits something worth practicing on.",
+    ],
+    keyPoints: [
+      'Novelty engages attention and memory systems.',
+      'Enjoyment supports persistence.',
+      'Hobbies are worth doing for their own sake.',
+      'No app can measure brain changes from habits.',
+    ],
+    caveat: 'Educational perspective, not a promise of cognitive benefits. Associations here are general and simplified.',
+    relatedRegions: ['hippocampus', 'prefrontal'],
+  },
+];
+```
+
+// FILE: src/data/brainRegions.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import type { ActivityKind, RegionId } from '@/types/domain';
+import {
+  ACTIVITY_META,
+  ACTIVITY_REGION_MAP,
+  BRAIN_REGIONS,
+  activityToRegionIntensity,
+} from './brainRegions';
+import { LIBRARY_ENTRIES } from './library';
+
+// Domain imports are type-only, so these tests run under Vitest with no path-alias config.
+
+const ALL_REGIONS: readonly RegionId[] = [
+  'prefrontal', 'parietal', 'temporal', 'occipital', 'cerebellum', 'hippocampus', 'amygdala',
+];
+const ALL_KINDS: readonly ActivityKind[] = [
+  'deep_focus', 'active_recall', 'spaced_repetition', 'problem_solving', 'reading',
+  'skill_practice', 'teaching', 'exercise', 'mindfulness', 'social', 'creative',
+  'music', 'language_learning', 'sleep_rest',
+];
+
+describe('BRAIN_REGIONS', () => {
+  it('covers all 7 regions exactly once', () => {
+    expect(BRAIN_REGIONS.map((r) => r.id).sort()).toEqual([...ALL_REGIONS].sort());
+  });
+
+  it('meets the content shape contract for every region', () => {
+    for (const region of BRAIN_REGIONS) {
+      expect(region.name.length).toBeGreaterThan(0);
+      expect(region.shortDescription.length).toBeGreaterThan(0);
+      expect(region.associatedWith.length).toBeGreaterThanOrEqual(4);
+      expect(region.associatedWith.length).toBeLessThanOrEqual(6);
+      expect(region.networks.length).toBeGreaterThanOrEqual(2);
+      expect(region.networks.length).toBeLessThanOrEqual(4);
+      expect(region.everydayExamples).toHaveLength(3);
+    }
+  });
+
+  it('marks hippocampus and amygdala as deep/internal structures', () => {
+    for (const id of ['hippocampus', 'amygdala'] as const) {
+      const region = BRAIN_REGIONS.find((r) => r.id === id);
+      expect(region?.shortDescription).toMatch(/deep|internal/i);
+    }
+  });
+
+  it('gives every region a caveat stressing simplification and networks', () => {
+    for (const region of BRAIN_REGIONS) {
+      expect(region.caveat).toMatch(/simplified/i);
+      expect(region.caveat).toMatch(/network/i);
+    }
+  });
+
+  it('uses only valid ids in connectedTo and relatedActivities, never self-links', () => {
+    for (const region of BRAIN_REGIONS) {
+      for (const id of region.connectedTo) {
+        expect(ALL_REGIONS).toContain(id);
+        expect(id).not.toBe(region.id);
+      }
+      for (const kind of region.relatedActivities) expect(ALL_KINDS).toContain(kind);
+    }
+  });
+});
+
+describe('ACTIVITY_META', () => {
+  it('covers exactly the 14 ActivityKinds with non-empty label and description', () => {
+    expect(Object.keys(ACTIVITY_META).sort()).toEqual([...ALL_KINDS].sort());
+    for (const kind of ALL_KINDS) {
+      expect(ACTIVITY_META[kind].label.length).toBeGreaterThan(0);
+      expect(ACTIVITY_META[kind].description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('ACTIVITY_REGION_MAP', () => {
+  it('has a non-empty mapping for every ActivityKind', () => {
+    expect(Object.keys(ACTIVITY_REGION_MAP).sort()).toEqual([...ALL_KINDS].sort());
+    for (const kind of ALL_KINDS) expect(ACTIVITY_REGION_MAP[kind].length).toBeGreaterThan(0);
+  });
+
+  it('keeps weights within 0..1, regions valid, and no duplicate regions per kind', () => {
+    for (const kind of ALL_KINDS) {
+      const seen = new Set<RegionId>();
+      for (const { region, weight } of ACTIVITY_REGION_MAP[kind]) {
+        expect(ALL_REGIONS).toContain(region);
+        expect(weight).toBeGreaterThan(0);
+        expect(weight).toBeLessThanOrEqual(1);
+        expect(seen.has(region)).toBe(false);
+        seen.add(region);
+      }
+    }
+  });
+});
+
+describe('activityToRegionIntensity', () => {
+  it('returns {} for no items', () => {
+    expect(activityToRegionIntensity([])).toEqual({});
+  });
+
+  it('computes known soft-cap values (60 min deep focus)', () => {
+    const out = activityToRegionIntensity([{ kind: 'deep_focus', minutes: 60 }]);
+    expect(out.prefrontal).toBeCloseTo(0.7769, 3); // 1 - exp(-60/40)
+    expect(out.parietal).toBeCloseTo(0.6501, 3); // 1 - exp(-42/40)
+    expect(out.temporal).toBeUndefined(); // zeros omitted
+  });
+
+  it('approaches ~0.95 at the 120-weighted-minute soft cap without hard-clipping', () => {
+    const out = activityToRegionIntensity([{ kind: 'deep_focus', minutes: 120 }]);
+    expect(out.prefrontal).toBeCloseTo(0.95, 2);
+    expect(out.prefrontal).toBeLessThan(1);
+  });
+
+  it('keeps every intensity in 0..1 for a full mixed day covering all regions', () => {
+    const out = activityToRegionIntensity(ALL_KINDS.map((kind) => ({ kind, minutes: 300 })));
+    expect(Object.keys(out).sort()).toEqual([...ALL_REGIONS].sort());
+    for (const value of Object.values(out)) {
+      expect(value).toBeGreaterThan(0);
+      expect(value).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('never exceeds 1 even for absurd inputs, and shows diminishing returns', () => {
+    const absurd = activityToRegionIntensity([{ kind: 'deep_focus', minutes: 1e9 }]);
+    expect(absurd.prefrontal).toBeLessThanOrEqual(1);
+    expect(absurd.prefrontal).toBeGreaterThanOrEqual(0);
+    const at = (m: number) => activityToRegionIntensity([{ kind: 'deep_focus', minutes: m }]).prefrontal ?? 0;
+    expect(at(120)).toBeGreaterThan(at(60)); // monotone
+    expect(at(240) - at(120)).toBeLessThan(at(120) - at(60)); // saturating
+  });
+
+  it('ignores zero, negative and non-finite minutes', () => {
+    expect(
+      activityToRegionIntensity([
+        { kind: 'deep_focus', minutes: 0 },
+        { kind: 'deep_focus', minutes: -30 },
+        { kind: 'deep_focus', minutes: Number.NaN },
+      ]),
+    ).toEqual({});
+    const clean = activityToRegionIntensity([{ kind: 'reading', minutes: 45 }]);
+    const mixed = activityToRegionIntensity([
+      { kind: 'reading', minutes: 45 },
+      { kind: 'exercise', minutes: -10 },
+    ]);
+    expect(mixed).toEqual(clean);
+  });
+
+  it('is additive across items and independent of input order', () => {
+    const single = activityToRegionIntensity([{ kind: 'deep_focus', minutes: 60 }]);
+    const split = activityToRegionIntensity([
+      { kind: 'deep_focus', minutes: 30 },
+      { kind: 'deep_focus', minutes: 30 },
+    ]);
+    expect(split).toEqual(single);
+    const items = [
+      { kind: 'reading', minutes: 40 },
+      { kind: 'music', minutes: 25 },
+      { kind: 'exercise', minutes: 60 },
+    ] as const;
+    expect(activityToRegionIntensity([...items].reverse())).toEqual(activityToRegionIntensity(items));
+  });
+
+  it('does not mutate its input (frozen items work)', () => {
+    const frozen = Object.freeze([Object.freeze({ kind: 'music' as const, minutes: 30 })]);
+    expect(activityToRegionIntensity(frozen).temporal).toBeGreaterThan(0);
+  });
+});
+
+describe('content safety', () => {
+  const BANNED: readonly RegExp[] = [
+    /\bbrain score\b/i, /\bgrew\b/i, /\bboost your iq\b/i, /\bcure[ds]?\b/i, // required by contract
+    /\bbrain health\b/i, /\bstrengthen/i, /\bgrow/i, /\bboost/i, /\biq\b/i, // project non-negotiables
+    /\bdiagnos/i, /\bdisorder/i, /\bcalorie/i, /\bmacro/i, /\bscore\b/i,
+    /\bfail/i, /\bsham(e|ing)\b/i, /\bguilt/i, /\bunhealthy\b/i, /\blazy\b/i, /\boptimiz/i,
+  ];
+
+  const allContent: string[] = [
+    ...BRAIN_REGIONS.flatMap((r) => [
+      r.name, r.shortDescription, r.caveat,
+      ...r.associatedWith, ...r.networks, ...r.everydayExamples,
+    ]),
+    ...Object.values(ACTIVITY_META).flatMap((m) => [m.label, m.description]),
+    ...LIBRARY_ENTRIES.flatMap((e) => [e.title, e.summary, e.caveat, ...e.body, ...e.keyPoints]),
+  ];
+
+  it('contains no banned phrases anywhere in atlas, activity or library copy', () => {
+    for (const text of allContent) {
+      for (const pattern of BANNED) expect(text).not.toMatch(pattern);
+    }
+  });
+
+  it('library has 16–20 well-formed entries, including one per region', () => {
+    expect(LIBRARY_ENTRIES.length).toBeGreaterThanOrEqual(16);
+    expect(LIBRARY_ENTRIES.length).toBeLessThanOrEqual(20);
+    expect(new Set(LIBRARY_ENTRIES.map((e) => e.id)).size).toBe(LIBRARY_ENTRIES.length);
+    const regionEntries = LIBRARY_ENTRIES.filter((e) => e.category === 'region');
+    expect(regionEntries).toHaveLength(7);
+    const covered = new Set(regionEntries.flatMap((e) => e.relatedRegions ?? []));
+    for (const id of ALL_REGIONS) expect(covered.has(id)).toBe(true);
+    for (const entry of LIBRARY_ENTRIES) {
+      expect(entry.body.length).toBeGreaterThanOrEqual(2);
+      expect(entry.keyPoints.length).toBeGreaterThanOrEqual(3);
+      expect(entry.caveat.length).toBeGreaterThan(0);
+      for (const id of entry.relatedRegions ?? []) expect(ALL_REGIONS).toContain(id);
+    }
+  });
+});
+```
+
+**Claims to verify (human review recommended)**
+
+1. **All map weights and the k=40 curve** — illustrative educational heuristics, not empirically derived coefficients (flagged in a code comment). Mindfulness→amygdala/prefrontal and creative→hippocampus are the loosest links.
+2. **"Prefrontal cortex keeps maturing into the twenties"** — common popular framing; the precise endpoint is debated and often oversimplified in media.
+3. **REM sleep ↔ emotional processing / skill memory** — hedged with "may… still debated"; less settled than the slow-wave/declarative link.
+4. **H.M.'s surgery** — described as removing "both hippocampi and nearby tissue"; the actual resection was broader bilateral medial temporal cortex. Worth a fact-check of the phrasing.
+5. **Cerebellum "more neurons than the rest of the brain combined"** — well established (~80% of brain neurons), but it's a quantitative claim; confirm wording comfort.
+6. **Mild dehydration → mood/attention** — evidence exists but is mixed and effects are small; hedged with "may".
+7. **Exercise ↔ cognitive aging** — observational association only; causality unproven (the entry says so explicitly). No structural claims made anywhere.
+8. **Slow breathing / longer exhale → calming** — modest, short-term evidence; framed as "a tool, not a treatment".
+9. **Interleaving & deliberate practice** — benefits are domain-dependent (interleaving best shown in math/category learning; practice–outcome link varies by field); both entries hedge accordingly.
+
+Run with `pnpm vitest run src/data` — 16 test cases, no alias config needed (all domain imports are type-only).
+
+### USER
+Write three PURE TypeScript modules (only date-fns allowed). Import types from '@/types/domain'. You may assume
+'@/lib/insights/stats' exports mean, stdDev, pearson, pairByDate, round1, clamp, groupByDate. Output files as // FILE: <path>.
+
+1. src/lib/insights/weekly.ts
+   export interface WeeklyReport { weekStart: ISODate; weekEnd: ISODate; sleep: {avgMin:number|null; nightsLogged:number; nightsBelowTarget:number; bedtimeSpreadMin:number|null};
+   focus: {totalMin:number; sessions:number; avgFocusRating:number|null; methodsUsed: LearningMethod[]};
+   movement: {daysActive:number; totalMin:number}; wellbeing: {avgMood:number|null; avgStress:number|null; avgEnergy:number|null; avgConcentration:number|null; checkins:number};
+   nutrition: {daysLogged:number; regularMealDays:number; avgWater:number|null}; vsPreviousWeek: Record<string, {delta:number; direction:'up'|'down'|'flat'}>;
+   highlights: string[]; reflectionPrompts: string[] }
+   buildWeeklyReport(input, weekStartISO). Highlights must be warm, factual, and never shame. Reflection prompts are open questions ("What made your best-focus day different?").
+   Treat "flat" as within a sensible tolerance per metric. Missing data = null, never 0.
+2. src/lib/insights/experiments.ts
+   export interface ExperimentResult { baseline: {n:number; mean:number|null}; intervention: {n:number; mean:number|null}; difference:number|null;
+   sufficientData: boolean; direction:'higher'|'lower'|'similar'|'unknown'; summary: string; caveats: string[]; effectSizeNote?: string }
+   analyzeExperiment(exp, input): pull the metric series (concentration/mood/energy/stress from check-ins, focusRating from sessions averaged per day),
+   compute baseline vs intervention within the given date ranges. sufficientData requires >=5 days in each period.
+   summary text must be neutral. caveats ALWAYS include: it does not establish causation, self-reported ratings are subjective, other things changed during the period too.
+   If stress is the metric, "lower" is described as lower stress rating (do not label it good/bad).
+3. src/lib/insights/demo.ts
+   generateDemoData(days, seed): InsightInput with a seeded PRNG (mulberry32), realistic correlated data:
+   sleep durations ~ N(7.2h, 0.9) with weekend drift, bedtimes varying, concentration mildly correlated (r about 0.4) with prior-night sleep,
+   focus sessions on ~70% of days with varied methods, movement ~4 days/week, check-ins ~85% of days, nutrition logs ~70%, 4 habits with ~60% completion.
+   Deterministic for the same seed, ids stable (`demo-...`), dates ending today (take today from an optional param, default new Date()).
+4. Vitest tests for all three: determinism of demo data, null handling in weekly report, insufficient data path in experiments, boundary of 5 days.
+
+### ASSISTANT
+Verified the demo generator numerically before writing it (exact bit-level mulberry32 port): seed 42 → r(sleep, concentration) = 0.43–0.50, check-ins ~91%, focus days ~70%, movement ~55%, nutrition ~72%, habits ~60%, weekend bedtime drift +35–44 min, same-seed runs identical. Test bands below are set around those measured values.
+
+// FILE: src/lib/insights/weekly.ts
+```typescript
+import type { InsightInput, ISODate, LearningMethod, SleepLog } from '@/types/domain';
+import { addDays, format, parseISO } from 'date-fns';
+import { groupByDate, mean, round1 } from './stats';
+
+export interface WeeklyReport {
+  weekStart: ISODate;
+  weekEnd: ISODate;
+  sleep: { avgMin: number | null; nightsLogged: number; nightsBelowTarget: number; bedtimeSpreadMin: number | null };
+  focus: { totalMin: number; sessions: number; avgFocusRating: number | null; methodsUsed: LearningMethod[] };
+  movement: { daysActive: number; totalMin: number };
+  wellbeing: { avgMood: number | null; avgStress: number | null; avgEnergy: number | null; avgConcentration: number | null; checkins: number };
+  nutrition: { daysLogged: number; regularMealDays: number; avgWater: number | null };
+  vsPreviousWeek: Record<string, { delta: number; direction: 'up' | 'down' | 'flat' }>;
+  highlights: string[];
+  reflectionPrompts: string[];
+}
+
+// ---------- private helpers ----------
+
+const isoAdd = (iso: ISODate, days: number): ISODate => format(addDays(parseISO(iso), days), 'yyyy-MM-dd');
+
+// 'YYYY-MM-DD' compares lexicographically in chronological order; windows are inclusive.
+function inWindow<T extends { date: ISODate }>(items: readonly T[], start: ISODate, end: ISODate): T[] {
+  return items.filter((it) => it.date >= start && it.date <= end);
+}
+
+const bedtimeMinutes = (log: SleepLog): number => {
+  const d = parseISO(log.bedtime); // offset-less ISO parses as local time (matches local-first logging)
+  return d.getHours() * 60 + d.getMinutes();
+};
+
+/**
+ * Circular SD of minutes-of-day (Mardia), so 23:30 and 00:30 count as 60 min apart.
+ * Null with fewer than 2 bedtimes (a spread needs something to spread across).
+ * Capped at 720 for interpretability as R → 0.
+ */
+function bedtimeSpread(bedtimes: readonly number[]): number | null {
+  if (bedtimes.length < 2) return null;
+  let c = 0;
+  let s = 0;
+  for (const m of bedtimes) {
+    const theta = ((((m % 1440) + 1440) % 1440) / 1440) * 2 * Math.PI;
+    c += Math.cos(theta);
+    s += Math.sin(theta);
+  }
+  c /= bedtimes.length;
+  s /= bedtimes.length;
+  const r = Math.hypot(c, s);
+  if (r >= 1 - 1e-12) return 0;
+  if (r <= 1e-12) return 720;
+  return Math.min(720, Math.sqrt(-2 * Math.log(r)) * (1440 / (2 * Math.PI)));
+}
+
+function fmtDur(min: number): string {
+  const m = Math.round(min);
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return `${r}m`;
+  if (r === 0) return `${h}h`;
+  return `${h}h ${r}m`;
+}
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+type Sections = Pick<WeeklyReport, 'sleep' | 'focus' | 'movement' | 'wellbeing' | 'nutrition'>;
+
+function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sections {
+  const nights = inWindow(input.sleep, start, end);
+  const durations = nights.map((n) => n.durationMin);
+  const sleepAvg = mean(durations);
+  const spread = bedtimeSpread(nights.map(bedtimeMinutes));
+
+  const sessions = inWindow(input.focus, start, end);
+  const focusAvg = mean(sessions.map((s) => s.focusRating));
+
+  const movement = inWindow(input.movement, start, end);
+
+  const checkins = inWindow(input.checkins, start, end);
+  const avgOf = (pick: (c: (typeof checkins)[number]) => number): number | null => {
+    const m = mean(checkins.map(pick));
+    return m === null ? null : round1(m);
+  };
+
+  // One nutrition entry per day: a later log for the same date supersedes earlier ones.
+  const nutritionByDate = new Map<ISODate, (typeof input.nutrition)[number]>();
+  for (const log of inWindow(input.nutrition, start, end)) nutritionByDate.set(log.date, log);
+  const nutritionDays = [...nutritionByDate.values()];
+  const waterAvg = mean(nutritionDays.map((n) => n.waterGlasses));
+
+  return {
+    sleep: {
+      avgMin: sleepAvg === null ? null : round1(sleepAvg),
+      nightsLogged: nights.length,
+      nightsBelowTarget: nights.filter((n) => n.durationMin < input.settings.sleepTargetMin).length,
+      bedtimeSpreadMin: spread === null ? null : round1(spread),
+    },
+    focus: {
+      totalMin: sessions.reduce((a, s) => a + s.durationMin, 0),
+      sessions: sessions.length,
+      avgFocusRating: focusAvg === null ? null : round1(focusAvg),
+      methodsUsed: [...new Set(sessions.map((s) => s.method))].sort(),
+    },
+    movement: {
+      daysActive: new Set(movement.map((m) => m.date)).size,
+      totalMin: movement.reduce((a, m) => a + m.durationMin, 0),
+    },
+    wellbeing: {
+      avgMood: avgOf((c) => c.mood),
+      avgStress: avgOf((c) => c.stress),
+      avgEnergy: avgOf((c) => c.energy),
+      avgConcentration: avgOf((c) => c.concentration),
+      checkins: checkins.length,
+    },
+    nutrition: {
+      daysLogged: nutritionDays.length,
+      regularMealDays: nutritionDays.filter((n) => n.regularMeals).length,
+      avgWater: waterAvg === null ? null : round1(waterAvg),
+    },
+  };
+}
+
+/**
+ * Comparison keys and per-metric "flat" tolerances. A key is omitted when either
+ * week lacks data (missing ≠ 0); totals/counts are only compared when at least
+ * one week actually logged something.
+ */
+const COMPARISONS: readonly { key: string; tolerance: number; pick: (s: Sections) => number | null; needsData: boolean }[] = [
+  { key: 'sleepAvgMin', tolerance: 15, pick: (s) => s.sleep.avgMin, needsData: false },
+  { key: 'focusTotalMin', tolerance: 30, pick: (s) => s.focus.totalMin, needsData: true },
+  { key: 'movementDaysActive', tolerance: 0, pick: (s) => s.movement.daysActive, needsData: true },
+  { key: 'avgMood', tolerance: 0.3, pick: (s) => s.wellbeing.avgMood, needsData: false },
+  { key: 'avgStress', tolerance: 0.3, pick: (s) => s.wellbeing.avgStress, needsData: false },
+  { key: 'avgEnergy', tolerance: 0.3, pick: (s) => s.wellbeing.avgEnergy, needsData: false },
+  { key: 'avgConcentration', tolerance: 0.3, pick: (s) => s.wellbeing.avgConcentration, needsData: false },
+  { key: 'avgWater', tolerance: 1, pick: (s) => s.nutrition.avgWater, needsData: false },
+];
+
+function bestFocusDay(input: InsightInput, start: ISODate, end: ISODate): { date: ISODate; avg: number } | null {
+  const perDay: { date: ISODate; avg: number }[] = [];
+  for (const [date, list] of groupByDate(inWindow(input.focus, start, end))) {
+    const m = mean(list.map((s) => s.focusRating));
+    if (m !== null) perDay.push({ date, avg: m });
+  }
+  perDay.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  let best: { date: ISODate; avg: number } | null = null;
+  for (const day of perDay) if (best === null || day.avg > best.avg) best = day; // strict > keeps earliest on ties
+  return best;
+}
+
+// ---------- public API ----------
+
+export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): WeeklyReport {
+  const weekStart = weekStartISO;
+  const weekEnd = isoAdd(weekStartISO, 6);
+  const current = computeSections(input, weekStart, weekEnd);
+  const previous = computeSections(input, isoAdd(weekStartISO, -7), isoAdd(weekStartISO, -1));
+
+  const vsPreviousWeek: WeeklyReport['vsPreviousWeek'] = {};
+  for (const { key, tolerance, pick, needsData } of COMPARISONS) {
+    const cur = pick(current);
+    const prev = pick(previous);
+    if (cur === null || prev === null) continue;
+    if (needsData && cur === 0 && prev === 0) continue;
+    const raw = cur - prev;
+    vsPreviousWeek[key] = {
+      delta: round1(raw),
+      direction: Math.abs(raw) <= tolerance + 1e-9 ? 'flat' : raw > 0 ? 'up' : 'down',
+    };
+  }
+
+  const highlights: string[] = [];
+  const { sleep, focus, movement, wellbeing } = current;
+  if (sleep.nightsLogged > 0 && sleep.avgMin !== null) {
+    highlights.push(`You logged ${plural(sleep.nightsLogged, 'night')} of sleep, averaging ${fmtDur(sleep.avgMin)}.`);
+  }
+  if (focus.sessions > 0) {
+    const variety = focus.methodsUsed.length >= 3 ? `, spanning ${focus.methodsUsed.length} different methods` : '';
+    highlights.push(`${plural(focus.sessions, 'focus session')} added up to ${fmtDur(focus.totalMin)} of practice${variety}.`);
+  }
+  const best = bestFocusDay(input, weekStart, weekEnd);
+  if (best !== null) {
+    highlights.push(`Your best-focus day was ${format(parseISO(best.date), 'EEEE')} (${round1(best.avg)}/5 average).`);
+  }
+  if (movement.daysActive >= 4) {
+    highlights.push(`Movement showed up on ${movement.daysActive} days — a steady rhythm.`);
+  } else if (movement.daysActive > 0) {
+    highlights.push(`You moved on ${plural(movement.daysActive, 'day')} this week.`);
+  }
+  if (wellbeing.checkins >= 5) {
+    highlights.push(`${wellbeing.checkins} check-ins — a week of noticing how you are.`);
+  }
+  if (highlights.length === 0) {
+    highlights.push('A quiet week in the logs — they only show what was recorded, not everything you lived.');
+  }
+
+  const prompts: string[] = [];
+  if (focus.sessions > 0) prompts.push('What made your best-focus day different?');
+  if (sleep.nightsLogged > 0) prompts.push('What did the evening before your longest night look like?');
+  if (movement.daysActive > 0) prompts.push('How did the days you moved feel in your body and mood?');
+  if (wellbeing.checkins > 0) prompts.push('Which check-in surprised you, and what was happening around it?');
+  prompts.push('What is one small thing from this week you would like to keep?');
+  prompts.push('What would make next week feel a little easier?');
+
+  return {
+    weekStart,
+    weekEnd,
+    ...current,
+    vsPreviousWeek,
+    highlights: highlights.slice(0, 5),
+    reflectionPrompts: prompts.slice(0, 3),
+  };
+}
+```
+
+// FILE: src/lib/insights/experiments.ts
+```typescript
+import type { Experiment, ExperimentMetric, InsightInput, ISODate } from '@/types/domain';
+import { groupByDate, mean, round1, stdDev } from './stats';
+
+export interface ExperimentResult {
+  baseline: { n: number; mean: number | null };
+  intervention: { n: number; mean: number | null };
+  difference: number | null;
+  sufficientData: boolean;
+  direction: 'higher' | 'lower' | 'similar' | 'unknown';
+  summary: string;
+  caveats: string[];
+  effectSizeNote?: string;
+}
+
+const MIN_DAYS = 5;
+// On the 1–5 rating scale, differences within ±0.3 are described as "similar".
+const SIMILAR_BAND = 0.3;
+
+const METRIC_LABELS: Record<ExperimentMetric, string> = {
+  concentration: 'concentration',
+  mood: 'mood',
+  energy: 'energy',
+  stress: 'stress',
+  focusRating: 'session focus',
+};
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** One value per logged day: check-in field, or the day's mean session focus rating. */
+function metricByDate(exp: Experiment, input: InsightInput): Map<ISODate, number> {
+  const out = new Map<ISODate, number>();
+  if (exp.metric === 'focusRating') {
+    for (const [date, list] of groupByDate(input.focus)) {
+      const m = mean(list.map((s) => s.focusRating));
+      if (m !== null) out.set(date, m);
+    }
+  } else {
+    const key = exp.metric; // 'concentration' | 'mood' | 'energy' | 'stress'
+    for (const [date, list] of groupByDate(input.checkins)) {
+      const m = mean(list.map((c) => c[key])); // several check-ins on one day are averaged
+      if (m !== null) out.set(date, m);
+    }
+  }
+  return out;
+}
+
+function periodValues(series: Map<ISODate, number>, start: ISODate, end: ISODate): number[] {
+  const vals: number[] = [];
+  for (const [date, value] of series) {
+    if (date >= start && date <= end) vals.push(value); // inclusive ranges, ISO string order
+  }
+  return vals;
+}
+
+export function analyzeExperiment(exp: Experiment, input: InsightInput): ExperimentResult {
+  const series = metricByDate(exp, input);
+  const bVals = periodValues(series, exp.baselineStart, exp.baselineEnd);
+  const iVals = periodValues(series, exp.interventionStart, exp.interventionEnd);
+  const bMean = mean(bVals);
+  const iMean = mean(iVals);
+  const sufficientData = bVals.length >= MIN_DAYS && iVals.length >= MIN_DAYS;
+  const difference = bMean !== null && iMean !== null ? Math.round((iMean - bMean) * 100) / 100 : null;
+
+  // Direction is only stated once both periods clear the minimum — otherwise 'unknown'.
+  let direction: ExperimentResult['direction'] = 'unknown';
+  if (sufficientData && difference !== null) {
+    direction = difference > SIMILAR_BAND ? 'higher' : difference < -SIMILAR_BAND ? 'lower' : 'similar';
+  }
+
+  const label = METRIC_LABELS[exp.metric];
+  let summary: string;
+  if (bMean === null || iMean === null) {
+    const where = bMean === null && iMean === null ? 'either period' : 'one of the periods';
+    summary = `No ${label} data was logged in ${where} yet, so there is nothing to compare. Baseline days: ${bVals.length}. Intervention days: ${iVals.length}.`;
+  } else if (!sufficientData) {
+    summary = `So far, ${plural(bVals.length, 'baseline day')} average ${round1(bMean)}/5 and ${plural(iVals.length, 'intervention day')} average ${round1(iMean)}/5 for ${label}. At least ${MIN_DAYS} days in each period are needed before a comparison is shown — these numbers are provisional.`;
+  } else {
+    // Neutral wording for every metric: "lower stress rating" is a description, never a verdict.
+    const phrase = direction === 'similar' ? `similar ${label} rating (within ±${SIMILAR_BAND})` : `${direction} ${label} rating`;
+    const sign = difference !== null && difference >= 0 ? '+' : '';
+    summary = `Across ${plural(bVals.length, 'baseline day')} and ${plural(iVals.length, 'intervention day')}, the average ${label} rating went from ${round1(bMean)}/5 to ${round1(iMean)}/5 — a ${phrase} (difference ${sign}${difference}). This describes your logs; it does not show the change caused the difference.`;
+  }
+
+  const caveats: string[] = [
+    'This comparison does not establish causation.',
+    'Self-reported ratings are subjective and can shift with mood and context.',
+    'Other things changed during the period too — sleep, workload, season, life — and any of them could play a part.',
+  ];
+  if (!sufficientData) {
+    caveats.push(`With fewer than ${MIN_DAYS} days in a period, averages are especially noisy.`);
+  }
+
+  let effectSizeNote: string | undefined;
+  if (sufficientData && difference !== null) {
+    const sb = stdDev(bVals);
+    const si = stdDev(iVals);
+    if (sb !== null && si !== null) {
+      const pooled = Math.sqrt((sb * sb + si * si) / 2);
+      if (pooled > 1e-9) {
+        effectSizeNote = `For scale: the difference is about ${round1(Math.abs(difference) / pooled)} times your typical day-to-day variation — a rough sense of size, not a verdict.`;
+      }
+    }
+  }
+
+  return {
+    baseline: { n: bVals.length, mean: bMean === null ? null : round1(bMean) },
+    intervention: { n: iVals.length, mean: iMean === null ? null : round1(iMean) },
+    difference,
+    sufficientData,
+    direction,
+    summary,
+    caveats,
+    ...(effectSizeNote !== undefined ? { effectSizeNote } : {}),
+  };
+}
+```
+
+// FILE: src/lib/insights/demo.ts
+```typescript
+import type {
+  DailyCheckin, FocusSession, Habit, HabitLog, InsightInput, ISODate,
+  LearningMethod, MovementLog, NutritionLog, Rating, SleepLog, UserSettings,
+} from '@/types/domain';
+import { addMinutes, format, getDay, startOfDay, subDays } from 'date-fns';
+import { clamp } from './stats';
+
+/** Mulberry32: tiny, fast, deterministic 32-bit PRNG. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const METHODS: readonly LearningMethod[] = [
+  'active_recall', 'spaced_repetition', 'problem_solving', 'deep_reading', 'skill_practice', 'teaching',
+];
+const SUBJECTS = ['Math', 'Reading', 'Code', 'Language', 'Music', 'Writing'] as const;
+const MOVEMENT_TYPES: readonly MovementLog['type'][] = ['walk', 'run', 'cycle', 'gym', 'stretch', 'sport'];
+const SESSION_DURATIONS = [25, 30, 45, 50, 60, 90] as const;
+
+const HABIT_DEFS: readonly { name: string; icon: string }[] = [
+  { name: 'Read 10 pages', icon: '📖' },
+  { name: 'Morning stretch', icon: '🤸' },
+  { name: 'Walk outside', icon: '🚶' },
+  { name: 'Evening journal', icon: '✍️' },
+];
+
+const toRating = (x: number): Rating => clamp(Math.round(x), 1, 5) as Rating;
+const wrapDay = (m: number): number => ((m % 1440) + 1440) % 1440;
+
+/**
+ * Deterministic demo dataset ending on `today` (calendar day; time-of-day is normalized away).
+ * Same (days, seed, calendar day) → identical output, including ids and timestamps.
+ * Concentration is mildly correlated (r ≈ 0.4) with the sleep that ended that morning.
+ */
+export function generateDemoData(days: number, seed: number, today: Date = new Date()): InsightInput {
+  const rand = mulberry32(seed);
+  const gaussian = (): number => {
+    const u1 = Math.max(rand(), 1e-12); // Box–Muller; guard log(0)
+    const u2 = rand();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  };
+  const pick = <T>(arr: readonly T[]): T => {
+    const idx = Math.min(arr.length - 1, Math.floor(rand() * arr.length));
+    const value = arr[idx];
+    if (value === undefined) throw new Error('pick from empty array');
+    return value;
+  };
+
+  const totalDays = Math.max(0, Math.floor(days));
+  const end = startOfDay(today);
+  const todayISO = format(end, 'yyyy-MM-dd');
+
+  const settings: UserSettings = {
+    id: 'demo-settings', createdAt: `${todayISO}T08:00:00`, updatedAt: `${todayISO}T08:00:00`,
+    displayName: 'Demo', sleepTargetMin: 480, focusDefaultMin: 25, breakDefaultMin: 5,
+    onboarded: true, schemaVersion: 1,
+  };
+  const habits: Habit[] = HABIT_DEFS.map((h, i) => ({
+    id: `demo-habit-${i + 1}`, createdAt: `${todayISO}T08:00:00`, updatedAt: `${todayISO}T08:00:00`,
+    name: h.name, icon: h.icon, archived: false,
+  }));
+
+  const sleep: SleepLog[] = [];
+  const checkins: DailyCheckin[] = [];
+  const focus: FocusSession[] = [];
+  const movement: MovementLog[] = [];
+  const nutrition: NutritionLog[] = [];
+  const habitLogs: HabitLog[] = [];
+
+  // Fixed call order for rand() → determinism. Oldest day first, so arrays are chronological.
+  for (let k = totalDays - 1; k >= 0; k--) {
+    const dateObj = subDays(end, k);
+    const date: ISODate = format(dateObj, 'yyyy-MM-dd');
+    const dow = getDay(dateObj);
+    const weekend = dow === 0 || dow === 6; // wake-up date on Sat/Sun: sleep-in + later bedtime
+
+    // --- sleep (every day): N(7.2h, 0.9h), weekend drift, clamped to 5–10h ---
+    const zSleep = gaussian();
+    const durationMin = Math.round(clamp(432 + 54 * zSleep + (weekend ? 20 : 0), 300, 600));
+    const bedNoise = gaussian();
+    const bedMin = wrapDay(Math.round(1395 + 35 * bedNoise + (weekend ? 45 : 0))); // ~23:15 base
+    // bedMin is always evening (>21:00) or early night (<03:00), so wake lands on `date`.
+    const bedBase = bedMin >= 720 ? startOfDay(subDays(dateObj, 1)) : dateObj;
+    const bedDate = addMinutes(bedBase, bedMin);
+    const wakeDate = addMinutes(bedDate, durationMin);
+    const bedtime = format(bedDate, "yyyy-MM-dd'T'HH:mm:ss");
+    const wakeTime = format(wakeDate, "yyyy-MM-dd'T'HH:mm:ss");
+    const quality = toRating(3 + (durationMin - 432) / 90 + (rand() - 0.5));
+    const rested = toRating(3 + (durationMin - 432) / 90 + (rand() - 0.5));
+    const interruptions = rand() < 0.7 ? 0 : rand() < 0.8 ? 1 : 2;
+    sleep.push({ id: `demo-sleep-${date}`, createdAt: wakeTime, updatedAt: wakeTime, date, bedtime, wakeTime, durationMin, quality, rested, interruptions });
+
+    // --- check-in (~85%): concentration shares 0.45 of its variance with zSleep ---
+    if (rand() < 0.85) {
+      const zc = gaussian();
+      const concentration = toRating(3 + 0.45 * zSleep + 0.893 * zc);
+      const mood = toRating(3 + 0.3 * zSleep + 0.9 * gaussian());
+      const stress = toRating(3 - 0.25 * zSleep + 0.9 * gaussian());
+      const energy = toRating(3 + 0.35 * zSleep + 0.9 * gaussian());
+      const motivation = toRating(3 + 0.9 * gaussian());
+      const outdoorMin = Math.round(rand() * 70);
+      const at = `${date}T21:00:00`;
+      checkins.push({ id: `demo-checkin-${date}`, createdAt: at, updatedAt: at, date, mood, stress, energy, concentration, motivation, outdoorMin });
+    }
+
+    // --- focus sessions (~70% of days, 1–2 per day) ---
+    if (rand() < 0.7) {
+      const nSessions = rand() < 0.3 ? 2 : 1;
+      for (let i = 0; i < nSessions; i++) {
+        const dur = pick(SESSION_DURATIONS);
+        const method = pick(METHODS);
+        const subject = pick(SUBJECTS);
+        const focusRating = toRating(3 + 0.5 * zSleep + 0.8 * gaussian());
+        const difficulty = (2 + Math.floor(rand() * 3)) as Rating;
+        const distractions = Math.floor(rand() * (dur > 60 ? 4 : 3));
+        const startedAt = `${date}T${i === 0 ? '09' : '16'}:00:00`;
+        focus.push({ id: `demo-focus-${date}-${i + 1}`, createdAt: startedAt, updatedAt: startedAt, date, startedAt, durationMin: dur, plannedMin: dur, subject, method, focusRating, difficulty, distractions });
+      }
+    }
+
+    // --- movement (~4 days/week) ---
+    if (rand() < 4 / 7) {
+      const type = pick(MOVEMENT_TYPES);
+      const minutes = 20 + Math.floor(rand() * 41);
+      const effort = (2 + Math.floor(rand() * 3)) as Rating;
+      const at = `${date}T18:00:00`;
+      movement.push({ id: `demo-movement-${date}`, createdAt: at, updatedAt: at, date, type, durationMin: minutes, effort });
+    }
+
+    // --- nutrition (~70%) ---
+    if (rand() < 0.7) {
+      const regularMeals = rand() < 0.75;
+      const fruitVeg = rand() < 0.7;
+      const varied = rand() < 0.65;
+      const waterGlasses = 4 + Math.floor(rand() * 6);
+      const at = `${date}T20:00:00`;
+      nutrition.push({ id: `demo-nutrition-${date}`, createdAt: at, updatedAt: at, date, regularMeals, fruitVeg, varied, waterGlasses });
+    }
+
+    // --- habits: a done-log on ~60% of days per habit ---
+    for (let h = 0; h < habits.length; h++) {
+      if (rand() < 0.6) {
+        const habit = habits[h];
+        if (habit === undefined) continue;
+        const at = `${date}T21:30:00`;
+        habitLogs.push({ id: `demo-habitlog-${h + 1}-${date}`, createdAt: at, updatedAt: at, date, habitId: habit.id, done: true });
+      }
+    }
+  }
+
+  return { settings, sleep, checkins, focus, movement, nutrition, habits, habitLogs };
+}
+```
+
+// FILE: src/lib/insights/weekly.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import { format, parseISO, subDays, subMinutes } from 'date-fns';
+import type { DailyCheckin, FocusSession, InsightInput, ISODate, MovementLog, NutritionLog, SleepLog, UserSettings } from '@/types/domain';
+import { buildWeeklyReport } from './weekly';
+
+const WEEK: ISODate = '2026-11-09'; // Monday; week = Nov 9–15, previous = Nov 2–8
+const w = (offset: number): ISODate => format(subDays(parseISO(WEEK), -offset), 'yyyy-MM-dd'); // w(0)=Nov 9, w(6)=Nov 15, w(-1)=Nov 8
+
+let seq = 0;
+const base = () => ({ id: `t${++seq}`, createdAt: '2026-11-01T08:00:00', updatedAt: '2026-11-01T08:00:00' });
+const settings = (over: Partial<UserSettings> = {}): UserSettings => ({
+  ...base(), sleepTargetMin: 480, focusDefaultMin: 25, breakDefaultMin: 5, onboarded: true, schemaVersion: 1, ...over,
+});
+const sleepLog = (date: ISODate, durationMin: number, bedtime?: string): SleepLog => {
+  const wake = parseISO(`${date}T07:00:00`);
+  return {
+    ...base(), date, durationMin,
+    bedtime: bedtime ?? format(subMinutes(wake, durationMin), "yyyy-MM-dd'T'HH:mm:ss"),
+    wakeTime: format(wake, "yyyy-MM-dd'T'HH:mm:ss"), quality: 3, rested: 3, interruptions: 0,
+  };
+};
+const checkin = (date: ISODate, over: Partial<DailyCheckin> = {}): DailyCheckin => ({
+  ...base(), date, mood: 3, stress: 3, energy: 3, concentration: 3, motivation: 3, ...over,
+});
+const focusLog = (date: ISODate, over: Partial<FocusSession> = {}): FocusSession => ({
+  ...base(), date, startedAt: `${date}T09:00:00`, durationMin: 25, plannedMin: 25, subject: 'test',
+  method: 'deep_reading', focusRating: 3, difficulty: 3, distractions: 0, ...over,
+});
+const moveLog = (date: ISODate, over: Partial<MovementLog> = {}): MovementLog => ({ ...base(), date, type: 'walk', durationMin: 30, effort: 3, ...over });
+const nutriLog = (date: ISODate, over: Partial<NutritionLog> = {}): NutritionLog => ({ ...base(), date, regularMeals: true, fruitVeg: true, varied: true, waterGlasses: 6, ...over });
+const input = (over: Partial<InsightInput> = {}): InsightInput => ({
+  settings: settings(), sleep: [], checkins: [], focus: [], movement: [], nutrition: [], habits: [], habitLogs: [], ...over,
+});
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    Object.freeze(value);
+    for (const v of Object.values(value as Record<string, unknown>)) deepFreeze(v);
+  }
+  return value;
+}
+
+describe('buildWeeklyReport — missing data', () => {
+  it('returns null (never 0) for every average and spread on empty input', () => {
+    const r = buildWeeklyReport(input(), WEEK);
+    expect(r.weekStart).toBe(WEEK);
+    expect(r.weekEnd).toBe('2026-11-15');
+    expect(r.sleep.avgMin).toBeNull();
+    expect(r.sleep.bedtimeSpreadMin).toBeNull();
+    expect(r.focus.avgFocusRating).toBeNull();
+    expect(r.wellbeing.avgMood).toBeNull();
+    expect(r.wellbeing.avgStress).toBeNull();
+    expect(r.wellbeing.avgEnergy).toBeNull();
+    expect(r.wellbeing.avgConcentration).toBeNull();
+    expect(r.nutrition.avgWater).toBeNull();
+    expect(r.sleep.nightsLogged).toBe(0);
+    expect(r.focus.totalMin).toBe(0);
+    expect(r.focus.methodsUsed).toEqual([]);
+    expect(r.vsPreviousWeek).toEqual({}); // nothing comparable, nothing invented
+    expect(r.highlights.length).toBeGreaterThanOrEqual(1);
+    expect(r.reflectionPrompts.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('returns null bedtime spread for a single night', () => {
+    const r = buildWeeklyReport(input({ sleep: [sleepLog(w(0), 480)] }), WEEK);
+    expect(r.sleep.nightsLogged).toBe(1);
+    expect(r.sleep.bedtimeSpreadMin).toBeNull();
+  });
+});
+
+describe('buildWeeklyReport — computation', () => {
+  it('computes sleep averages and below-target counts against the user target', () => {
+    const r = buildWeeklyReport(input({ sleep: [sleepLog(w(0), 420), sleepLog(w(1), 480), sleepLog(w(2), 540)] }), WEEK);
+    expect(r.sleep.avgMin).toBe(480);
+    expect(r.sleep.nightsLogged).toBe(3);
+    expect(r.sleep.nightsBelowTarget).toBe(1); // 420 < 480; 480 is not below
+  });
+
+  it('handles midnight wrap in bedtime spread (23:30 vs 00:30 ≈ 30 min)', () => {
+    const r = buildWeeklyReport(input({
+      sleep: [sleepLog(w(1), 480, `${w(0)}T23:30:00`), sleepLog(w(2), 420, `${w(2)}T00:30:00`)],
+    }), WEEK);
+    expect(r.sleep.bedtimeSpreadMin).toBeCloseTo(30, 0);
+  });
+
+  it('includes window edges and excludes the day after weekEnd', () => {
+    const r = buildWeeklyReport(input({
+      sleep: [sleepLog(w(-1), 300), sleepLog(w(0), 420), sleepLog(w(6), 480), sleepLog(w(7), 500)],
+    }), WEEK);
+    expect(r.sleep.nightsLogged).toBe(2);
+    expect(r.sleep.avgMin).toBe(450);
+    expect(r.vsPreviousWeek.sleepAvgMin).toEqual({ delta: 150, direction: 'up' }); // prev week: 300
+  });
+
+  it('dedupes and sorts methods, counts distinct movement days, and uses last nutrition log per day', () => {
+    const r = buildWeeklyReport(input({
+      focus: [focusLog(w(0), { method: 'spaced_repetition' }), focusLog(w(1), { method: 'active_recall' }), focusLog(w(2), { method: 'active_recall' })],
+      movement: [moveLog(w(0)), moveLog(w(0), { durationMin: 20 }), moveLog(w(1))],
+      nutrition: [nutriLog(w(0), { regularMeals: false, waterGlasses: 4 }), nutriLog(w(0), { regularMeals: true, waterGlasses: 8 }), nutriLog(w(1), { regularMeals: false, waterGlasses: 6 })],
+    }), WEEK);
+    expect(r.focus.methodsUsed).toEqual(['active_recall', 'spaced_repetition']);
+    expect(r.movement.daysActive).toBe(2);
+    expect(r.movement.totalMin).toBe(80);
+    expect(r.nutrition.daysLogged).toBe(2);
+    expect(r.nutrition.regularMealDays).toBe(1);
+    expect(r.nutrition.avgWater).toBe(7);
+  });
+});
+
+describe('buildWeeklyReport — vsPreviousWeek tolerances', () => {
+  it('marks clear changes up, small changes flat, and omits metrics without two-sided data', () => {
+    const current = [0, 1, 2, 3, 4].map((k) => checkin(w(k), { mood: 4, concentration: k === 4 ? 4 : 3 }));
+    const previous = [0, 1, 2, 3, 4].map((k) => checkin(w(k - 7)));
+    const r = buildWeeklyReport(input({ checkins: [...current, ...previous] }), WEEK);
+    expect(r.vsPreviousWeek.avgMood).toEqual({ delta: 1, direction: 'up' });
+    expect(r.vsPreviousWeek.avgConcentration).toEqual({ delta: 0.2, direction: 'flat' }); // 3.2 vs 3, tolerance 0.3
+    expect(r.vsPreviousWeek.avgStress).toEqual({ delta: 0, direction: 'flat' });
+    expect(r.vsPreviousWeek.sleepAvgMin).toBeUndefined(); // no sleep either week
+  });
+
+  it('treats focus totals within 30 min as flat and larger gaps as up', () => {
+    const mk = (cur: number, prev: number) => buildWeeklyReport(input({
+      focus: [focusLog(w(0), { durationMin: cur }), focusLog(w(-7), { durationMin: prev })],
+    }), WEEK);
+    expect(mk(50, 40).vsPreviousWeek.focusTotalMin).toEqual({ delta: 20, direction: 'flat' });
+    expect(mk(60, 20).vsPreviousWeek.focusTotalMin).toEqual({ delta: 40, direction: 'up' });
+  });
+});
+
+describe('buildWeeklyReport — copy safety & purity', () => {
+  const BANNED = [/\bscore/i, /\bbrain health\b/i, /\bgrew\b/i, /\bstrengthen/i, /\bfail/i, /\bsham(e|ing)\b/i, /\bguilt/i, /\blazy\b/i, /\bbad\b/i, /\bshould\b/i, /\bboost/i, /\bcure[ds]?\b/i];
+
+  it('keeps highlights and prompts warm and factual on populated and empty weeks', () => {
+    const populated = buildWeeklyReport(input({
+      sleep: [sleepLog(w(0), 480), sleepLog(w(1), 500)],
+      focus: [focusLog(w(0), { focusRating: 5 }), focusLog(w(1), { focusRating: 2 })],
+      movement: [moveLog(w(0)), moveLog(w(1)), moveLog(w(2)), moveLog(w(3))],
+      checkins: [0, 1, 2, 3, 4].map((k) => checkin(w(k))),
+    }), WEEK);
+    const empty = buildWeeklyReport(input(), WEEK);
+    for (const text of [...populated.highlights, ...populated.reflectionPrompts, ...empty.highlights, ...empty.reflectionPrompts]) {
+      for (const pattern of BANNED) expect(text).not.toMatch(pattern);
+    }
+    expect(populated.highlights.join(' ')).toMatch(/\d/); // factual numbers present
+    expect(populated.reflectionPrompts).toContain('What made your best-focus day different?');
+    expect(populated.reflectionPrompts.every((p) => p.endsWith('?'))).toBe(true);
+  });
+
+  it('is deterministic and never mutates input (deep-frozen works)', () => {
+    const data = input({ sleep: [sleepLog(w(0), 450), sleepLog(w(1), 510)], checkins: [checkin(w(0))] });
+    const a = buildWeeklyReport(data, WEEK);
+    expect(buildWeeklyReport(data, WEEK)).toEqual(a);
+    expect(buildWeeklyReport(deepFreeze(data), WEEK)).toEqual(a);
+  });
+});
+```
+
+// FILE: src/lib/insights/experiments.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import type { DailyCheckin, Experiment, FocusSession, InsightInput, ISODate, Rating } from '@/types/domain';
+import { analyzeExperiment } from './experiments';
+
+let seq = 0;
+const base = () => ({ id: `t${++seq}`, createdAt: '2026-11-01T08:00:00', updatedAt: '2026-11-01T08:00:00' });
+const settings = () => ({ ...base(), sleepTargetMin: 480, focusDefaultMin: 25, breakDefaultMin: 5, onboarded: true, schemaVersion: 1 });
+const checkin = (date: ISODate, over: Partial<DailyCheckin> = {}): DailyCheckin => ({
+  ...base(), date, mood: 3, stress: 3, energy: 3, concentration: 3, motivation: 3, ...over,
+});
+const focusLog = (date: ISODate, focusRating: Rating, hour = '09'): FocusSession => ({
+  ...base(), date, startedAt: `${date}T${hour}:00:00`, durationMin: 25, plannedMin: 25, subject: 'test',
+  method: 'deep_reading', focusRating, difficulty: 3, distractions: 0,
+});
+const experiment = (over: Partial<Experiment> = {}): Experiment => ({
+  ...base(), title: 'Test', hypothesis: 'h', changeDescription: 'c', metric: 'concentration',
+  baselineStart: '2026-11-01', baselineEnd: '2026-11-07', interventionStart: '2026-11-08', interventionEnd: '2026-11-14',
+  status: 'complete', ...over,
+});
+const input = (over: Partial<InsightInput> = {}): InsightInput => ({
+  settings: settings(), sleep: [], checkins: [], focus: [], movement: [], nutrition: [], habits: [], habitLogs: [], ...over,
+});
+const days = (start: number, count: number): ISODate[] =>
+  Array.from({ length: count }, (_, i) => `2026-11-${String(start + i).padStart(2, '0')}`);
+const REQUIRED_CAVEATS = [/causation/i, /self-reported/i, /other things changed/i];
+
+describe('analyzeExperiment — insufficient data', () => {
+  it('returns nulls and unknown direction for empty input, with all required caveats', () => {
+    const r = analyzeExperiment(experiment(), input());
+    expect(r.baseline).toEqual({ n: 0, mean: null });
+    expect(r.intervention).toEqual({ n: 0, mean: null });
+    expect(r.difference).toBeNull();
+    expect(r.sufficientData).toBe(false);
+    expect(r.direction).toBe('unknown');
+    for (const pattern of REQUIRED_CAVEATS) {
+      expect(r.caveats.some((c) => pattern.test(c))).toBe(true);
+    }
+  });
+
+  it('stays unknown with 4 baseline days even when the difference looks large', () => {
+    const checkins = [
+      ...days(1, 4).map((d) => checkin(d, { concentration: 2 })),
+      ...days(8, 6).map((d) => checkin(d, { concentration: 4 })),
+    ];
+    const r = analyzeExperiment(experiment(), input({ checkins }));
+    expect(r.sufficientData).toBe(false);
+    expect(r.direction).toBe('unknown');
+    expect(r.summary).toMatch(/provisional/);
+    expect(r.caveats.length).toBe(4); // extra small-sample caveat
+    expect(r.effectSizeNote).toBeUndefined();
+  });
+
+  it('boundary: exactly 5 days in each period is sufficient; 5 and 4 is not', () => {
+    const five = days(1, 5).map((d) => checkin(d));
+    const fiveI = days(8, 5).map((d) => checkin(d));
+    expect(analyzeExperiment(experiment(), input({ checkins: [...five, ...fiveI] })).sufficientData).toBe(true);
+    const fourI = days(8, 4).map((d) => checkin(d));
+    expect(analyzeExperiment(experiment(), input({ checkins: [...five, ...fourI] })).sufficientData).toBe(false);
+  });
+});
+
+describe('analyzeExperiment — directions and wording', () => {
+  it('reports a higher concentration rating neutrally', () => {
+    const checkins = [...days(1, 5).map((d) => checkin(d, { concentration: 2 })), ...days(8, 5).map((d) => checkin(d, { concentration: 4 }))];
+    const r = analyzeExperiment(experiment(), input({ checkins }));
+    expect(r.difference).toBe(2);
+    expect(r.direction).toBe('higher');
+    expect(r.summary).toContain('higher concentration rating');
+    expect(r.effectSizeNote).toBeDefined();
+    expect(r.effectSizeNote).toContain('not a verdict');
+  });
+
+  it('describes lower stress as a lower stress rating — never good or bad', () => {
+    const checkins = [...days(1, 5).map((d) => checkin(d, { stress: 4 })), ...days(8, 5).map((d) => checkin(d, { stress: 2 }))];
+    const r = analyzeExperiment(experiment({ metric: 'stress' }), input({ checkins }));
+    expect(r.direction).toBe('lower');
+    expect(r.summary).toContain('lower stress rating');
+    expect(r.summary).not.toMatch(/\bgood\b|\bbad\b|\bimprove|\bworse|\bbetter\b/i);
+  });
+
+  it('calls differences within ±0.3 similar', () => {
+    const checkins = [...days(1, 5).map((d) => checkin(d)), ...days(8, 5).map((d, i) => checkin(d, { concentration: i === 4 ? 4 : 3 }))];
+    const r = analyzeExperiment(experiment(), input({ checkins }));
+    expect(r.difference).toBe(0.2);
+    expect(r.direction).toBe('similar');
+  });
+
+  it('always includes the three required caveats, on every path', () => {
+    const results = [
+      analyzeExperiment(experiment(), input()),
+      analyzeExperiment(experiment(), input({ checkins: days(1, 2).map((d) => checkin(d)) })),
+      analyzeExperiment(experiment(), input({ checkins: [...days(1, 5), ...days(8, 5)].map((d) => checkin(d)) })),
+    ];
+    for (const r of results) {
+      for (const pattern of REQUIRED_CAVEATS) expect(r.caveats.some((c) => pattern.test(c))).toBe(true);
+    }
+  });
+});
+
+describe('analyzeExperiment — series construction', () => {
+  it('averages focus sessions per day and counts days, not sessions', () => {
+    const focus = [
+      ...days(1, 5).flatMap((d) => [focusLog(d, 2), focusLog(d, 4, '16')]), // daily mean 3
+      ...days(8, 5).map((d) => focusLog(d, 5)),
+    ];
+    const r = analyzeExperiment(experiment({ metric: 'focusRating' }), input({ focus }));
+    expect(r.baseline.n).toBe(5); // 10 sessions → 5 days
+    expect(r.baseline.mean).toBe(3);
+    expect(r.difference).toBe(2);
+    expect(r.direction).toBe('higher');
+  });
+
+  it('includes range edge dates and excludes days outside the ranges', () => {
+    const checkins = [
+      checkin('2026-10-31'), checkin('2026-11-01'), checkin('2026-11-07'), // baseline: 2 inside
+      checkin('2026-11-08'), checkin('2026-11-14'), checkin('2026-11-15'), // intervention: 2 inside
+    ];
+    const r = analyzeExperiment(experiment(), input({ checkins }));
+    expect(r.baseline.n).toBe(2);
+    expect(r.intervention.n).toBe(2);
+  });
+
+  it('never mutates input (deep-frozen works)', () => {
+    const data = input({ checkins: [...days(1, 5), ...days(8, 5)].map((d) => checkin(d, { concentration: 4 })) });
+    const expected = analyzeExperiment(experiment(), data);
+    const freeze = (v: unknown): void => {
+      if (v !== null && typeof v === 'object') {
+        Object.freeze(v);
+        for (const x of Object.values(v as Record<string, unknown>)) freeze(x);
+      }
+    };
+    freeze(data);
+    expect(analyzeExperiment(experiment(), data)).toEqual(expected);
+  });
+});
+```
+
+// FILE: src/lib/insights/demo.test.ts
+```typescript
+import { describe, expect, it } from 'vitest';
+import { format, getDay, parseISO, subDays } from 'date-fns';
+import type { Rating } from '@/types/domain';
+import { mean, pearson } from './stats';
+import { generateDemoData } from './demo';
+
+const TODAY = parseISO('2026-11-16'); // local midnight, timezone-stable
+const TODAY_ISO = '2026-11-16';
+const isRating = (x: number): boolean => Number.isInteger(x) && x >= 1 && x <= 5;
+
+describe('generateDemoData — determinism', () => {
+  it('produces identical output for the same seed and day', () => {
+    expect(generateDemoData(30, 42, TODAY)).toEqual(generateDemoData(30, 42, TODAY));
+  });
+
+  it('differs for a different seed', () => {
+    expect(JSON.stringify(generateDemoData(30, 42, TODAY))).not.toBe(JSON.stringify(generateDemoData(30, 7, TODAY)));
+  });
+
+  it('ignores time-of-day of the today parameter', () => {
+    expect(generateDemoData(20, 42, new Date(2026, 10, 16, 9, 0))).toEqual(generateDemoData(20, 42, new Date(2026, 10, 16, 23, 59)));
+  });
+
+  it('uses stable demo- ids and dates ending today', () => {
+    const data = generateDemoData(90, 42, TODAY);
+    const all = [data.settings, ...data.sleep, ...data.checkins, ...data.focus, ...data.movement, ...data.nutrition, ...data.habits, ...data.habitLogs];
+    for (const entity of all) expect(entity.id.startsWith('demo-')).toBe(true);
+    expect(data.sleep).toHaveLength(90);
+    const last = data.sleep[data.sleep.length - 1];
+    const first = data.sleep[0];
+    expect(last?.date).toBe(TODAY_ISO);
+    expect(first?.date).toBe(format(subDays(TODAY, 89), 'yyyy-MM-dd'));
+  });
+
+  it('returns empty logs (but settings and 4 habits) for zero days', () => {
+    const data = generateDemoData(0, 42, TODAY);
+    expect(data.sleep).toEqual([]);
+    expect(data.checkins).toEqual([]);
+    expect(data.focus).toEqual([]);
+    expect(data.habitLogs).toEqual([]);
+    expect(data.habits).toHaveLength(4);
+    expect(data.settings.sleepTargetMin).toBe(480);
+  });
+});
+
+describe('generateDemoData — realism', () => {
+  const d60 = generateDemoData(60, 42, TODAY);
+  const d90 = generateDemoData(90, 42, TODAY);
+
+  it('hits the target logging rates', () => {
+    const focusDays = new Set(d60.focus.map((s) => s.date)).size;
+    const movementDays = new Set(d60.movement.map((m) => m.date)).size;
+    expect(d60.checkins.length / 60).toBeGreaterThanOrEqual(0.75);
+    expect(d60.checkins.length / 60).toBeLessThanOrEqual(0.97);
+    expect(focusDays / 60).toBeGreaterThanOrEqual(0.55);
+    expect(focusDays / 60).toBeLessThanOrEqual(0.85);
+    expect(movementDays / 60).toBeGreaterThanOrEqual(0.4); // ~4 days/week
+    expect(movementDays / 60).toBeLessThanOrEqual(0.72);
+    expect(d60.nutrition.length / 60).toBeGreaterThanOrEqual(0.55);
+    expect(d60.nutrition.length / 60).toBeLessThanOrEqual(0.85);
+    expect(d60.habitLogs.length / (60 * 4)).toBeGreaterThanOrEqual(0.5);
+    expect(d60.habitLogs.length / (60 * 4)).toBeLessThanOrEqual(0.7);
+  });
+
+  it('correlates concentration with prior-night sleep at about r = 0.4', () => {
+    const sleepByDate = new Map(d90.sleep.map((s) => [s.date, s.durationMin]));
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const c of d90.checkins) {
+      const dur = sleepByDate.get(c.date);
+      if (dur !== undefined) {
+        xs.push(dur);
+        ys.push(c.concentration);
+      }
+    }
+    expect(xs.length).toBeGreaterThanOrEqual(50);
+    const r = pearson(xs, ys);
+    expect(r).not.toBeNull();
+    expect(r ?? 0).toBeGreaterThanOrEqual(0.2);
+    expect(r ?? 1).toBeLessThanOrEqual(0.6);
+  });
+
+  it('keeps sleep in a realistic range with a ~7.2h center, and all ratings valid', () => {
+    const durations = d90.sleep.map((s) => s.durationMin);
+    for (const m of durations) {
+      expect(m).toBeGreaterThanOrEqual(300);
+      expect(m).toBeLessThanOrEqual(600);
+    }
+    const avg = mean(durations) ?? 0;
+    expect(avg).toBeGreaterThanOrEqual(405);
+    expect(avg).toBeLessThanOrEqual(465);
+    const ratings: Rating[] = [
+      ...d90.checkins.flatMap((c) => [c.mood, c.stress, c.energy, c.concentration, c.motivation]),
+      ...d90.focus.flatMap((s) => [s.focusRating, s.difficulty]),
+      ...d90.sleep.flatMap((s) => [s.quality, s.rested]),
+      ...d90.movement.map((m) => m.effort),
+    ];
+    for (const r of ratings) expect(isRating(r)).toBe(true);
+  });
+
+  it('drifts bedtimes later on weekend wake-up days', () => {
+    const eveningMin = (bedtime: string): number => {
+      const d = parseISO(bedtime);
+      const m = d.getHours() * 60 + d.getMinutes();
+      return m < 720 ? m + 1440 : m; // continuous evening scale across midnight
+    };
+    const weekend: number[] = [];
+    const weekday: number[] = [];
+    for (const s of d90.sleep) {
+      const dow = getDay(parseISO(s.date));
+      (dow === 0 || dow === 6 ? weekend : weekday).push(eveningMin(s.bedtime));
+    }
+    expect(mean(weekend) ?? 0).toBeGreaterThan(mean(weekday) ?? 0);
+  });
+
+  it('varies learning methods across all six options', () => {
+    expect(new Set(d90.focus.map((s) => s.method)).size).toBe(6);
+  });
+});
+```
+
+**Notes**
+
+- Run: `pnpm vitest run src/lib/insights` — 27 new test cases across the three files; all domain imports are type-only, so no alias config is needed at test runtime.
+- Only the assumed stats exports are used (`mean`, `stdDev`, `pearson`, `groupByDate`, `round1`, `clamp`); the bedtime circular SD is implemented locally in `weekly.ts` so it doesn't depend on unlisted exports.
+- Design decisions documented in code: "flat" tolerances (15 min sleep, 30 min totals, 0.3 ratings, 1 glass water, 0 days); comparison keys omitted when either week lacks data; experiment direction stays `unknown` below 5 days/period; demo `rand()` call order is fixed and timestamps derive from the data's own dates, never the clock.
+- Measured demo characteristics (seed 42): r ≈ 0.43–0.50, check-ins 91%, focus days 70%, movement 55%, nutrition 72%, habits 60%, weekend bedtime drift ≈ +40 min — test bands are set around these verified values.
