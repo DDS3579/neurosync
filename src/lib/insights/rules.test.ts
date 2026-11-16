@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { format, parseISO, subDays, subMinutes } from 'date-fns';
 import type {
+  ActivityLog,
   DailyCheckin,
   FocusSession,
   Insight,
   InsightInput,
   ISODate,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   Rating,
@@ -98,6 +100,25 @@ const makeNutrition = (date: ISODate, over: Partial<NutritionLog> = {}): Nutriti
   varied: true,
   waterGlasses: 6,
   ...over,
+});
+
+const makeActivity = (
+  date: ISODate,
+  type: ActivityLog['type'],
+  durationMin = 30,
+): ActivityLog => ({
+  ...base(),
+  date,
+  type,
+  durationMin,
+  enjoyment: 4,
+});
+
+const makeMindfulness = (date: ISODate, durationMin = 5): MindfulnessSession => ({
+  ...base(),
+  date,
+  type: 'box_breathing',
+  durationMin,
 });
 
 const emptyInput = (over: Partial<InsightInput> = {}): InsightInput => ({
@@ -423,6 +444,90 @@ describe('checkin_consistency', () => {
   });
 });
 
+describe('activity_variety', () => {
+  it('fires as a milestone when 3+ distinct activity types are logged in the last 7 days', () => {
+    const input = emptyInput({
+      activities: [
+        makeActivity(d(5), 'social', 45),
+        makeActivity(d(3), 'creative', 30),
+        makeActivity(d(1), 'novelty', 20),
+      ],
+    });
+    const insight = runRule('activity_variety', input);
+    expect(insight?.kind).toBe('milestone');
+    expect(insight?.title).toContain('3 kinds of activities');
+  });
+
+  it('returns null when fewer than 3 distinct types are logged', () => {
+    const input = emptyInput({
+      activities: [
+        makeActivity(d(5), 'social', 30),
+        makeActivity(d(3), 'social', 40),
+        makeActivity(d(1), 'music', 25),
+      ],
+    });
+    expect(runRule('activity_variety', input)).toBeNull();
+  });
+});
+
+describe('study_without_recovery', () => {
+  it('fires as a warm reflection when 4+ study sessions (>=120m) have no social/recovery logs', () => {
+    const input = emptyInput({
+      focus: [4, 3, 2, 1].map((k) => makeFocus(d(k), { durationMin: 40 })),
+    });
+    const insight = runRule('study_without_recovery', input);
+    expect(insight?.kind).toBe('reflection');
+  });
+
+  it('does not fire when social activity or mindfulness is logged', () => {
+    const withSocial = emptyInput({
+      focus: [4, 3, 2, 1].map((k) => makeFocus(d(k), { durationMin: 40 })),
+      activities: [makeActivity(d(1), 'social', 30)],
+    });
+    expect(runRule('study_without_recovery', withSocial)).toBeNull();
+
+    const withMindful = emptyInput({
+      focus: [4, 3, 2, 1].map((k) => makeFocus(d(k), { durationMin: 40 })),
+      mindfulness: [makeMindfulness(d(1), 5)],
+    });
+    expect(runRule('study_without_recovery', withMindful)).toBeNull();
+  });
+});
+
+describe('reading_without_retrieval', () => {
+  it('fires when 3+ deep_reading sessions occur over 14 days with no retrieval practice', () => {
+    const input = emptyInput({
+      focus: [10, 6, 2].map((k) =>
+        makeFocus(d(k), { method: 'deep_reading', durationMin: 40, practicedRetrieval: false }),
+      ),
+    });
+    const insight = runRule('reading_without_retrieval', input);
+    expect(insight?.kind).toBe('reflection');
+    expect(insight?.education).toMatch(/retrieval practice/i);
+  });
+
+  it('does not fire when active_recall or practicedRetrieval is logged', () => {
+    const withToggle = emptyInput({
+      focus: [
+        makeFocus(d(10), { method: 'deep_reading', practicedRetrieval: false }),
+        makeFocus(d(6), { method: 'deep_reading', practicedRetrieval: false }),
+        makeFocus(d(2), { method: 'deep_reading', practicedRetrieval: true }),
+      ],
+    });
+    expect(runRule('reading_without_retrieval', withToggle)).toBeNull();
+
+    const withMethod = emptyInput({
+      focus: [
+        makeFocus(d(10), { method: 'deep_reading' }),
+        makeFocus(d(6), { method: 'deep_reading' }),
+        makeFocus(d(4), { method: 'deep_reading' }),
+        makeFocus(d(2), { method: 'active_recall' }),
+      ],
+    });
+    expect(runRule('reading_without_retrieval', withMethod)).toBeNull();
+  });
+});
+
 // ---------- computeInsights orchestration ----------
 
 describe('computeInsights', () => {
@@ -494,8 +599,32 @@ describe('insight copy safety', () => {
     'prefrontal', 'parietal', 'temporal', 'occipital', 'cerebellum', 'hippocampus', 'amygdala',
   ]);
 
-  // fullInput fires all 9 rules; negativePairingInput adds the inverse-correlation wording.
-  const allInsights: Insight[] = [fullInput(), negativePairingInput()].flatMap((input) =>
+  const activityVarietyInput = emptyInput({
+    activities: [
+      makeActivity(d(4), 'social', 30),
+      makeActivity(d(2), 'music', 25),
+      makeActivity(d(0), 'novelty', 20),
+    ],
+  });
+
+  const studyHeavyInput = emptyInput({
+    focus: [4, 3, 2, 1].map((k) => makeFocus(d(k), { durationMin: 45 })),
+  });
+
+  const readingOnlyInput = emptyInput({
+    focus: [8, 5, 2].map((k) =>
+      makeFocus(d(k), { method: 'deep_reading', durationMin: 30, practicedRetrieval: false }),
+    ),
+  });
+
+  // fullInput fires all 9 base rules; negativePairingInput + v0.2 fixtures cover the rest.
+  const allInsights: Insight[] = [
+    fullInput(),
+    negativePairingInput(),
+    activityVarietyInput,
+    studyHeavyInput,
+    readingOnlyInput,
+  ].flatMap((input) =>
     RULES.map((r) => r.run(input, TODAY)).filter((i): i is Insight => i !== null),
   );
 
