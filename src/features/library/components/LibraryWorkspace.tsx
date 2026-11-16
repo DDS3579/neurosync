@@ -128,7 +128,8 @@ export function LibraryWorkspace({ entries }: LibraryWorkspaceProps) {
             return (
               <Card
                 key={entry.id}
-                className="flex flex-col gap-0 rounded-card border border-border bg-surface py-0 shadow-none"
+                id={entry.id}
+                className="flex scroll-mt-20 flex-col gap-0 rounded-card border border-border bg-surface py-0 shadow-none"
               >
                 <div className="space-y-3 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
