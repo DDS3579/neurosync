@@ -8,11 +8,13 @@ import {
   ALL_TIME,
   activityRepository,
   checkinRepository,
+  dayPlanRepository,
   experimentRepository,
   focusRepository,
   gratitudeRepository,
   habitLogRepository,
   habitRepository,
+  insightFeedbackRepository,
   journalRepository,
   mindfulnessRepository,
   movementRepository,
@@ -25,11 +27,13 @@ import {
 import type {
   ActivityLog,
   DailyCheckin,
+  DayPlan,
   Experiment,
   FocusSession,
   GratitudeEntry,
   Habit,
   HabitLog,
+  InsightFeedback,
   JournalEntry,
   MindfulnessSession,
   MovementLog,
@@ -108,6 +112,14 @@ export function useActivityLogs(range: DateRange = ALL_TIME): LiveResult<Activit
 
 export function useReviewItems(): LiveResult<ReviewItem> {
   return useRows(() => reviewRepository.listAll(), ["reviewItems"]);
+}
+
+export function useDayPlans(range: DateRange = ALL_TIME): LiveResult<DayPlan> {
+  return useRows(() => dayPlanRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useInsightFeedback(): LiveResult<InsightFeedback> {
+  return useRows(() => insightFeedbackRepository.listAll(), ["insightFeedback"]);
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {
