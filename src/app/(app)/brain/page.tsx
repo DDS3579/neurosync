@@ -8,6 +8,7 @@ import {
   BrainExplorerWorkspace,
 } from "@/features/brain/components/BrainExplorerWorkspace";
 import {
+  useActivityLogs,
   useFocusSessions,
   useHabitLogs,
   useHabits,
@@ -23,6 +24,7 @@ export default function BrainPage() {
   const habits = useHabits();
   const habitLogs = useHabitLogs();
   const mindfulness = useMindfulnessSessions();
+  const activities = useActivityLogs();
 
   const isLoading =
     focus.isLoading ||
@@ -30,7 +32,8 @@ export default function BrainPage() {
     sleep.isLoading ||
     habits.isLoading ||
     habitLogs.isLoading ||
-    mindfulness.isLoading;
+    mindfulness.isLoading ||
+    activities.isLoading;
 
   const derived = useMemo(() => {
     if (
@@ -40,7 +43,8 @@ export default function BrainPage() {
       !sleep.data ||
       !habits.data ||
       !habitLogs.data ||
-      !mindfulness.data
+      !mindfulness.data ||
+      !activities.data
     ) {
       return null;
     }
@@ -52,6 +56,7 @@ export default function BrainPage() {
       habits: habits.data,
       habitLogs: habitLogs.data,
       mindfulness: mindfulness.data,
+      activities: activities.data,
     });
   }, [
     isLoading,
@@ -61,6 +66,7 @@ export default function BrainPage() {
     habits.data,
     habitLogs.data,
     mindfulness.data,
+    activities.data,
   ]);
 
   if (!derived) {
