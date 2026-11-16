@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { SCHEMA_VERSION, getDb } from "@/lib/db/dexie";
 import type {
+  ActivityLog,
   Base,
   DailyCheckin,
   Experiment,
@@ -14,6 +15,7 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  ReviewItem,
   SleepLog,
   UserSettings,
 } from "@/types/domain";
@@ -91,6 +93,8 @@ const focusSchema = z.object({
   difficulty: rating,
   distractions: z.number().int().min(0),
   notes: z.string().optional(),
+  practicedRetrieval: z.boolean().optional(),
+  reviewedPrior: z.boolean().optional(),
 });
 
 const movementSchema = z.object({
@@ -158,6 +162,33 @@ const gratitudeEntrySchema = z.object({
   items: z.array(z.string().trim().min(1)).min(1).max(3),
 });
 
+const activityLogSchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  type: z.enum([
+    "social",
+    "creative",
+    "music",
+    "language_learning",
+    "puzzles_games",
+    "new_hobby",
+    "novelty",
+  ]),
+  durationMin: z.number().positive(),
+  enjoyment: rating,
+  note: z.string().optional(),
+});
+
+const reviewItemSchema = z.object({
+  ...baseFields,
+  topic: z.string().trim().min(1),
+  intervalStep: z.number().int().min(0).max(4),
+  nextReviewDate: isoDate,
+  lastReviewedDate: isoDate.optional(),
+  reviewCount: z.number().int().min(0),
+  notes: z.string().optional(),
+});
+
 const v1TablesShape = {
   settings: z.array(settingsSchema),
   sleepLogs: z.array(sleepSchema),
@@ -170,20 +201,42 @@ const v1TablesShape = {
   experiments: z.array(experimentSchema),
 };
 
+const v2TablesShape = {
+  ...v1TablesShape,
+  mindfulnessSessions: z.array(mindfulnessSchema),
+  journalEntries: z.array(journalEntrySchema),
+  gratitudeEntries: z.array(gratitudeEntrySchema),
+};
+
+const v3TablesShape = {
+  ...v2TablesShape,
+  activityLogs: z.array(activityLogSchema),
+};
+
 const v1BackupFileSchema = z.object({
   schemaVersion: z.literal(1),
   exportedAt: isoDateTime,
   tables: z.object(v1TablesShape),
 });
 
+const v2BackupFileSchema = z.object({
+  schemaVersion: z.literal(2),
+  exportedAt: isoDateTime,
+  tables: z.object(v2TablesShape),
+});
+
+const v3BackupFileSchema = z.object({
+  schemaVersion: z.literal(3),
+  exportedAt: isoDateTime,
+  tables: z.object(v3TablesShape),
+});
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
   tables: z.object({
-    ...v1TablesShape,
-    mindfulnessSessions: z.array(mindfulnessSchema),
-    journalEntries: z.array(journalEntrySchema),
-    gratitudeEntries: z.array(gratitudeEntrySchema),
+    ...v3TablesShape,
+    reviewItems: z.array(reviewItemSchema),
   }),
 });
 
@@ -200,6 +253,8 @@ export interface BackupTables {
   mindfulnessSessions: MindfulnessSession[];
   journalEntries: JournalEntry[];
   gratitudeEntries: GratitudeEntry[];
+  activityLogs: ActivityLog[];
+  reviewItems: ReviewItem[];
 }
 
 export interface BackupFile {
@@ -236,6 +291,8 @@ const TABLE_NAMES = [
   "mindfulnessSessions",
   "journalEntries",
   "gratitudeEntries",
+  "activityLogs",
+  "reviewItems",
 ] as const satisfies readonly (keyof BackupTables)[];
 
 /** Reads every table into one plain object. */
@@ -255,6 +312,8 @@ export async function buildBackup(): Promise<BackupFile> {
     mindfulnessSessions: await db.mindfulnessSessions.toArray(),
     journalEntries: await db.journalEntries.toArray(),
     gratitudeEntries: await db.gratitudeEntries.toArray(),
+    activityLogs: await db.activityLogs.toArray(),
+    reviewItems: await db.reviewItems.toArray(),
   };
 
   return {
@@ -268,6 +327,14 @@ export async function buildBackup(): Promise<BackupFile> {
 export async function exportAll(): Promise<Blob> {
   const backup = await buildBackup();
   return new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+}
+
+function normalizeFocusSessions(rows: FocusSession[]): FocusSession[] {
+  return rows.map((row) => ({
+    ...row,
+    practicedRetrieval: row.practicedRetrieval ?? row.method === "active_recall",
+    reviewedPrior: row.reviewedPrior ?? row.method === "spaced_repetition",
+  }));
 }
 
 function parseBackup(text: string): BackupFile {
@@ -312,9 +379,63 @@ function parseBackup(text: string): BackupFile {
           ...row,
           schemaVersion: SCHEMA_VERSION,
         })),
+        focusSessions: normalizeFocusSessions(parsedV1.data.tables.focusSessions),
         mindfulnessSessions: [],
         journalEntries: [],
         gratitudeEntries: [],
+        activityLogs: [],
+        reviewItems: [],
+      },
+    };
+  }
+
+  if (version === 2) {
+    const parsedV2 = v2BackupFileSchema.safeParse(raw);
+    if (!parsedV2.success) {
+      const firstIssue = parsedV2.error.issues[0];
+      const location = firstIssue?.path.join(".") || "unknown field";
+      throw new BackupError(
+        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
+      );
+    }
+
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: parsedV2.data.exportedAt,
+      tables: {
+        ...parsedV2.data.tables,
+        settings: parsedV2.data.tables.settings.map((row) => ({
+          ...row,
+          schemaVersion: SCHEMA_VERSION,
+        })),
+        focusSessions: normalizeFocusSessions(parsedV2.data.tables.focusSessions),
+        activityLogs: [],
+        reviewItems: [],
+      },
+    };
+  }
+
+  if (version === 3) {
+    const parsedV3 = v3BackupFileSchema.safeParse(raw);
+    if (!parsedV3.success) {
+      const firstIssue = parsedV3.error.issues[0];
+      const location = firstIssue?.path.join(".") || "unknown field";
+      throw new BackupError(
+        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
+      );
+    }
+
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: parsedV3.data.exportedAt,
+      tables: {
+        ...parsedV3.data.tables,
+        settings: parsedV3.data.tables.settings.map((row) => ({
+          ...row,
+          schemaVersion: SCHEMA_VERSION,
+        })),
+        focusSessions: normalizeFocusSessions(parsedV3.data.tables.focusSessions),
+        reviewItems: [],
       },
     };
   }
