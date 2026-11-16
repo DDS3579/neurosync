@@ -6,6 +6,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { SETTINGS_ID, isIndexedDbAvailable } from "@/lib/db/dexie";
 import {
   ALL_TIME,
+  activityRepository,
   checkinRepository,
   experimentRepository,
   focusRepository,
@@ -16,11 +17,13 @@ import {
   mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  reviewRepository,
   settingsRepository,
   sleepRepository,
   type DateRange,
 } from "@/lib/db/repositories";
 import type {
+  ActivityLog,
   DailyCheckin,
   Experiment,
   FocusSession,
@@ -31,6 +34,7 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  ReviewItem,
   SleepLog,
   UserSettings,
 } from "@/types/domain";
@@ -96,6 +100,14 @@ export function useJournalEntries(range: DateRange = ALL_TIME): LiveResult<Journ
 
 export function useGratitudeEntries(range: DateRange = ALL_TIME): LiveResult<GratitudeEntry> {
   return useRows(() => gratitudeRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useActivityLogs(range: DateRange = ALL_TIME): LiveResult<ActivityLog> {
+  return useRows(() => activityRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useReviewItems(): LiveResult<ReviewItem> {
+  return useRows(() => reviewRepository.listAll(), ["reviewItems"]);
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {
