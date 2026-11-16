@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { BackupError, buildBackup, importAll } from "@/lib/db/backup";
 import { getDb } from "@/lib/db/dexie";
 import {
+  activityRepository,
   checkinRepository,
   focusRepository,
   gratitudeRepository,
   journalRepository,
   mindfulnessRepository,
+  reviewRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
 
@@ -56,6 +58,19 @@ describe("backup import validation", () => {
     await gratitudeRepository.create({
       date: "2026-11-15",
       items: ["Afternoon sun", "Good conversation"],
+    });
+    await activityRepository.create({
+      date: "2026-11-15",
+      type: "novelty",
+      durationMin: 35,
+      enjoyment: 5,
+      note: "Tried a new walking trail",
+    });
+    await reviewRepository.create({
+      topic: "Synaptic pruning overview",
+      intervalStep: 0,
+      nextReviewDate: "2026-11-16",
+      reviewCount: 0,
     });
   });
 
@@ -110,9 +125,11 @@ describe("backup import validation", () => {
     expect(await getDb().mindfulnessSessions.count()).toBe(0);
     expect(await getDb().journalEntries.count()).toBe(0);
     expect(await getDb().gratitudeEntries.count()).toBe(0);
+    expect(await getDb().activityLogs.count()).toBe(0);
+    expect(await getDb().reviewItems.count()).toBe(0);
   });
 
-  it("rejects invalid mindfulness, journal, or gratitude rows without wiping existing data", async () => {
+  it("rejects invalid mindfulness, journal, gratitude, activity, or review rows without wiping existing data", async () => {
     const snapshot = await buildBackup();
 
     const badGratitude = structuredClone(snapshot);
@@ -145,8 +162,30 @@ describe("backup import validation", () => {
       BackupError,
     );
 
+    const badActivity = structuredClone(snapshot);
+    badActivity.tables.activityLogs.push({
+      ...badActivity.tables.activityLogs[0]!,
+      id: "bad-enjoyment",
+      enjoyment: 7 as 5,
+    });
+    await expect(importAll(JSON.stringify(badActivity), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badReview = structuredClone(snapshot);
+    badReview.tables.reviewItems.push({
+      ...badReview.tables.reviewItems[0]!,
+      id: "bad-step",
+      intervalStep: 99,
+    });
+    await expect(importAll(JSON.stringify(badReview), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
     expect(await getDb().mindfulnessSessions.count()).toBe(1);
     expect(await getDb().journalEntries.count()).toBe(1);
     expect(await getDb().gratitudeEntries.count()).toBe(1);
+    expect(await getDb().activityLogs.count()).toBe(1);
+    expect(await getDb().reviewItems.count()).toBe(1);
   });
 });
