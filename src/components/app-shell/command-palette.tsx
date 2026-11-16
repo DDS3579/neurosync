@@ -2,9 +2,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Timer, Wind } from "lucide-react";
+import { CalendarRange, Compass, Plus, Repeat, Timer, Wind } from "lucide-react";
 
 import { ALL_NAV_ITEMS } from "@/components/app-shell/nav-items";
+import { FOCUS_HASH_EVENT } from "@/features/focus/timerUtils";
 import { HABIT_HASH_EVENT } from "@/features/habits/habitUtils";
 import {
   Command,
@@ -70,6 +71,13 @@ export function CommandPalette({ open, onOpenChange, onQuickLog }: CommandPalett
                 </CommandItem>
               );
             })}
+            <CommandItem
+              value="your week weekly report export pdf png /insights/weekly"
+              onSelect={() => run(() => router.push("/insights/weekly"))}
+            >
+              <CalendarRange aria-hidden />
+              Your week report
+            </CommandItem>
           </CommandGroup>
 
           <CommandSeparator />
@@ -87,6 +95,23 @@ export function CommandPalette({ open, onOpenChange, onQuickLog }: CommandPalett
               Start focus session
             </CommandItem>
             <CommandItem
+              value="spaced repetition review queue due today /focus#review"
+              onSelect={() =>
+                run(() => {
+                  router.push("/focus#review");
+                  window.setTimeout(() => {
+                    window.dispatchEvent(new Event(FOCUS_HASH_EVENT));
+                  }, 0);
+                  window.requestAnimationFrame(() => {
+                    window.dispatchEvent(new Event(FOCUS_HASH_EVENT));
+                  });
+                })
+              }
+            >
+              <Repeat aria-hidden />
+              Review queue (spaced repetition)
+            </CommandItem>
+            <CommandItem
               value="mind breathing meditation journal gratitude /habits#mind"
               onSelect={() =>
                 run(() => {
@@ -102,6 +127,30 @@ export function CommandPalette({ open, onOpenChange, onQuickLog }: CommandPalett
             >
               <Wind aria-hidden />
               Mind &amp; breathing
+            </CommandItem>
+            <CommandItem
+              value="activities social creative music language puzzles hobby novelty /habits#activities"
+              onSelect={() =>
+                run(() => {
+                  router.push("/habits#activities");
+                  window.setTimeout(() => {
+                    window.dispatchEvent(new Event(HABIT_HASH_EVENT));
+                  }, 0);
+                  window.requestAnimationFrame(() => {
+                    window.dispatchEvent(new Event(HABIT_HASH_EVENT));
+                  });
+                })
+              }
+            >
+              <Compass aria-hidden />
+              Activities beyond study
+            </CommandItem>
+            <CommandItem
+              value="your week weekly report export pdf png /insights/weekly"
+              onSelect={() => run(() => router.push("/insights/weekly"))}
+            >
+              <CalendarRange aria-hidden />
+              Your week report
             </CommandItem>
           </CommandGroup>
         </CommandList>
