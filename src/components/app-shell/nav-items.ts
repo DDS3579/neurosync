@@ -59,9 +59,10 @@ export const MOBILE_NAV_ITEMS: NavItem[] = [
   { href: "/insights", label: "Insights", icon: Sparkles },
 ];
 
-const ROUTE_TITLES: Record<string, string> = Object.fromEntries(
-  ALL_NAV_ITEMS.map((item) => [item.href, item.label]),
-);
+const ROUTE_TITLES: Record<string, string> = {
+  ...Object.fromEntries(ALL_NAV_ITEMS.map((item) => [item.href, item.label])),
+  "/insights/weekly": "Your week",
+};
 
 export function routeTitle(pathname: string): string {
   const exact = ROUTE_TITLES[pathname];
