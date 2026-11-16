@@ -38,7 +38,7 @@ function NavRow({ item, active, index }: { item: NavItem; active: boolean; index
           className={cn(
             "h-9 rounded-l-none rounded-r-control border-l-2 border-transparent pl-2 text-body transition-colors duration-[180ms] ease-out",
             active
-              ? "border-violet text-violet hover:bg-transparent hover:text-violet"
+              ? "border-violet text-violet-text hover:bg-transparent hover:text-violet-text"
               : "text-muted-foreground hover:bg-transparent hover:text-foreground",
           )}
         >
