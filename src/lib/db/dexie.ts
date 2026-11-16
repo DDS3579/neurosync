@@ -4,11 +4,13 @@ import { DEFAULT_REMINDER_SETTINGS } from "@/features/reminders/reminderUtils";
 import type {
   ActivityLog,
   DailyCheckin,
+  DayPlan,
   Experiment,
   FocusSession,
   GratitudeEntry,
   Habit,
   HabitLog,
+  InsightFeedback,
   JournalEntry,
   MindfulnessSession,
   MovementLog,
@@ -16,6 +18,7 @@ import type {
   ReminderSettings,
   ReviewItem,
   SleepLog,
+  TextSizePref,
   UserSettings,
 } from "@/types/domain";
 
@@ -24,7 +27,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 8;
 
 export const DB_NAME = "neurosync";
 
@@ -46,6 +49,8 @@ export class NeuroSyncDatabase extends Dexie {
   gratitudeEntries!: Table<GratitudeEntry, string>;
   activityLogs!: Table<ActivityLog, string>;
   reviewItems!: Table<ReviewItem, string>;
+  dayPlans!: Table<DayPlan, string>;
+  insightFeedback!: Table<InsightFeedback, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -155,7 +160,7 @@ export class NeuroSyncDatabase extends Dexie {
           });
       });
 
-    this.version(SCHEMA_VERSION)
+    this.version(5)
       .stores({
         settings: "id",
         sleepLogs: "id, date",
@@ -180,8 +185,99 @@ export class NeuroSyncDatabase extends Dexie {
             if (!row.reminders) {
               row.reminders = structuredClone(DEFAULT_REMINDER_SETTINGS);
             }
-            row.schemaVersion = SCHEMA_VERSION;
+            row.schemaVersion = 5;
           });
+      });
+
+    this.version(6)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+        dayPlans: "id, date",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = 6;
+          });
+      });
+
+    this.version(7)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+        dayPlans: "id, date",
+        insightFeedback: "id, insightId, status",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = 7;
+          });
+      });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+        dayPlans: "id, date",
+        insightFeedback: "id, insightId, status",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify(
+            (row: {
+              schemaVersion?: number;
+              highContrast?: boolean;
+              textSize?: TextSizePref;
+            }) => {
+              if (row.highContrast === undefined) row.highContrast = false;
+              if (row.textSize === undefined) row.textSize = "md";
+              row.schemaVersion = SCHEMA_VERSION;
+            },
+          );
       });
   }
 }
