@@ -86,9 +86,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider open={open} onOpenChange={handleOpenChange}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:border focus:border-cyan focus:bg-surface focus:px-4 focus:py-2 focus:text-body focus:font-medium focus:text-foreground focus:shadow-lg"
+      >
+        Skip to content
+      </a>
+
       <AppSidebar />
 
-      <SidebarInset>
+      <SidebarInset id="main-content" tabIndex={-1} className="min-w-0 outline-none">
         <AppTopbar
           onOpenQuickLog={openQuickLog}
           onOpenCommand={() => setCommandOpen(true)}
