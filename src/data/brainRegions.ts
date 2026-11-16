@@ -1,334 +1,257 @@
-import type { ActivityKind, BrainRegionInfo, RegionId } from "@/types/domain";
+import type { ActivityKind, BrainRegionInfo, RegionId } from '@/types/domain';
 
-const EDUCATIONAL_CAVEAT =
-  "Educational association only. NeuroSync does not measure brain activity, growth, or health, and no habit here is claimed to strengthen this region.";
-
+/**
+ * Static educational content. These are simplified, hedged associations for learning —
+ * not measurements, not diagnostics, and never claims that habits change brain structure.
+ */
 export const BRAIN_REGIONS: BrainRegionInfo[] = [
   {
-    id: "prefrontal",
-    name: "Prefrontal cortex",
+    id: 'prefrontal',
+    name: 'Prefrontal Cortex',
     shortDescription:
-      "The front of the frontal lobes, commonly involved in planning, working memory, and keeping a goal in mind while other things compete for attention.",
+      'The front part of the frontal lobes, sitting just behind your forehead. It is commonly associated with planning, decision-making, holding information in mind, and steering attention toward what matters.',
     associatedWith: [
-      "planning and prioritising",
-      "working memory",
-      "inhibitory control",
-      "decision making",
+      'Planning and goal-setting',
+      'Working memory (holding information in mind)',
+      'Decision-making and weighing options',
+      'Directing attention and resisting distractions',
+      'Regulating emotions and impulses',
+      'Switching flexibly between tasks',
     ],
-    networks: ["frontoparietal network", "salience network (with the anterior insula)"],
-    connectedTo: ["parietal", "temporal", "amygdala"],
-    relatedActivities: [
-      "deep_focus",
-      "problem_solving",
-      "active_recall",
-      "skill_practice",
-      "mindfulness",
-      "creative",
+    networks: [
+      'Frontoparietal control network',
+      'Default mode network (medial prefrontal areas)',
+      'Cingulo-opercular network',
     ],
+    connectedTo: ['parietal', 'temporal', 'hippocampus', 'amygdala', 'cerebellum'],
+    relatedActivities: ['deep_focus', 'problem_solving', 'active_recall', 'mindfulness', 'teaching'],
     everydayExamples: [
-      "planning a week of study before you start",
-      "pausing before replying to a message that annoyed you",
-      "holding an instruction in mind while switching tabs",
-    ],
-    caveat: EDUCATIONAL_CAVEAT,
-  },
-  {
-    id: "parietal",
-    name: "Parietal lobe",
-    shortDescription:
-      "Often described as combining sensory information with attention and spatial reasoning, including where things are and how they relate.",
-    associatedWith: [
-      "spatial attention",
-      "integrating sensory information",
-      "mental rotation",
-      "number sense",
-    ],
-    networks: ["dorsal attention network", "frontoparietal network"],
-    connectedTo: ["prefrontal", "occipital", "temporal"],
-    relatedActivities: ["problem_solving", "reading", "skill_practice", "exercise"],
-    everydayExamples: [
-      "estimating whether a sofa fits through a doorway",
-      "following a route you have only seen once",
-      "keeping your place while reading a dense page",
-    ],
-    caveat: EDUCATIONAL_CAVEAT,
-  },
-  {
-    id: "temporal",
-    name: "Temporal lobe",
-    shortDescription:
-      "Commonly involved in hearing, understanding language, and recognising sounds, objects, and faces. Its inner surface includes the hippocampus.",
-    associatedWith: [
-      "language comprehension",
-      "sound processing",
-      "recognising faces and objects",
-      "memory for facts",
-    ],
-    networks: ["default mode network", "auditory and language networks"],
-    connectedTo: ["prefrontal", "occipital", "hippocampus", "amygdala"],
-    relatedActivities: ["reading", "language_learning", "music", "social", "teaching"],
-    everydayExamples: [
-      "following a podcast while walking",
-      "recognising a friend's voice on a noisy call",
-      "picking out a familiar melody",
-    ],
-    caveat: EDUCATIONAL_CAVEAT,
-  },
-  {
-    id: "occipital",
-    name: "Occipital lobe",
-    shortDescription:
-      "The main visual processing area of the cortex, associated with turning light into edges, shapes, colour, and motion.",
-    associatedWith: [
-      "visual processing",
-      "edge and shape detection",
-      "colour and motion perception",
-    ],
-    networks: ["visual network", "dorsal attention network"],
-    connectedTo: ["parietal", "temporal"],
-    relatedActivities: ["reading", "creative", "skill_practice"],
-    everydayExamples: [
-      "reading small print in dim light",
-      "spotting movement at the edge of your vision",
-      "judging the colour of a photo on a bright screen",
-    ],
-    caveat: EDUCATIONAL_CAVEAT,
-  },
-  {
-    id: "cerebellum",
-    name: "Cerebellum",
-    shortDescription:
-      "A densely packed structure below the occipital lobe, commonly involved in coordinating movement, balance, and the timing of sequences.",
-    associatedWith: [
-      "motor coordination",
-      "balance",
-      "timing and rhythm",
-      "automatising practised skills",
-    ],
-    networks: ["cerebellar motor loops", "cerebro-cerebellar loops"],
-    connectedTo: ["prefrontal", "parietal", "occipital"],
-    relatedActivities: ["exercise", "skill_practice", "music"],
-    everydayExamples: [
-      "keeping balance on a moving bus",
-      "typing a word sequence without looking",
-      "keeping time when clapping along to a song",
-    ],
-    caveat: EDUCATIONAL_CAVEAT,
-  },
-  {
-    id: "hippocampus",
-    name: "Hippocampus",
-    shortDescription:
-      "A curved structure in the inner temporal lobe, commonly associated with forming new memories, consolidating them, and spatial navigation.",
-    associatedWith: [
-      "forming new memories",
-      "memory consolidation",
-      "spatial navigation",
-      "context for events",
-    ],
-    networks: ["default mode network", "medial temporal lobe memory system"],
-    connectedTo: ["temporal", "prefrontal", "amygdala"],
-    relatedActivities: [
-      "active_recall",
-      "spaced_repetition",
-      "sleep_rest",
-      "language_learning",
-      "reading",
-    ],
-    everydayExamples: [
-      "remembering where you parked after a long day",
-      "recalling a fact you reviewed yesterday",
-      "linking a new word to a situation you were in",
+      'Deciding what to work on first when everything feels urgent',
+      'Holding a phone number in mind while you look for a pen',
+      'Noticing the urge to check your phone and choosing to keep reading',
     ],
     caveat:
-      "Educational association only. Sleep and practice are studied alongside memory consolidation, but NeuroSync measures neither brain activity nor memory, and cannot tell you whether your hippocampus changed.",
+      'These are simplified educational associations, not measurements. The prefrontal cortex works in networks with the rest of the brain, and no single region explains planning or focus on its own.',
   },
   {
-    id: "amygdala",
-    name: "Amygdala",
+    id: 'parietal',
+    name: 'Parietal Lobe',
     shortDescription:
-      "An almond-shaped structure in the temporal lobe, commonly associated with detecting what is emotionally relevant or threatening and tagging it as important.",
+      'A broad region at the top and back of the cortex, behind the frontal lobe. It is commonly associated with combining touch and body-position signals, mapping space, and pointing attention at places and objects.',
     associatedWith: [
-      "salience and emotional relevance",
-      "threat detection",
-      "emotional learning",
-      "stress responses",
+      'Sense of touch and body position',
+      'Spatial awareness and mental maps',
+      'Directing attention to places and objects',
+      'Number sense and mental arithmetic',
+      'Combining information from different senses',
     ],
-    networks: ["salience network", "limbic networks"],
-    connectedTo: ["prefrontal", "temporal", "hippocampus"],
-    relatedActivities: ["mindfulness", "social", "exercise", "sleep_rest"],
+    networks: [
+      'Dorsal attention network',
+      'Frontoparietal control network',
+      'Default mode network (posterior areas)',
+    ],
+    connectedTo: ['prefrontal', 'occipital', 'temporal'],
+    relatedActivities: ['problem_solving', 'deep_focus', 'skill_practice', 'music'],
     everydayExamples: [
-      "noticing a sudden loud noise before you can name it",
-      "feeling alert after a tense conversation",
-      "settling after a few slow breaths",
+      'Reaching for a mug without looking at it',
+      'Judging whether a book will fit on a shelf',
+      'Tracking a ball across a field',
     ],
     caveat:
-      "Educational association only. Stress and mood are self-reported here, not measured in the brain, and no activity is claimed to change this region.",
+      'A simplified educational overview. Spatial attention and touch emerge from networks spanning several lobes, and this app cannot measure activity in any of them.',
+  },
+  {
+    id: 'temporal',
+    name: 'Temporal Lobe',
+    shortDescription:
+      'The cortex along the sides of the brain, roughly behind your ears. It is commonly associated with hearing, understanding language, and recognizing faces and objects; its inner (medial) parts are closely tied to memory.',
+    associatedWith: [
+      'Hearing and processing speech sounds',
+      'Understanding language',
+      'Recognizing faces and objects',
+      'Memory for facts and events (medial temporal areas)',
+      'Processing music and voices',
+    ],
+    networks: [
+      'Auditory and language networks',
+      "Ventral visual ('what') pathway",
+      'Medial temporal memory system',
+    ],
+    connectedTo: ['prefrontal', 'parietal', 'occipital', 'hippocampus', 'amygdala'],
+    relatedActivities: ['reading', 'language_learning', 'music', 'social', 'active_recall'],
+    everydayExamples: [
+      "Recognizing a friend's voice on a call",
+      'Following the lyrics of a song',
+      'Picking out a familiar face in a crowd',
+    ],
+    caveat:
+      'Simplified associations for learning, not measurement. Hearing, language and memory depend on networks across and beyond the temporal lobe.',
+  },
+  {
+    id: 'occipital',
+    name: 'Occipital Lobe',
+    shortDescription:
+      'The lobe at the very back of the brain, and the main hub for visual processing. It is commonly associated with analyzing the basic features of a scene — edges, color and motion — before other areas take over.',
+    associatedWith: [
+      'Processing edges, shapes and contrast',
+      'Perceiving color',
+      'Detecting visual motion',
+      'Early stages of reading (letter shapes)',
+      "Feeding the 'what' and 'where/how' visual pathways",
+    ],
+    networks: [
+      'Visual network',
+      "Ventral visual ('what') pathway",
+      "Dorsal visual ('where/how') pathway",
+    ],
+    connectedTo: ['parietal', 'temporal'],
+    relatedActivities: ['reading', 'creative', 'skill_practice'],
+    everydayExamples: [
+      'Reading text on a page or screen',
+      'Spotting a friend across a busy street',
+      'Watching where a ball is heading',
+    ],
+    caveat:
+      'A simplified educational sketch. Vision is built by networks that run from the occipital lobe into the parietal and temporal lobes; seeing is not a one-region job.',
+  },
+  {
+    id: 'cerebellum',
+    name: 'Cerebellum',
+    shortDescription:
+      "The 'little brain' tucked underneath the back of the cortex. It is best known for coordinating movement, balance and practiced skills, and research also links it to loops involved in attention and thought.",
+    associatedWith: [
+      'Coordinating smooth, accurate movement',
+      'Balance and posture',
+      'Motor learning (practiced movements becoming automatic)',
+      'Timing and prediction',
+      'Possible supporting roles in attention and language (still being researched)',
+    ],
+    networks: ['Sensorimotor network', 'Cerebro-cerebellar loops with the cortex'],
+    connectedTo: ['prefrontal', 'parietal'],
+    relatedActivities: ['exercise', 'skill_practice', 'music'],
+    everydayExamples: [
+      'Riding a bike without thinking about balance',
+      'Typing without looking at the keys',
+      'Staying steady on an uneven sidewalk',
+    ],
+    caveat:
+      'Simplified educational associations. The cerebellum works in loops and networks with the cortex, and its possible roles in thinking are still being researched.',
+  },
+  {
+    id: 'hippocampus',
+    name: 'Hippocampus',
+    shortDescription:
+      'A seahorse-shaped structure buried deep inside each temporal lobe — an internal structure, not part of the visible surface. It is commonly associated with forming new memories of events and facts, and with spatial navigation.',
+    associatedWith: [
+      'Forming new memories of events and facts',
+      'Spatial navigation and mental maps',
+      'Linking the parts of an experience into one memory',
+      'Consolidating memories during rest and sleep (with the cortex)',
+      'Context for memories (where and when)',
+    ],
+    networks: [
+      'Hippocampal memory system (medial temporal lobe)',
+      'Default mode network (memory interactions)',
+    ],
+    connectedTo: ['temporal', 'prefrontal', 'amygdala'],
+    relatedActivities: ['sleep_rest', 'active_recall', 'spaced_repetition', 'reading', 'language_learning'],
+    everydayExamples: [
+      'Remembering what you did last weekend',
+      'Finding your way around a new neighborhood',
+      'Recalling a fact you studied yesterday',
+    ],
+    caveat:
+      'A simplified educational overview, not a measurement. Memory depends on networks linking the hippocampus with the cortex, and logging habits here tells us nothing about your hippocampus.',
+  },
+  {
+    id: 'amygdala',
+    name: 'Amygdala',
+    shortDescription:
+      'An almond-shaped cluster of nuclei deep inside each temporal lobe, next to the hippocampus. It is commonly associated with flagging emotionally significant events — both threatening and rewarding — and with emotional learning.',
+    associatedWith: [
+      'Flagging what matters emotionally (salience)',
+      'Learning what predicts threat or reward',
+      'Emotional reactions, including but not limited to fear',
+      'Tagging emotional events so they are often remembered more vividly',
+      'Pairing sights and sounds with emotional meaning',
+    ],
+    networks: [
+      'Salience network (interactions)',
+      'Medial temporal memory network',
+      'Emotion-regulation circuits with the prefrontal cortex',
+    ],
+    connectedTo: ['hippocampus', 'prefrontal', 'temporal'],
+    relatedActivities: ['mindfulness', 'social', 'music'],
+    everydayExamples: [
+      'Jumping at a sudden loud noise',
+      'A surge of excitement when a friend messages',
+      'Remembering an embarrassing moment more vividly than an ordinary one',
+    ],
+    caveat:
+      "Simplified associations for education only. The amygdala is not a 'fear center'; emotional life emerges from networks that include prefrontal, temporal and memory systems.",
   },
 ];
 
-export const BRAIN_REGION_BY_ID: Record<RegionId, BrainRegionInfo> = BRAIN_REGIONS.reduce(
-  (index, region) => {
-    index[region.id] = region;
-    return index;
-  },
-  {} as Record<RegionId, BrainRegionInfo>,
-);
-
 export const ACTIVITY_META: Record<ActivityKind, { label: string; description: string }> = {
-  deep_focus: {
-    label: "Deep focus",
-    description: "Sustained attention on one demanding task without switching.",
-  },
-  active_recall: {
-    label: "Active recall",
-    description: "Retrieving what you learned from memory instead of re-reading it.",
-  },
-  spaced_repetition: {
-    label: "Spaced repetition",
-    description: "Reviewing material again after a delay, in short repeated passes.",
-  },
-  problem_solving: {
-    label: "Problem solving",
-    description: "Working through a puzzle, proof, or exercise where the path is not obvious.",
-  },
-  reading: {
-    label: "Reading",
-    description: "Reading prose or study material with attention to meaning.",
-  },
-  skill_practice: {
-    label: "Skill practice",
-    description: "Deliberately repeating a movement or technique to improve it.",
-  },
-  teaching: {
-    label: "Teaching",
-    description: "Explaining something to another person so they can use it.",
-  },
-  exercise: {
-    label: "Exercise",
-    description: "Movement that raises your heart rate or loads your muscles.",
-  },
-  mindfulness: {
-    label: "Mindfulness",
-    description: "Paying attention to the present moment, often with slow breathing.",
-  },
-  social: {
-    label: "Social time",
-    description: "Time spent talking or being with other people.",
-  },
-  creative: {
-    label: "Creative work",
-    description: "Making something new: writing, drawing, designing, building.",
-  },
-  music: {
-    label: "Music",
-    description: "Playing, singing, or listening closely to music.",
-  },
-  language_learning: {
-    label: "Language learning",
-    description: "Studying vocabulary, grammar, or conversation in another language.",
-  },
-  sleep_rest: {
-    label: "Sleep and rest",
-    description: "Night sleep, naps, or deliberate rest.",
-  },
+  deep_focus: { label: 'Deep focus', description: 'Sustained, undistracted attention on one demanding task.' },
+  active_recall: { label: 'Active recall', description: 'Testing yourself from memory instead of re-reading.' },
+  spaced_repetition: { label: 'Spaced repetition', description: 'Reviewing material at expanding intervals over days and weeks.' },
+  problem_solving: { label: 'Problem solving', description: 'Working through puzzles, exercises or open-ended problems.' },
+  reading: { label: 'Reading', description: 'Focused reading of books, articles or documentation.' },
+  skill_practice: { label: 'Skill practice', description: 'Hands-on repetition of a physical or technical skill.' },
+  teaching: { label: 'Teaching', description: 'Explaining ideas to someone else, in your own words.' },
+  exercise: { label: 'Exercise', description: 'Moving your body — walking, running, sports or strength work.' },
+  mindfulness: { label: 'Mindfulness', description: 'Gently noticing thoughts, feelings and sensations in the present.' },
+  social: { label: 'Social time', description: 'Meaningful connection with friends, family or community.' },
+  creative: { label: 'Creative work', description: 'Making things — writing, drawing, designing, brainstorming.' },
+  music: { label: 'Music', description: 'Playing, practicing or attentively listening to music.' },
+  language_learning: { label: 'Language learning', description: 'Learning vocabulary, grammar and conversation in a new language.' },
+  sleep_rest: { label: 'Sleep & rest', description: 'Sleeping and deliberate rest — the quiet half of learning.' },
 };
 
 /**
- * Educational associations used to colour the activity view. Weights are a
- * rough illustration of which regions are often discussed together with an
- * activity; they are not measurements.
+ * Illustrative educational weights (0..1), NOT empirically measured coefficients.
+ * They express "this activity commonly involves these regions", nothing more.
  */
 export const ACTIVITY_REGION_MAP: Record<ActivityKind, { region: RegionId; weight: number }[]> = {
-  deep_focus: [
-    { region: "prefrontal", weight: 0.9 },
-    { region: "parietal", weight: 0.55 },
-  ],
-  active_recall: [
-    { region: "hippocampus", weight: 0.8 },
-    { region: "prefrontal", weight: 0.7 },
-  ],
-  spaced_repetition: [
-    { region: "hippocampus", weight: 0.75 },
-    { region: "parietal", weight: 0.4 },
-  ],
-  problem_solving: [
-    { region: "prefrontal", weight: 0.9 },
-    { region: "parietal", weight: 0.7 },
-  ],
-  reading: [
-    { region: "occipital", weight: 0.8 },
-    { region: "temporal", weight: 0.7 },
-  ],
-  skill_practice: [
-    { region: "cerebellum", weight: 0.8 },
-    { region: "prefrontal", weight: 0.5 },
-  ],
-  teaching: [
-    { region: "temporal", weight: 0.7 },
-    { region: "prefrontal", weight: 0.7 },
-  ],
-  exercise: [
-    { region: "cerebellum", weight: 0.8 },
-    { region: "parietal", weight: 0.4 },
-  ],
-  mindfulness: [
-    { region: "prefrontal", weight: 0.7 },
-    { region: "amygdala", weight: 0.55 },
-  ],
-  social: [
-    { region: "temporal", weight: 0.6 },
-    { region: "amygdala", weight: 0.5 },
-  ],
-  creative: [
-    { region: "prefrontal", weight: 0.7 },
-    { region: "temporal", weight: 0.5 },
-  ],
-  music: [
-    { region: "temporal", weight: 0.8 },
-    { region: "cerebellum", weight: 0.6 },
-  ],
-  language_learning: [
-    { region: "temporal", weight: 0.8 },
-    { region: "prefrontal", weight: 0.6 },
-  ],
-  sleep_rest: [
-    { region: "hippocampus", weight: 0.8 },
-    { region: "prefrontal", weight: 0.4 },
-  ],
+  deep_focus: [{ region: 'prefrontal', weight: 1.0 }, { region: 'parietal', weight: 0.7 }],
+  active_recall: [{ region: 'hippocampus', weight: 1.0 }, { region: 'prefrontal', weight: 0.8 }, { region: 'temporal', weight: 0.5 }],
+  spaced_repetition: [{ region: 'hippocampus', weight: 1.0 }, { region: 'prefrontal', weight: 0.6 }, { region: 'temporal', weight: 0.5 }],
+  problem_solving: [{ region: 'prefrontal', weight: 1.0 }, { region: 'parietal', weight: 0.8 }, { region: 'hippocampus', weight: 0.4 }],
+  reading: [{ region: 'occipital', weight: 0.9 }, { region: 'temporal', weight: 0.8 }, { region: 'prefrontal', weight: 0.5 }],
+  skill_practice: [{ region: 'cerebellum', weight: 1.0 }, { region: 'parietal', weight: 0.7 }, { region: 'prefrontal', weight: 0.6 }],
+  teaching: [{ region: 'prefrontal', weight: 0.9 }, { region: 'temporal', weight: 0.8 }, { region: 'hippocampus', weight: 0.5 }],
+  exercise: [{ region: 'cerebellum', weight: 1.0 }, { region: 'parietal', weight: 0.6 }],
+  mindfulness: [{ region: 'prefrontal', weight: 0.8 }, { region: 'amygdala', weight: 0.6 }],
+  social: [{ region: 'temporal', weight: 0.8 }, { region: 'prefrontal', weight: 0.7 }, { region: 'amygdala', weight: 0.5 }],
+  creative: [{ region: 'prefrontal', weight: 0.8 }, { region: 'temporal', weight: 0.6 }, { region: 'hippocampus', weight: 0.4 }],
+  music: [{ region: 'temporal', weight: 1.0 }, { region: 'cerebellum', weight: 0.7 }, { region: 'prefrontal', weight: 0.5 }],
+  language_learning: [{ region: 'temporal', weight: 1.0 }, { region: 'hippocampus', weight: 0.7 }, { region: 'prefrontal', weight: 0.7 }],
+  sleep_rest: [{ region: 'hippocampus', weight: 0.9 }],
 };
 
-/**
- * Turns minutes per activity into a 0..1 intensity per region, normalised so
- * the strongest region is 1. Pure and deterministic; used only to drive the
- * educational activity view.
- */
-export function activityToRegionIntensity(
-  items: { kind: ActivityKind; minutes: number }[],
-): Partial<Record<RegionId, number>> {
-  const totals: Partial<Record<RegionId, number>> = {};
+// Soft saturation: ~120 weighted minutes ≈ 0.95 intensity; the curve approaches 1
+// asymptotically (1 - exp(-x/k)) so it never hard-clips. k = cap/3.
+const SOFT_CAP_WEIGHTED_MIN = 120;
+const CURVE_K = SOFT_CAP_WEIGHTED_MIN / 3;
 
+export function activityToRegionIntensity(
+  items: readonly { kind: ActivityKind; minutes: number }[],
+): Partial<Record<RegionId, number>> {
+  const totals = new Map<RegionId, number>();
   for (const item of items) {
     if (!Number.isFinite(item.minutes) || item.minutes <= 0) continue;
-
-    for (const { region, weight } of ACTIVITY_REGION_MAP[item.kind] ?? []) {
-      totals[region] = (totals[region] ?? 0) + item.minutes * weight;
+    for (const { region, weight } of ACTIVITY_REGION_MAP[item.kind]) {
+      if (weight <= 0) continue;
+      totals.set(region, (totals.get(region) ?? 0) + item.minutes * weight);
     }
   }
-
-  const values = Object.values(totals).filter(
-    (value): value is number => typeof value === "number",
-  );
-  const max = Math.max(0, ...values);
-
-  if (max <= 0) return {};
-
-  const intensities: Partial<Record<RegionId, number>> = {};
-
-  for (const [region, total] of Object.entries(totals)) {
-    if (typeof total !== "number") continue;
-    intensities[region as RegionId] = Math.min(1, total / max);
+  const out: Partial<Record<RegionId, number>> = {};
+  // Fixed iteration order → deterministic key order regardless of input ordering. Zeros omitted.
+  for (const { id } of BRAIN_REGIONS) {
+    const weighted = totals.get(id);
+    if (weighted === undefined || weighted <= 0) continue;
+    out[id] = 1 - Math.exp(-weighted / CURVE_K);
   }
-
-  return intensities;
+  return out;
 }
