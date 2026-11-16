@@ -8,10 +8,14 @@ import {
   InsightsWorkspace,
 } from "@/features/insights/components/InsightsWorkspace";
 import {
+  useActivityLogs,
   useCheckins,
   useFocusSessions,
+  useGratitudeEntries,
   useHabitLogs,
   useHabits,
+  useJournalEntries,
+  useMindfulnessSessions,
   useMovementLogs,
   useNutritionLogs,
   useSettings,
@@ -31,6 +35,10 @@ export default function InsightsPage() {
   const nutrition = useNutritionLogs();
   const habits = useHabits();
   const habitLogs = useHabitLogs();
+  const activities = useActivityLogs();
+  const mindfulness = useMindfulnessSessions();
+  const journal = useJournalEntries();
+  const gratitude = useGratitudeEntries();
 
   const settingsData = settings.data;
   const sleepData = sleep.data;
@@ -40,6 +48,10 @@ export default function InsightsPage() {
   const nutritionData = nutrition.data;
   const habitsData = habits.data;
   const habitLogsData = habitLogs.data;
+  const activitiesData = activities.data;
+  const mindfulnessData = mindfulness.data;
+  const journalData = journal.data;
+  const gratitudeData = gratitude.data;
 
   const isLoading =
     settings.isLoading ||
@@ -49,7 +61,11 @@ export default function InsightsPage() {
     movement.isLoading ||
     nutrition.isLoading ||
     habits.isLoading ||
-    habitLogs.isLoading;
+    habitLogs.isLoading ||
+    activities.isLoading ||
+    mindfulness.isLoading ||
+    journal.isLoading ||
+    gratitude.isLoading;
 
   const computed = useMemo(() => {
     if (
@@ -61,7 +77,11 @@ export default function InsightsPage() {
       !movementData ||
       !nutritionData ||
       !habitsData ||
-      !habitLogsData
+      !habitLogsData ||
+      !activitiesData ||
+      !mindfulnessData ||
+      !journalData ||
+      !gratitudeData
     ) {
       return null;
     }
@@ -80,6 +100,10 @@ export default function InsightsPage() {
       nutrition: nutritionData,
       habits: habitsData,
       habitLogs: habitLogsData,
+      activities: activitiesData,
+      mindfulness: mindfulnessData,
+      journal: journalData,
+      gratitude: gratitudeData,
     };
 
     const insights = computeInsights(input, todayISO);
@@ -125,6 +149,10 @@ export default function InsightsPage() {
     nutritionData,
     habitsData,
     habitLogsData,
+    activitiesData,
+    mindfulnessData,
+    journalData,
+    gratitudeData,
   ]);
 
   if (!computed) {
