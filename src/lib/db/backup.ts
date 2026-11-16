@@ -6,11 +6,13 @@ import type {
   ActivityLog,
   Base,
   DailyCheckin,
+  DayPlan,
   Experiment,
   FocusSession,
   GratitudeEntry,
   Habit,
   HabitLog,
+  InsightFeedback,
   ISODateTime,
   JournalEntry,
   MindfulnessSession,
@@ -69,6 +71,8 @@ const settingsSchema = z.object({
   breakDefaultMin: z.number().min(0).max(1440),
   onboarded: z.boolean(),
   reducedMotion: z.boolean().optional(),
+  highContrast: z.boolean().optional(),
+  textSize: z.enum(["sm", "md", "lg"]).optional(),
   reminders: reminderSettingsSchema.optional(),
   schemaVersion: z.number().int().positive(),
 });
@@ -211,6 +215,66 @@ const reviewItemSchema = z.object({
   notes: z.string().optional(),
 });
 
+const dayPlanSchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  wakeTime: hhmmTime,
+  sleepTargetMin: z.number().int().min(60).max(960),
+  windDownMin: z.number().int().min(0).max(360),
+  maxStudyBlockMin: z.number().int().min(15).max(180),
+  breakMin: z.number().int().min(0).max(120),
+  bufferMin: z.number().int().min(0).max(120),
+  movementGoalMin: z.number().int().min(0).max(360),
+  preferRecoverySpacing: z.boolean(),
+  commitments: z.array(
+    z.object({
+      id: z.string().min(1),
+      title: z.string().min(1),
+      startTime: hhmmTime,
+      endTime: hhmmTime,
+    }),
+  ),
+  studyGoals: z.array(
+    z.object({
+      id: z.string().min(1),
+      subject: z.string().min(1),
+      minutes: z.number().int().positive(),
+      difficulty: rating.optional(),
+    }),
+  ),
+  blocks: z.array(
+    z.object({
+      id: z.string().min(1),
+      kind: z.enum(["fixed", "study", "break", "movement", "recovery", "wind_down", "sleep"]),
+      title: z.string().min(1),
+      startTime: hhmmTime,
+      endTime: hhmmTime,
+      durationMin: z.number().int().nonnegative(),
+      subject: z.string().optional(),
+      difficulty: rating.optional(),
+      notes: z.string().optional(),
+    }),
+  ),
+  unscheduled: z.array(
+    z.object({
+      id: z.string().min(1),
+      title: z.string().min(1),
+      kind: z.enum(["study", "movement", "fixed"]),
+      minutes: z.number().int().nonnegative(),
+      reason: z.string(),
+    }),
+  ),
+});
+
+const insightFeedbackSchema = z.object({
+  ...baseFields,
+  insightId: z.string().min(1),
+  status: z.enum(["dismissed", "snoozed"]),
+  snoozeUntil: isoDate.optional(),
+  title: z.string().optional(),
+  pillar: z.enum(["sleep", "focus", "movement", "nutrition", "wellbeing", "learning"]).optional(),
+});
+
 const v1TablesShape = {
   settings: z.array(settingsSchema),
   sleepLogs: z.array(sleepSchema),
@@ -240,6 +304,8 @@ const v4TablesShape = {
   reviewItems: z.array(reviewItemSchema),
 };
 
+const v5TablesShape = v4TablesShape;
+
 const v1BackupFileSchema = z.object({
   schemaVersion: z.literal(1),
   exportedAt: isoDateTime,
@@ -264,10 +330,38 @@ const v4BackupFileSchema = z.object({
   tables: z.object(v4TablesShape),
 });
 
+const v5BackupFileSchema = z.object({
+  schemaVersion: z.literal(5),
+  exportedAt: isoDateTime,
+  tables: z.object(v5TablesShape),
+});
+
+const v6TablesShape = {
+  ...v5TablesShape,
+  dayPlans: z.array(dayPlanSchema),
+};
+
+const v7TablesShape = {
+  ...v6TablesShape,
+  insightFeedback: z.array(insightFeedbackSchema),
+};
+
+const v6BackupFileSchema = z.object({
+  schemaVersion: z.literal(6),
+  exportedAt: isoDateTime,
+  tables: z.object(v6TablesShape),
+});
+
+const v7BackupFileSchema = z.object({
+  schemaVersion: z.literal(7),
+  exportedAt: isoDateTime,
+  tables: z.object(v7TablesShape),
+});
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
-  tables: z.object(v4TablesShape),
+  tables: z.object(v7TablesShape),
 });
 
 export interface BackupTables {
@@ -285,6 +379,8 @@ export interface BackupTables {
   gratitudeEntries: GratitudeEntry[];
   activityLogs: ActivityLog[];
   reviewItems: ReviewItem[];
+  dayPlans: DayPlan[];
+  insightFeedback: InsightFeedback[];
 }
 
 export interface BackupFile {
@@ -323,6 +419,8 @@ const TABLE_NAMES = [
   "gratitudeEntries",
   "activityLogs",
   "reviewItems",
+  "dayPlans",
+  "insightFeedback",
 ] as const satisfies readonly (keyof BackupTables)[];
 
 /** Reads every table into one plain object. */
@@ -344,6 +442,8 @@ export async function buildBackup(): Promise<BackupFile> {
     gratitudeEntries: await db.gratitudeEntries.toArray(),
     activityLogs: await db.activityLogs.toArray(),
     reviewItems: await db.reviewItems.toArray(),
+    dayPlans: await db.dayPlans.toArray(),
+    insightFeedback: await db.insightFeedback.toArray(),
   };
 
   return {
@@ -370,6 +470,8 @@ function normalizeFocusSessions(rows: FocusSession[]): FocusSession[] {
 function normalizeSettingsRows(rows: UserSettings[]): UserSettings[] {
   return rows.map((row) => ({
     ...row,
+    highContrast: row.highContrast ?? false,
+    textSize: row.textSize ?? "md",
     reminders: normalizeReminderSettings(row.reminders),
     schemaVersion: SCHEMA_VERSION,
   }));
@@ -424,6 +526,8 @@ function parseBackup(text: string): BackupFile {
         gratitudeEntries: [],
         activityLogs: [],
         reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
       },
     };
   }
@@ -439,6 +543,8 @@ function parseBackup(text: string): BackupFile {
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         activityLogs: [],
         reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
       },
     };
   }
@@ -453,12 +559,58 @@ function parseBackup(text: string): BackupFile {
         settings: normalizeSettingsRows(data.tables.settings),
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
       },
     };
   }
 
   if (version === 4) {
     const data = validateWithSchema(v4BackupFileSchema, raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: data.exportedAt,
+      tables: {
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+        dayPlans: [],
+        insightFeedback: [],
+      },
+    };
+  }
+
+  if (version === 5) {
+    const data = validateWithSchema(v5BackupFileSchema, raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: data.exportedAt,
+      tables: {
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+        dayPlans: [],
+        insightFeedback: [],
+      },
+    };
+  }
+
+  if (version === 6) {
+    const data = validateWithSchema(v6BackupFileSchema, raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: data.exportedAt,
+      tables: {
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+        insightFeedback: [],
+      },
+    };
+  }
+
+  if (version === 7) {
+    const data = validateWithSchema(v7BackupFileSchema, raw);
     return {
       schemaVersion: SCHEMA_VERSION,
       exportedAt: data.exportedAt,
