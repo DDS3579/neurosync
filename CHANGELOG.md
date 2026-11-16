@@ -32,6 +32,10 @@
 - **"Your week" weekly report (`/insights/weekly`)**:
   - Extended `buildWeeklyReport()` with method breakdown, retrieval/review counts, Mind & Activities aggregations, 7-day daily series, brain-region intensity summary, and neutral week-over-week deltas while preserving backwards compatibility.
   - Built `/insights/weekly` (linked from Overview, Insights, and Command Palette) with previous/next week picker, highlights & reflection prompts, brain-activity summary strip with educational-association disclaimer, 6 chart/number sections with missing-data explanations, and client-side PNG download, Web Share API sharing (when supported), and print/PDF stylesheet (`Self-reported data from NeuroSync. Not a medical assessment.`).
+- **Opt-in local reminders (`/settings` & in-app runner)**:
+  - Added `ReminderSettings` (`windDown`, `checkin`, `reviewDue`, `quietHours`) to `UserSettings`, with Dexie `version(5)` migration and backup `SCHEMA_VERSION = 5` (preserving `v1`–`v4` imports).
+  - Added Settings "Reminders" controls with per-reminder toggles and times, quiet hours, plain-language explanation of browser-without-push-server limits, permission requested only on toggle activation, and recurring `.ics` calendar export (`Add to calendar`).
+  - Added `ReminderRunner` checking on load, `visibilitychange`, focus, and a 30s timer with per-slot deduplication, quiet-hours suppression, and warm, non-judgmental copy.
 
 ### Fixed
 - **Offline font bundling**: Switched root layout from `next/font/google` to the local `geist` package (`geist/font/sans` and `geist/font/mono`), keeping `--font-geist-sans` and `--font-geist-mono` so builds need no network access.
