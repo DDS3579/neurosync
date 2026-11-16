@@ -113,6 +113,65 @@ export interface ReviewItem extends Base {
   notes?: string;
 }
 
+export type PlanBlockKind =
+  | 'fixed'
+  | 'study'
+  | 'break'
+  | 'movement'
+  | 'recovery'
+  | 'wind_down'
+  | 'sleep';
+
+export interface PlannerFixedCommitment {
+  id: string;
+  title: string;
+  startTime: string; // 'HH:MM'
+  endTime: string;   // 'HH:MM'
+}
+
+export interface PlannerStudyGoal {
+  id: string;
+  subject: string;
+  minutes: number;
+  difficulty?: Rating;
+}
+
+export interface ScheduledPlanBlock {
+  id: string;
+  kind: PlanBlockKind;
+  title: string;
+  startTime: string; // 'HH:MM'
+  endTime: string;   // 'HH:MM'
+  durationMin: number;
+  subject?: string;
+  difficulty?: Rating;
+  notes?: string;
+}
+
+export interface UnscheduledGoalItem {
+  id: string;
+  title: string;
+  kind: 'study' | 'movement' | 'fixed';
+  minutes: number;
+  reason: string;
+}
+
+export interface DayPlan extends Base {
+  date: ISODate;
+  wakeTime: string; // 'HH:MM'
+  sleepTargetMin: number;
+  windDownMin: number;
+  maxStudyBlockMin: number;
+  breakMin: number;
+  bufferMin: number;
+  movementGoalMin: number;
+  preferRecoverySpacing: boolean;
+  commitments: PlannerFixedCommitment[];
+  studyGoals: PlannerStudyGoal[];
+  blocks: ScheduledPlanBlock[];
+  unscheduled: UnscheduledGoalItem[];
+}
+
 export type ExperimentMetric = 'concentration' | 'mood' | 'energy' | 'stress' | 'focusRating';
 export interface Experiment extends Base {
   title: string; hypothesis: string; changeDescription: string; metric: ExperimentMetric;
