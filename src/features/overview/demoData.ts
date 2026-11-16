@@ -12,7 +12,7 @@ import {
   settingsRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
-import { computeInsights, generateDemoData } from "@/lib/insights";
+import { computeInsights, generateDemoData, selectOverviewInsights } from "@/lib/insights";
 import type { OverviewViewProps } from "@/features/overview/OverviewView";
 import type {
   ActivityKind,
@@ -21,6 +21,7 @@ import type {
   FocusSession,
   Habit,
   HabitLog,
+  InsightFeedback,
   ISODate,
   LearningMethod,
   MindfulnessSession,
@@ -71,6 +72,8 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         gratitudeEntries: [],
         activityLogs: [],
         reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
       },
     }),
     "merge",
@@ -110,6 +113,7 @@ export interface OverviewAggregationInput {
   habitLogs: HabitLog[];
   mindfulness?: MindfulnessSession[];
   activities?: ActivityLog[];
+  insightFeedback?: InsightFeedback[];
   today?: Date;
 }
 
@@ -170,7 +174,7 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
       .map((row) => row.date),
   ).size;
 
-  const insights = computeInsights(
+  const allInsights = computeInsights(
     {
       settings: input.settings,
       sleep: input.sleep,
@@ -184,7 +188,9 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
       mindfulness: input.mindfulness,
     },
     todayISO,
-  ).slice(0, 3);
+    { feedback: input.insightFeedback },
+  );
+  const insights = selectOverviewInsights(allInsights, 3);
 
   const isEmpty =
     input.sleep.length === 0 &&
