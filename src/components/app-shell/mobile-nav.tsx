@@ -24,7 +24,7 @@ function MobileTab({ item, active, index }: { item: NavItem; active: boolean; in
         aria-current={active ? "page" : undefined}
         className={cn(
           "flex min-h-11 flex-col items-center justify-center gap-1 rounded-control py-2 text-caption transition-colors duration-[180ms] ease-out",
-          active ? "text-violet" : "text-muted-foreground hover:text-foreground",
+          active ? "text-violet-text" : "text-muted-foreground hover:text-foreground",
         )}
       >
         <Icon className="size-5" aria-hidden />
