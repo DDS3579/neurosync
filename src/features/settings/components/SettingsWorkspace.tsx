@@ -22,13 +22,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DEFAULT_REMINDER_SETTINGS,
   buildRemindersIcs,
   normalizeReminderSettings,
 } from "@/features/reminders/reminderUtils";
 import type { BackupMode, ImportSummary } from "@/lib/db/backup";
-import type { ReminderSettings, UserSettings } from "@/types/domain";
+import type { ReminderSettings, TextSizePref, UserSettings } from "@/types/domain";
 
 const hhmmSchema = z
   .string()
@@ -56,6 +57,8 @@ const settingsFormSchema = z.object({
     .min(1, "At least 1 minute.")
     .max(60, "Max 60 minutes."),
   reducedMotion: z.boolean(),
+  highContrast: z.boolean(),
+  textSize: z.enum(["sm", "md", "lg"]),
   reminders: z.object({
     windDown: reminderSlotSchema,
     checkin: reminderSlotSchema,
@@ -78,6 +81,8 @@ export interface SettingsWorkspaceProps {
     focusDefaultMin: number;
     breakDefaultMin: number;
     reducedMotion: boolean;
+    highContrast: boolean;
+    textSize: TextSizePref;
     reminders: ReminderSettings;
   }) => Promise<void>;
   onExportJson: () => Promise<void>;
@@ -120,6 +125,8 @@ export function SettingsWorkspace({
       focusDefaultMin: settings.focusDefaultMin,
       breakDefaultMin: settings.breakDefaultMin,
       reducedMotion: Boolean(settings.reducedMotion),
+      highContrast: Boolean(settings.highContrast),
+      textSize: settings.textSize ?? "md",
       reminders: normalizeReminderSettings(settings.reminders),
     },
   });
@@ -137,6 +144,8 @@ export function SettingsWorkspace({
       focusDefaultMin: parsed.focusDefaultMin,
       breakDefaultMin: parsed.breakDefaultMin,
       reducedMotion: parsed.reducedMotion,
+      highContrast: parsed.highContrast,
+      textSize: parsed.textSize,
       reminders: parsed.reminders,
     });
     toast.success("Settings saved.");
@@ -220,6 +229,8 @@ export function SettingsWorkspace({
         focusDefaultMin: 25,
         breakDefaultMin: 5,
         reducedMotion: false,
+        highContrast: false,
+        textSize: "md",
         reminders: DEFAULT_REMINDER_SETTINGS,
       });
       toast.success("Deleted all local NeuroSync data.");
@@ -314,26 +325,93 @@ export function SettingsWorkspace({
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="settings-reduced-motion" className="text-body font-medium">
-                  Reduced motion
-                </Label>
-                <p className="text-caption text-muted-foreground">
-                  Prefer minimal transitions inside NeuroSync (system setting is always respected).
-                </p>
+            <div className="space-y-3 border-t border-border pt-6">
+              <h2 className="text-section font-medium text-foreground">
+                Display &amp; accessibility
+              </h2>
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-reduced-motion" className="text-body font-medium">
+                    Reduced motion
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Prefer minimal transitions inside NeuroSync (system setting is always respected).
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="reducedMotion"
+                  render={({ field }) => (
+                    <Switch
+                      id="settings-reduced-motion"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  )}
+                />
               </div>
-              <Controller
-                control={form.control}
-                name="reducedMotion"
-                render={({ field }) => (
-                  <Switch
-                    id="settings-reduced-motion"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                )}
-              />
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-high-contrast" className="text-body font-medium">
+                    High-contrast mode
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Increases text contrast, borders, focus outlines, and 3D brain point contrast.
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="highContrast"
+                  render={({ field }) => (
+                    <Switch
+                      id="settings-high-contrast"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <span id="settings-text-size-label" className="text-body font-medium text-foreground">
+                    Text size
+                  </span>
+                  <p className="text-caption text-muted-foreground">
+                    Scales interface and chart label typography across S, M, and L.
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="textSize"
+                  render={({ field }) => (
+                    <ToggleGroup
+                      type="single"
+                      value={field.value}
+                      onValueChange={(next) => {
+                        if (next === "sm" || next === "md" || next === "lg") {
+                          field.onChange(next);
+                        }
+                      }}
+                      variant="outline"
+                      size="sm"
+                      aria-labelledby="settings-text-size-label"
+                    >
+                      <ToggleGroupItem value="sm" aria-label="Small text size">
+                        S
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="md" aria-label="Medium text size">
+                        M
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="lg" aria-label="Large text size">
+                        L
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  )}
+                />
+              </div>
             </div>
 
             {/* Reminders */}
