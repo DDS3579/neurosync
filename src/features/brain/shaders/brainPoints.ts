@@ -10,6 +10,7 @@ uniform float uPixelRatio;
 uniform float uSize;          // point size in px at distance 1
 uniform float uQuality;       // 0 low .. 1 high
 uniform float uMotion;        // 0 reduced motion .. 1 full
+uniform float uContrast;      // 0 standard .. 1 high-contrast mode
 // ---- Mode + region state (all damped on the CPU, never popped) ------------
 uniform vec3  uModeW;         // weights: x anatomy, y functional, z activity
 uniform float uSelected;      // exact selected index (-1 none)
@@ -17,6 +18,13 @@ uniform float uHovered;       // exact hovered index (-1 none)
 uniform float uSelectW[8];
 uniform float uHoverW[8];
 uniform float uActivity[8];   // 0..1 educational association strength
+uniform float uIsolateW;      // 0 normal .. 1 hide non-selected regions
+uniform float uCompareW;      // 0 normal .. 1 compare mode active
+uniform float uCompareA[8];   // 0..1 weights for Activity A (violet)
+uniform float uCompareB[8];   // 0..1 weights for Activity B (cyan)
+uniform float uCutW;          // 0 normal .. 1 cross-section cut active
+uniform vec3  uCutNormal;     // unit normal for cross-section plane
+uniform float uCutPos;        // plane offset along uCutNormal
 uniform float uAnySelected;
 uniform float uInternalVis;   // visibility of deep structures
 uniform float uCortexAlpha;   // cortex opacity multiplier
@@ -84,11 +92,28 @@ void main() {
   }
   actPulse *= uModeW.z * uMotion;
 
-  // 5. COLOUR: blend the three mode palettes by damped weights
+  // 5. COLOUR: blend the mode palettes and Compare overlay by damped weights
   vec3 actHue = mix(uViolet, uCyan, act);
   vec3 actCol = mix(uDim, actHue, smoothstep(0.02, 0.2, act)) * mix(0.35, 1.3, act);
-  vec3 col = uAnatomyColor[r] * uModeW.x + uFuncColor[r] * uModeW.y + actCol * uModeW.z;
-  col += actHue * actPulse * 0.9;
+  vec3 baseCol = uAnatomyColor[r] * uModeW.x + uFuncColor[r] * uModeW.y + actCol * uModeW.z;
+  baseCol += actHue * actPulse * 0.9;
+
+  float cA = uCompareA[r];
+  float cB = uCompareB[r];
+  float hasA = step(0.02, cA);
+  float hasB = step(0.02, cB);
+  float isOverlap = hasA * hasB;
+  vec3 onlyACol = uViolet * mix(0.65, 1.35, cA);
+  vec3 onlyBCol = uCyan * mix(0.65, 1.35, cB);
+  vec3 overlapBase = mix(mix(uViolet, uCyan, 0.5), vec3(0.95, 0.98, 1.0), 0.72);
+  float overlapShimmer = 1.0 + 0.14 * sin(t * 2.4 + aSeed * 18.0) * uMotion;
+  vec3 overlapCol = overlapBase * mix(1.05, 1.48, max(cA, cB)) * overlapShimmer;
+  vec3 compCol = uDim * 0.35;
+  compCol = mix(compCol, onlyACol, hasA);
+  compCol = mix(compCol, onlyBCol, hasB * (1.0 - hasA));
+  compCol = mix(compCol, overlapCol, isOverlap);
+
+  vec3 col = mix(baseCol, compCol, uCompareW);
   vec3 grad = mix(uViolet, uCyan, smoothstep(-0.9, 0.9, p.z + p.y * 0.4)) * 0.6;
   col = mix(col, grad, uTint);
 
@@ -101,11 +126,18 @@ void main() {
   float isInner = step(0.5, aKind) * (1.0 - step(1.5, aKind));
   float isDeep  = step(1.5, aKind);
 
-  // 7. BRIGHTNESS: folds, rim, pulses, hover, selection
+  // Cross-section cut term (keep steady against subtle curl by testing rest position)
+  float cutDist = dot(position, uCutNormal) - uCutPos;
+  float cutRim = exp(-cutDist * cutDist * 520.0) * uCutW;
+  col = mix(col, mix(uCyan, vec3(0.95), 0.35), cutRim * 0.55 * (1.0 - isDeep));
+
+  // 7. BRIGHTNESS: folds, rim, pulses, hover, selection, isolation
   float b = mix(0.32, 1.0, aFold) * (0.8 + rim * 0.9 * isSurf);
   b += pulse * 0.5;
   b *= 1.0 + hov * 0.8;
-  b *= mix(1.0, mix(0.15, 1.5, sel), uAnySelected);
+  b *= mix(1.0, mix(mix(0.15, 0.55, uCompareW), 1.5, sel), uAnySelected);
+  b *= mix(1.0, 1.15, uIsolateW * sel);
+  b *= mix(1.0, 1.38, uContrast);
   float exact = 1.0 - step(0.5, abs(aRegion - uSelected));
   b += exact * uMotion * 0.2 * (0.5 + 0.5 * sin(t * 2.5 + aSeed * 40.0));
   b += (1.0 - step(0.5, abs(aRegion - uHovered))) * 0.05;
@@ -113,16 +145,22 @@ void main() {
   vec2 dp = clip.xy / clip.w - uPointer;
   b += exp(-dot(dp, dp) * 14.0) * uPointerAmt * 0.45;
 
-  // 8. ALPHA: layer visibility + depth fade + near-camera fade
+  // 8. ALPHA: layer visibility + isolation + cut plane + depth fade + near-camera fade
   float alpha = 0.55 * mix(1.5, 1.0, uQuality);
   alpha *= mix(1.0, uCortexAlpha, isSurf);
   alpha *= mix(1.0, 0.22, isInner);
-  float deepVis = clamp(uInternalVis + sel * 1.2 + act * uModeW.z, 0.0, 1.0);
+  float cmpDeep = max(cA, cB) * uCompareW;
+  float deepVis = clamp(uInternalVis + sel * 1.2 + act * uModeW.z + cmpDeep + uCutW * 0.75, 0.0, 1.0);
   alpha *= mix(1.0, deepVis * 1.5, isDeep);
+  alpha *= mix(1.0, clamp(sel * 1.15, 0.0, 1.0), uIsolateW);
+  float cutShellMask = 1.0 - smoothstep(-0.03, 0.08, cutDist);
+  float cutDeepMask = mix(1.0, 0.52, smoothstep(0.02, 0.16, cutDist));
+  alpha *= mix(1.0, mix(cutShellMask, cutDeepMask, isDeep), uCutW);
   float center = -(modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z;
   alpha *= 1.0 - 0.6 * smoothstep(-0.4, 1.0, depth - center);
   alpha *= smoothstep(0.04, 0.4, depth);
   alpha *= mix(0.45, 1.0, conv);
+  alpha = clamp(alpha * mix(1.0, 1.28, uContrast), 0.0, 1.0);
 
   vColor = col * b;
   vAlpha = alpha;
@@ -156,6 +194,10 @@ uniform float uPulseSize;
 uniform vec3  uModeW;
 uniform float uSelectW[8];
 uniform float uAnySelected;
+uniform float uIsolateW;
+uniform float uCutW;
+uniform vec3  uCutNormal;
+uniform float uCutPos;
 
 attribute float aT;        // 0..1 along the arc
 attribute float aOffset;   // per-arc phase
@@ -167,8 +209,11 @@ varying float vPulse;
 
 void main() {
   float selVis = max(uSelectW[int(aPair.x + 0.5)], uSelectW[int(aPair.y + 0.5)]);
-  // Functional mode shows all arcs; a selection shows only its own.
+  // Functional mode shows all arcs; a selection shows only its own. Hide in isolation or beyond cut.
   vVis = clamp(uModeW.y * mix(1.0, 0.3, uAnySelected) + selVis, 0.0, 1.0);
+  vVis *= (1.0 - uIsolateW);
+  float cutDist = dot(position, uCutNormal) - uCutPos;
+  vVis *= mix(1.0, 1.0 - smoothstep(-0.03, 0.08, cutDist), uCutW);
   float head = fract(uTime * 0.22 + aOffset);
   float dt = aT - head;
   vPulse = exp(-dt * dt * 220.0) * uMotion;
