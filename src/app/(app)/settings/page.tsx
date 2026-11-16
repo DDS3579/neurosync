@@ -12,6 +12,7 @@ import { HABITS_SEEDED_KEY } from "@/features/habits/habitUtils";
 import { SCHEMA_VERSION, exportAll, importAll, type BackupMode } from "@/lib/db/backup";
 import { useSettings } from "@/lib/db/hooks";
 import { settingsRepository } from "@/lib/db/repositories";
+import type { ReminderSettings } from "@/types/domain";
 
 export default function SettingsPage() {
   const settings = useSettings();
@@ -23,6 +24,7 @@ export default function SettingsPage() {
       focusDefaultMin: number;
       breakDefaultMin: number;
       reducedMotion: boolean;
+      reminders: ReminderSettings;
     }) => {
       await settingsRepository.save(patch);
     },
