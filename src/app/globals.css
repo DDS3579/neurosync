@@ -242,3 +242,45 @@ html.lenis body {
 .lenis:not(.lenis-autoToggle).lenis-stopped {
   overflow: clip;
 }
+
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  :root,
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0b1220 !important;
+    color-scheme: light !important;
+  }
+
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  header,
+  nav[aria-label="Primary"],
+  .nx-print-hide {
+    display: none !important;
+  }
+
+  .nx-print-only {
+    display: block !important;
+  }
+
+  .nx-weekly-print-root * {
+    color: #0b1220 !important;
+    border-color: rgba(15, 23, 42, 0.16) !important;
+    box-shadow: none !important;
+  }
+
+  .nx-weekly-print-root [class*="bg-surface"],
+  .nx-weekly-print-root [class*="bg-background"] {
+    background: #ffffff !important;
+  }
+
+  .nx-print-card {
+    break-inside: avoid;
+  }
+}
