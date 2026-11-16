@@ -35,11 +35,14 @@ export interface ReminderSettings {
   quietHours: QuietHoursConfig;
 }
 
+export type TextSizePref = 'sm' | 'md' | 'lg';
+
 export interface UserSettings extends Base {
   displayName?: string; sleepTargetMin: number;      // default 480
   focusDefaultMin: number;                            // default 25
   breakDefaultMin: number;                            // default 5
   onboarded: boolean; reducedMotion?: boolean;
+  highContrast?: boolean; textSize?: TextSizePref;
   reminders?: ReminderSettings;
   schemaVersion: number;
 }
@@ -186,10 +189,31 @@ export interface InsightInput {
   journal?: JournalEntry[]; gratitude?: GratitudeEntry[];
 }
 export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
+export type DataConfidenceLevel = 'low' | 'moderate' | 'enough';
+
+export interface InsightConfidence {
+  level: DataConfidenceLevel;
+  /** One-line plain explanation, e.g. "Based on 9 days of paired data". */
+  summary: string;
+  sampleSize: number;
+}
+
 export interface Insight {
   id: string; pillar: Pillar; kind: 'observation' | 'milestone' | 'reflection';
   title: string; body: string; evidence: string[];  // human-readable data points
   caveat: string; education?: string; regions?: RegionId[]; // educational associations only
+  confidence?: InsightConfidence;
+}
+
+export type InsightFeedbackStatus = 'dismissed' | 'snoozed';
+
+export interface InsightFeedback extends Base {
+  insightId: string;
+  status: InsightFeedbackStatus;
+  /** Exclusive 'YYYY-MM-DD' date when snooze ends (fires again when today >= snoozeUntil). */
+  snoozeUntil?: ISODate;
+  title?: string;
+  pillar?: Pillar;
 }
 export interface BrainRegionInfo {
   id: RegionId; name: string; shortDescription: string; associatedWith: string[];
