@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { format, startOfDay, startOfWeek, subDays, subWeeks } from "date-fns";
+import { toast } from "sonner";
 
 import {
   InsightsSkeleton,
@@ -14,6 +15,7 @@ import {
   useGratitudeEntries,
   useHabitLogs,
   useHabits,
+  useInsightFeedback,
   useJournalEntries,
   useMindfulnessSessions,
   useMovementLogs,
@@ -21,8 +23,13 @@ import {
   useSettings,
   useSleepLogs,
 } from "@/lib/db/hooks";
-import { buildWeeklyReport, computeInsights } from "@/lib/insights";
-import type { ISODate } from "@/types/domain";
+import { insightFeedbackRepository } from "@/lib/db/repositories";
+import {
+  buildWeeklyReport,
+  computeInsights,
+  partitionInsightsByFeedback,
+} from "@/lib/insights";
+import type { ISODate, Insight } from "@/types/domain";
 
 export default function InsightsPage() {
   const [weekOffset, setWeekOffset] = useState<0 | 1>(0);
@@ -39,6 +46,7 @@ export default function InsightsPage() {
   const mindfulness = useMindfulnessSessions();
   const journal = useJournalEntries();
   const gratitude = useGratitudeEntries();
+  const insightFeedback = useInsightFeedback();
 
   const settingsData = settings.data;
   const sleepData = sleep.data;
@@ -52,6 +60,7 @@ export default function InsightsPage() {
   const mindfulnessData = mindfulness.data;
   const journalData = journal.data;
   const gratitudeData = gratitude.data;
+  const insightFeedbackData = insightFeedback.data;
 
   const isLoading =
     settings.isLoading ||
@@ -65,7 +74,31 @@ export default function InsightsPage() {
     activities.isLoading ||
     mindfulness.isLoading ||
     journal.isLoading ||
-    gratitude.isLoading;
+    gratitude.isLoading ||
+    insightFeedback.isLoading;
+
+  const onDismissInsight = useCallback(async (insight: Insight) => {
+    await insightFeedbackRepository.dismiss({
+      id: insight.id,
+      title: insight.title,
+      pillar: insight.pillar,
+    });
+    toast.success("Insight moved to Dismissed.");
+  }, []);
+
+  const onSnoozeInsight = useCallback(async (insight: Insight) => {
+    const todayISO = format(startOfDay(new Date()), "yyyy-MM-dd");
+    await insightFeedbackRepository.snooze(
+      { id: insight.id, title: insight.title, pillar: insight.pillar },
+      todayISO,
+    );
+    toast.success("Insight snoozed for 14 days.");
+  }, []);
+
+  const onRestoreInsight = useCallback(async (insightId: string) => {
+    await insightFeedbackRepository.restore(insightId);
+    toast.success("Insight restored.");
+  }, []);
 
   const computed = useMemo(() => {
     if (
@@ -81,7 +114,8 @@ export default function InsightsPage() {
       !activitiesData ||
       !mindfulnessData ||
       !journalData ||
-      !gratitudeData
+      !gratitudeData ||
+      !insightFeedbackData
     ) {
       return null;
     }
@@ -106,7 +140,12 @@ export default function InsightsPage() {
       gratitude: gratitudeData,
     };
 
-    const insights = computeInsights(input, todayISO);
+    const allInsights = computeInsights(input, todayISO);
+    const {
+      active: insights,
+      dismissed: dismissedInsights,
+      snoozed: snoozedInsights,
+    } = partitionInsightsByFeedback(allInsights, insightFeedbackData, todayISO);
     const weeklyReport = buildWeeklyReport(input, weekStartISO);
 
     const dates7: ISODate[] = [];
@@ -123,6 +162,8 @@ export default function InsightsPage() {
 
     return {
       insights,
+      dismissedInsights,
+      snoozedInsights,
       weeklyReport,
       sleepWeek: dates7.map((date) => {
         const log = sleepByDate.get(date);
@@ -153,6 +194,7 @@ export default function InsightsPage() {
     mindfulnessData,
     journalData,
     gratitudeData,
+    insightFeedbackData,
   ]);
 
   if (!computed) {
@@ -164,6 +206,9 @@ export default function InsightsPage() {
       {...computed}
       weekOffset={weekOffset}
       onChangeWeekOffset={setWeekOffset}
+      onDismissInsight={onDismissInsight}
+      onSnoozeInsight={onSnoozeInsight}
+      onRestoreInsight={onRestoreInsight}
     />
   );
 }
