@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { normalizeReminderSettings } from "@/features/reminders/reminderUtils";
 import { SCHEMA_VERSION, getDb } from "@/lib/db/dexie";
 import type {
   ActivityLog,
@@ -40,6 +41,26 @@ const baseFields = {
   updatedAt: isoDateTime,
 };
 
+const hhmmTime = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:MM 24-hour time");
+
+const reminderSlotSchema = z.object({
+  enabled: z.boolean(),
+  time: hhmmTime,
+});
+
+const reminderSettingsSchema = z.object({
+  windDown: reminderSlotSchema,
+  checkin: reminderSlotSchema,
+  reviewDue: reminderSlotSchema,
+  quietHours: z.object({
+    enabled: z.boolean(),
+    start: hhmmTime,
+    end: hhmmTime,
+  }),
+});
+
 const settingsSchema = z.object({
   ...baseFields,
   displayName: z.string().optional(),
@@ -48,6 +69,7 @@ const settingsSchema = z.object({
   breakDefaultMin: z.number().min(0).max(1440),
   onboarded: z.boolean(),
   reducedMotion: z.boolean().optional(),
+  reminders: reminderSettingsSchema.optional(),
   schemaVersion: z.number().int().positive(),
 });
 
@@ -213,6 +235,11 @@ const v3TablesShape = {
   activityLogs: z.array(activityLogSchema),
 };
 
+const v4TablesShape = {
+  ...v3TablesShape,
+  reviewItems: z.array(reviewItemSchema),
+};
+
 const v1BackupFileSchema = z.object({
   schemaVersion: z.literal(1),
   exportedAt: isoDateTime,
@@ -231,13 +258,16 @@ const v3BackupFileSchema = z.object({
   tables: z.object(v3TablesShape),
 });
 
+const v4BackupFileSchema = z.object({
+  schemaVersion: z.literal(4),
+  exportedAt: isoDateTime,
+  tables: z.object(v4TablesShape),
+});
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
-  tables: z.object({
-    ...v3TablesShape,
-    reviewItems: z.array(reviewItemSchema),
-  }),
+  tables: z.object(v4TablesShape),
 });
 
 export interface BackupTables {
@@ -337,6 +367,26 @@ function normalizeFocusSessions(rows: FocusSession[]): FocusSession[] {
   }));
 }
 
+function normalizeSettingsRows(rows: UserSettings[]): UserSettings[] {
+  return rows.map((row) => ({
+    ...row,
+    reminders: normalizeReminderSettings(row.reminders),
+    schemaVersion: SCHEMA_VERSION,
+  }));
+}
+
+function validateWithSchema<T>(schema: z.ZodType<T>, raw: unknown): T {
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    const location = firstIssue?.path.join(".") || "unknown field";
+    throw new BackupError(
+      `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
+    );
+  }
+  return parsed.data;
+}
+
 function parseBackup(text: string): BackupFile {
   let raw: unknown;
 
@@ -361,25 +411,14 @@ function parseBackup(text: string): BackupFile {
   }
 
   if (version === 1) {
-    const parsedV1 = v1BackupFileSchema.safeParse(raw);
-    if (!parsedV1.success) {
-      const firstIssue = parsedV1.error.issues[0];
-      const location = firstIssue?.path.join(".") || "unknown field";
-      throw new BackupError(
-        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
-      );
-    }
-
+    const data = validateWithSchema(v1BackupFileSchema, raw);
     return {
       schemaVersion: SCHEMA_VERSION,
-      exportedAt: parsedV1.data.exportedAt,
+      exportedAt: data.exportedAt,
       tables: {
-        ...parsedV1.data.tables,
-        settings: parsedV1.data.tables.settings.map((row) => ({
-          ...row,
-          schemaVersion: SCHEMA_VERSION,
-        })),
-        focusSessions: normalizeFocusSessions(parsedV1.data.tables.focusSessions),
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         mindfulnessSessions: [],
         journalEntries: [],
         gratitudeEntries: [],
@@ -390,25 +429,14 @@ function parseBackup(text: string): BackupFile {
   }
 
   if (version === 2) {
-    const parsedV2 = v2BackupFileSchema.safeParse(raw);
-    if (!parsedV2.success) {
-      const firstIssue = parsedV2.error.issues[0];
-      const location = firstIssue?.path.join(".") || "unknown field";
-      throw new BackupError(
-        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
-      );
-    }
-
+    const data = validateWithSchema(v2BackupFileSchema, raw);
     return {
       schemaVersion: SCHEMA_VERSION,
-      exportedAt: parsedV2.data.exportedAt,
+      exportedAt: data.exportedAt,
       tables: {
-        ...parsedV2.data.tables,
-        settings: parsedV2.data.tables.settings.map((row) => ({
-          ...row,
-          schemaVersion: SCHEMA_VERSION,
-        })),
-        focusSessions: normalizeFocusSessions(parsedV2.data.tables.focusSessions),
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         activityLogs: [],
         reviewItems: [],
       },
@@ -416,41 +444,34 @@ function parseBackup(text: string): BackupFile {
   }
 
   if (version === 3) {
-    const parsedV3 = v3BackupFileSchema.safeParse(raw);
-    if (!parsedV3.success) {
-      const firstIssue = parsedV3.error.issues[0];
-      const location = firstIssue?.path.join(".") || "unknown field";
-      throw new BackupError(
-        `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
-      );
-    }
-
+    const data = validateWithSchema(v3BackupFileSchema, raw);
     return {
       schemaVersion: SCHEMA_VERSION,
-      exportedAt: parsedV3.data.exportedAt,
+      exportedAt: data.exportedAt,
       tables: {
-        ...parsedV3.data.tables,
-        settings: parsedV3.data.tables.settings.map((row) => ({
-          ...row,
-          schemaVersion: SCHEMA_VERSION,
-        })),
-        focusSessions: normalizeFocusSessions(parsedV3.data.tables.focusSessions),
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         reviewItems: [],
       },
     };
   }
 
-  const parsed = backupFileSchema.safeParse(raw);
-
-  if (!parsed.success) {
-    const firstIssue = parsed.error.issues[0];
-    const location = firstIssue?.path.join(".") || "unknown field";
-    throw new BackupError(
-      `This backup failed validation (${location}: ${firstIssue?.message ?? "invalid value"}). Nothing was imported.`,
-    );
+  if (version === 4) {
+    const data = validateWithSchema(v4BackupFileSchema, raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: data.exportedAt,
+      tables: {
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+      },
+    };
   }
 
-  return parsed.data as BackupFile;
+  const data = validateWithSchema(backupFileSchema, raw);
+  return data as BackupFile;
 }
 
 /**
