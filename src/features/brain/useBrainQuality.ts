@@ -5,6 +5,7 @@
  * imports so the (SSR-rendered) shells can use useBrainStage without pulling WebGL code.
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { TextSizePref } from "@/types/domain";
 
 export type QualityPref = "auto" | "low" | "high";
 export type QualityTier = "low" | "high";
@@ -94,6 +95,89 @@ function subscribeReducedMotion(cb: () => void): () => void {
 
 export function usePrefersReducedMotion(): boolean {
   return useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, () => false);
+}
+
+/* ---- high-contrast + text size ----------------------------------------- */
+const HC_QUERY = "(prefers-contrast: more)";
+const FC_QUERY = "(forced-colors: active)";
+export const HIGH_CONTRAST_ATTR = "data-high-contrast";
+export const TEXT_SIZE_ATTR = "data-text-size";
+export const A11Y_PREFS_EVENT = "nx:a11y-prefs-change";
+
+export function resolveHighContrast(
+  osMoreContrast: boolean,
+  osForcedColors: boolean,
+  settingHighContrast?: boolean,
+): boolean {
+  return Boolean(osMoreContrast || osForcedColors || settingHighContrast);
+}
+
+export function normalizeTextSize(value?: string | null): TextSizePref {
+  if (value === "sm" || value === "md" || value === "lg") return value;
+  return "md";
+}
+
+function getHighContrastSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
+  const hc = typeof window.matchMedia === "function" ? window.matchMedia(HC_QUERY).matches : false;
+  const fc = typeof window.matchMedia === "function" ? window.matchMedia(FC_QUERY).matches : false;
+  const attrTrue =
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute(HIGH_CONTRAST_ATTR) === "true";
+  return resolveHighContrast(hc, fc, attrTrue);
+}
+
+function subscribeHighContrast(cb: () => void): () => void {
+  const hcMq = typeof window.matchMedia === "function" ? window.matchMedia(HC_QUERY) : null;
+  const fcMq = typeof window.matchMedia === "function" ? window.matchMedia(FC_QUERY) : null;
+  hcMq?.addEventListener("change", cb);
+  fcMq?.addEventListener("change", cb);
+  window.addEventListener(A11Y_PREFS_EVENT, cb);
+
+  let observer: MutationObserver | null = null;
+  if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(cb);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [HIGH_CONTRAST_ATTR],
+    });
+  }
+
+  return () => {
+    hcMq?.removeEventListener("change", cb);
+    fcMq?.removeEventListener("change", cb);
+    window.removeEventListener(A11Y_PREFS_EVENT, cb);
+    observer?.disconnect();
+  };
+}
+
+export function useHighContrast(): boolean {
+  return useSyncExternalStore(subscribeHighContrast, getHighContrastSnapshot, () => false);
+}
+
+function getTextSizeSnapshot(): TextSizePref {
+  if (typeof document === "undefined") return "md";
+  return normalizeTextSize(document.documentElement.getAttribute(TEXT_SIZE_ATTR));
+}
+
+function subscribeTextSize(cb: () => void): () => void {
+  window.addEventListener(A11Y_PREFS_EVENT, cb);
+  let observer: MutationObserver | null = null;
+  if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(cb);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [TEXT_SIZE_ATTR],
+    });
+  }
+  return () => {
+    window.removeEventListener(A11Y_PREFS_EVENT, cb);
+    observer?.disconnect();
+  };
+}
+
+export function useTextSize(): TextSizePref {
+  return useSyncExternalStore(subscribeTextSize, getTextSizeSnapshot, () => "md");
 }
 
 /* ---- WebGL support ----------------------------------------------------- */
