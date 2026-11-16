@@ -1,5 +1,5 @@
 export { ChartCard } from "./chart-card";
-export type { ChartCardProps } from "./chart-card";
+export type { ChartCardProps, ChartTableData } from "./chart-card";
 
 export { DurationInput } from "./duration-input";
 export type { DurationInputProps } from "./duration-input";
