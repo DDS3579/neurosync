@@ -1,5 +1,6 @@
 import {
   Brain,
+  CalendarClock,
   FlaskConical,
   LayoutDashboard,
   Library,
@@ -28,6 +29,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/overview", label: "Overview", icon: LayoutDashboard },
       { href: "/habits", label: "Daily Habits", icon: ListChecks },
       { href: "/focus", label: "Focus Lab", icon: Timer },
+      { href: "/planner", label: "Planner", icon: CalendarClock },
     ],
   },
   {
