@@ -48,7 +48,12 @@ import { FPS_GOVERNOR, type BrainQuality, type QualityPref } from "./useBrainQua
 /* ------------------------------------------------------------------ */
 /* TUNABLES                                                            */
 /* ------------------------------------------------------------------ */
-const GLB_URL = "/models/brain.glb";
+/**
+ * Optional segmented model. Unset (the default) keeps the procedural cloud and
+ * makes no request at all — a probe for a missing asset would log a 404 on
+ * every mount. Set NEXT_PUBLIC_BRAIN_GLB_URL to e.g. "/models/brain.glb".
+ */
+const GLB_URL = process.env.NEXT_PUBLIC_BRAIN_GLB_URL?.trim() || null;
 
 const PALETTE = {
   violet: new THREE.Color("#8B5CF6"),
@@ -109,13 +114,15 @@ class GlbErrorBoundary extends Component<{ children: ReactNode }, { hasError: bo
 }
 
 function GlbSampler({
+  url,
   pointCount,
   onSampled,
 }: {
+  url: string;
   pointCount: number;
   onSampled: (data: BrainPointData) => void;
 }) {
-  const gltf = useGLTF(GLB_URL);
+  const gltf = useGLTF(url);
   useEffect(() => {
     const sampled = sampleBrainFromObject(gltf.scene, pointCount);
     onSampled(sampled);
@@ -123,55 +130,26 @@ function GlbSampler({
   return null;
 }
 
-/**
- * Checks whether `/models/brain.glb` is actually served before mounting `useGLTF`,
- * avoiding unhandled load errors when running procedurally.
- */
-function useGlbProbe(): boolean {
-  const [available, setAvailable] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(GLB_URL, { method: "HEAD" })
-      .then((res) => {
-        if (cancelled || !res.ok) return;
-        const type = res.headers.get("content-type") ?? "";
-        if (!type.includes("text/html")) setAvailable(true);
-      })
-      .catch(() => {
-        // Missing asset: silently stay procedural.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return available;
-}
-
 function useBrainPointData(pointCount: number) {
   const procedural = useMemo(() => generateBrainPoints(pointCount), [pointCount]);
-  const glbAvailable = useGlbProbe();
   const [glbData, setGlbData] = useState<BrainPointData | null>(null);
   const onSampled = useCallback((d: BrainPointData) => setGlbData(d), []);
   const data = glbData && glbData.count === pointCount ? glbData : procedural;
-  return { data, glbAvailable, onSampled };
+  return { data, onSampled };
 }
 
 function OptionalGlbLoader({
-  enabled,
   pointCount,
   onSampled,
 }: {
-  enabled: boolean;
   pointCount: number;
   onSampled: (data: BrainPointData) => void;
 }) {
-  if (!enabled) return null;
+  if (!GLB_URL) return null;
   return (
     <GlbErrorBoundary>
       <Suspense fallback={null}>
-        <GlbSampler pointCount={pointCount} onSampled={onSampled} />
+        <GlbSampler url={GLB_URL} pointCount={pointCount} onSampled={onSampled} />
       </Suspense>
     </GlbErrorBoundary>
   );
@@ -339,7 +317,7 @@ function ExplorerCore({
     target: new THREE.Vector3(0, 0, 0),
   });
 
-  const { data: pointData, glbAvailable, onSampled: handleGlbSampled } = useBrainPointData(quality.pointCount);
+  const { data: pointData, onSampled: handleGlbSampled } = useBrainPointData(quality.pointCount);
 
   const pointsGeo = useMemo(() => buildPointsGeometry(pointData), [pointData]);
   useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
@@ -517,7 +495,7 @@ function ExplorerCore({
 
   return (
     <>
-      <OptionalGlbLoader enabled={glbAvailable} pointCount={quality.pointCount} onSampled={handleGlbSampled} />
+      <OptionalGlbLoader pointCount={quality.pointCount} onSampled={handleGlbSampled} />
       <FpsGovernor qualityPref={qualityPref} tier={quality.tier} downgrade={quality.downgrade} />
 
       <OrbitControls
@@ -666,7 +644,7 @@ function HeroCore({ progress, interactive, quality, reducedMotion }: HeroScenePr
   const camPosScratch = useRef(new THREE.Vector3());
   const lookAtScratch = useRef(new THREE.Vector3());
 
-  const { data: pointData, glbAvailable, onSampled } = useBrainPointData(quality.pointCount);
+  const { data: pointData, onSampled } = useBrainPointData(quality.pointCount);
   const pointsGeo = useMemo(() => buildPointsGeometry(pointData), [pointData]);
   useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
 
@@ -743,7 +721,7 @@ function HeroCore({ progress, interactive, quality, reducedMotion }: HeroScenePr
 
   return (
     <>
-      <OptionalGlbLoader enabled={glbAvailable} pointCount={quality.pointCount} onSampled={onSampled} />
+      <OptionalGlbLoader pointCount={quality.pointCount} onSampled={onSampled} />
       <FpsGovernor qualityPref="auto" tier={quality.tier} downgrade={quality.downgrade} />
       <group ref={groupRef}>
         <points geometry={pointsGeo} frustumCulled={false}>
