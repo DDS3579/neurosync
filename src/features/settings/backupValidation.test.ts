@@ -10,6 +10,7 @@ import {
   journalRepository,
   mindfulnessRepository,
   reviewRepository,
+  settingsRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
 
@@ -179,6 +180,21 @@ describe("backup import validation", () => {
       intervalStep: 99,
     });
     await expect(importAll(JSON.stringify(badReview), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const ensuredSettings = await settingsRepository.ensure();
+    const badReminderBackup = structuredClone(await buildBackup());
+    badReminderBackup.tables.settings[0] = {
+      ...ensuredSettings,
+      reminders: {
+        windDown: { enabled: true, time: "99:99" },
+        checkin: { enabled: false, time: "20:00" },
+        reviewDue: { enabled: false, time: "18:00" },
+        quietHours: { enabled: true, start: "23:00", end: "07:00" },
+      },
+    };
+    await expect(importAll(JSON.stringify(badReminderBackup), "replace")).rejects.toBeInstanceOf(
       BackupError,
     );
 
