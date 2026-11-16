@@ -1,107 +1,115 @@
-import { mean, roundTo } from "@/lib/insights/stats";
-import type { ExperimentResult } from "@/lib/insights/types";
-import type {
-  DailyCheckin,
-  Experiment,
-  ExperimentMetric,
-  FocusSession,
-  InsightInput,
-  ISODate,
-} from "@/types/domain";
+import type { Experiment, ExperimentMetric, InsightInput, ISODate } from '@/types/domain';
+import { groupByDate, mean, round1, stdDev } from './stats';
 
-/** Each window needs this many scored days before a comparison is shown. */
-export const MIN_SAMPLES_PER_WINDOW = 5;
-
-export const EXPERIMENT_CAVEAT =
-  "Your own logged days, compared side by side. Small samples and changing circumstances mean this cannot show that the change caused the difference.";
-
-function dateRangeDates(start: ISODate, end: ISODate): Set<ISODate> {
-  // Simple day-by-day walk over the stored ISO dates; the windows are short.
-  const dates = new Set<ISODate>();
-  const cursor = new Date(`${start}T00:00:00Z`);
-  const last = new Date(`${end}T00:00:00Z`);
-
-  while (cursor <= last) {
-    dates.add(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return dates;
+export interface ExperimentResult {
+  baseline: { n: number; mean: number | null };
+  intervention: { n: number; mean: number | null };
+  difference: number | null;
+  sufficientData: boolean;
+  direction: 'higher' | 'lower' | 'similar' | 'unknown';
+  summary: string;
+  caveats: string[];
+  effectSizeNote?: string;
 }
 
-function checkinScore(checkin: DailyCheckin, metric: ExperimentMetric): number | null {
-  if (metric === "focusRating") return null;
-  return checkin[metric];
-}
+const MIN_DAYS = 5;
+// On the 1–5 rating scale, differences within ±0.3 are described as "similar".
+const SIMILAR_BAND = 0.3;
 
-function metricValues(
-  input: InsightInput,
-  metric: ExperimentMetric,
-  dates: Set<ISODate>,
-): number[] {
-  const values: number[] = [];
+const METRIC_LABELS: Record<ExperimentMetric, string> = {
+  concentration: 'concentration',
+  mood: 'mood',
+  energy: 'energy',
+  stress: 'stress',
+  focusRating: 'session focus',
+};
 
-  for (const checkin of input.checkins) {
-    if (!dates.has(checkin.date)) continue;
-    const score = checkinScore(checkin, metric);
-    if (score !== null) values.push(score);
-  }
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-  if (metric === "focusRating") {
-    const perDay = new Map<ISODate, FocusSession[]>();
-
-    for (const session of input.focus) {
-      if (!dates.has(session.date)) continue;
-      perDay.set(session.date, [...(perDay.get(session.date) ?? []), session]);
+/** One value per logged day: check-in field, or the day's mean session focus rating. */
+function metricByDate(exp: Experiment, input: InsightInput): Map<ISODate, number> {
+  const out = new Map<ISODate, number>();
+  if (exp.metric === 'focusRating') {
+    for (const [date, list] of groupByDate(input.focus)) {
+      const m = mean(list.map((s) => s.focusRating));
+      if (m !== null) out.set(date, m);
     }
-
-    for (const sessions of perDay.values()) {
-      const average = mean(sessions.map((session) => session.focusRating));
-      if (average !== null) values.push(average);
+  } else {
+    const key = exp.metric; // 'concentration' | 'mood' | 'energy' | 'stress'
+    for (const [date, list] of groupByDate(input.checkins)) {
+      const m = mean(list.map((c) => c[key])); // several check-ins on one day are averaged
+      if (m !== null) out.set(date, m);
     }
   }
-
-  return values;
+  return out;
 }
 
-/** TODO(stub): replaced by the full Personal Experiment Lab analysis. */
-export function analyzeExperiment(experiment: Experiment, input: InsightInput): ExperimentResult {
-  const baselineValues = metricValues(
-    input,
-    experiment.metric,
-    dateRangeDates(experiment.baselineStart, experiment.baselineEnd),
-  );
-  const interventionValues = metricValues(
-    input,
-    experiment.metric,
-    dateRangeDates(experiment.interventionStart, experiment.interventionEnd),
-  );
+function periodValues(series: Map<ISODate, number>, start: ISODate, end: ISODate): number[] {
+  const vals: number[] = [];
+  for (const [date, value] of series) {
+    if (date >= start && date <= end) vals.push(value); // inclusive ranges, ISO string order
+  }
+  return vals;
+}
 
-  const baselineMean = mean(baselineValues);
-  const interventionMean = mean(interventionValues);
-  const enoughData =
-    baselineValues.length >= MIN_SAMPLES_PER_WINDOW &&
-    interventionValues.length >= MIN_SAMPLES_PER_WINDOW;
+export function analyzeExperiment(exp: Experiment, input: InsightInput): ExperimentResult {
+  const series = metricByDate(exp, input);
+  const bVals = periodValues(series, exp.baselineStart, exp.baselineEnd);
+  const iVals = periodValues(series, exp.interventionStart, exp.interventionEnd);
+  const bMean = mean(bVals);
+  const iMean = mean(iVals);
+  const sufficientData = bVals.length >= MIN_DAYS && iVals.length >= MIN_DAYS;
+  const difference = bMean !== null && iMean !== null ? Math.round((iMean - bMean) * 100) / 100 : null;
 
-  const delta =
-    enoughData && baselineMean !== null && interventionMean !== null
-      ? roundTo(interventionMean - baselineMean, 2)
-      : null;
+  // Direction is only stated once both periods clear the minimum — otherwise 'unknown'.
+  let direction: ExperimentResult['direction'] = 'unknown';
+  if (sufficientData && difference !== null) {
+    direction = difference > SIMILAR_BAND ? 'higher' : difference < -SIMILAR_BAND ? 'lower' : 'similar';
+  }
+
+  const label = METRIC_LABELS[exp.metric];
+  let summary: string;
+  if (bMean === null || iMean === null) {
+    const where = bMean === null && iMean === null ? 'either period' : 'one of the periods';
+    summary = `No ${label} data was logged in ${where} yet, so there is nothing to compare. Baseline days: ${bVals.length}. Intervention days: ${iVals.length}.`;
+  } else if (!sufficientData) {
+    summary = `So far, ${plural(bVals.length, 'baseline day')} average ${round1(bMean)}/5 and ${plural(iVals.length, 'intervention day')} average ${round1(iMean)}/5 for ${label}. At least ${MIN_DAYS} days in each period are needed before a comparison is shown — these numbers are provisional.`;
+  } else {
+    // Neutral wording for every metric: "lower stress rating" is a description, never a verdict.
+    const phrase = direction === 'similar' ? `similar ${label} rating (within ±${SIMILAR_BAND})` : `${direction} ${label} rating`;
+    const sign = difference !== null && difference >= 0 ? '+' : '';
+    summary = `Across ${plural(bVals.length, 'baseline day')} and ${plural(iVals.length, 'intervention day')}, the average ${label} rating went from ${round1(bMean)}/5 to ${round1(iMean)}/5 — a ${phrase} (difference ${sign}${difference}). This describes your logs; it does not show the change caused the difference.`;
+  }
+
+  const caveats: string[] = [
+    'This comparison does not establish causation.',
+    'Self-reported ratings are subjective and can shift with mood and context.',
+    'Other things changed during the period too — sleep, workload, season, life — and any of them could play a part.',
+  ];
+  if (!sufficientData) {
+    caveats.push(`With fewer than ${MIN_DAYS} days in a period, averages are especially noisy.`);
+  }
+
+  let effectSizeNote: string | undefined;
+  if (sufficientData && difference !== null) {
+    const sb = stdDev(bVals);
+    const si = stdDev(iVals);
+    if (sb !== null && si !== null) {
+      const pooled = Math.sqrt((sb * sb + si * si) / 2);
+      if (pooled > 1e-9) {
+        effectSizeNote = `For scale: the difference is about ${round1(Math.abs(difference) / pooled)} times your typical day-to-day variation — a rough sense of size, not a verdict.`;
+      }
+    }
+  }
 
   return {
-    experimentId: experiment.id,
-    metric: experiment.metric,
-    status: enoughData ? "ready" : "insufficient_data",
-    baselineMean: baselineMean === null ? null : roundTo(baselineMean, 2),
-    interventionMean: interventionMean === null ? null : roundTo(interventionMean, 2),
-    delta,
-    sampleCounts: {
-      baseline: baselineValues.length,
-      intervention: interventionValues.length,
-    },
-    summary: enoughData
-      ? "Both windows have enough logged days for a side-by-side comparison."
-      : `Log at least ${MIN_SAMPLES_PER_WINDOW} scored days in each window before comparing.`,
-    caveat: EXPERIMENT_CAVEAT,
+    baseline: { n: bVals.length, mean: bMean === null ? null : round1(bMean) },
+    intervention: { n: iVals.length, mean: iMean === null ? null : round1(iMean) },
+    difference,
+    sufficientData,
+    direction,
+    summary,
+    caveats,
+    ...(effectSizeNote !== undefined ? { effectSizeNote } : {}),
   };
 }
