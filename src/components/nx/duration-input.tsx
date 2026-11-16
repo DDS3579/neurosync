@@ -88,7 +88,7 @@ export function DurationInput({
                 className={cn(
                   "rounded-chip border px-3 py-1 font-mono text-caption tabular-nums transition-colors duration-[180ms] ease-out",
                   selected
-                    ? "border-violet bg-violet/15 text-violet"
+                    ? "border-violet bg-violet/15 text-violet-text"
                     : "border-border bg-surface-2 text-muted-foreground hover:border-border-strong hover:text-foreground",
                 )}
               >
