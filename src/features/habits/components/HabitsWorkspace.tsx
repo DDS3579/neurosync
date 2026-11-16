@@ -11,6 +11,7 @@ import {
   type HabitTab,
 } from "@/features/habits/habitUtils";
 import type {
+  ActivityLog,
   DailyCheckin,
   GratitudeEntry,
   Habit,
@@ -23,6 +24,7 @@ import type {
   SleepLog,
 } from "@/types/domain";
 
+import { ActivitiesTab } from "@/features/activities/components/ActivitiesTab";
 import { CheckinTab } from "./CheckinTab";
 import { HabitsTab } from "./HabitsTab";
 import { MovementTab } from "./MovementTab";
@@ -88,6 +90,15 @@ export interface HabitsWorkspaceProps {
     values: Omit<GratitudeEntry, "id" | "createdAt" | "updatedAt">,
   ) => Promise<"created" | "updated">;
   onDeleteGratitude: (id: string) => Promise<void>;
+  activityLogs: ActivityLog[];
+  onCreateActivity: (
+    values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onUpdateActivity: (
+    id: string,
+    values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteActivity: (id: string) => Promise<void>;
 }
 
 function subscribeHabitHash(callback: () => void): () => void {
@@ -136,6 +147,7 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
           <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
           <TabsTrigger value="habits">Habits</TabsTrigger>
           <TabsTrigger value="mind">Mind</TabsTrigger>
+          <TabsTrigger value="activities">Activities</TabsTrigger>
         </TabsList>
 
         <TabsContent value="checkin">
@@ -198,6 +210,15 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
             onDeleteJournal={props.onDeleteJournal}
             onSaveGratitude={props.onSaveGratitude}
             onDeleteGratitude={props.onDeleteGratitude}
+          />
+        </TabsContent>
+
+        <TabsContent value="activities">
+          <ActivitiesTab
+            activityLogs={props.activityLogs}
+            onCreateActivity={props.onCreateActivity}
+            onUpdateActivity={props.onUpdateActivity}
+            onDeleteActivity={props.onDeleteActivity}
           />
         </TabsContent>
       </Tabs>
