@@ -7,7 +7,8 @@ export type RegionId = 'prefrontal' | 'parietal' | 'temporal' | 'occipital'
 
 export type ActivityKind = 'deep_focus' | 'active_recall' | 'spaced_repetition' | 'problem_solving'
   | 'reading' | 'skill_practice' | 'teaching' | 'exercise' | 'mindfulness' | 'social'
-  | 'creative' | 'music' | 'language_learning' | 'sleep_rest';
+  | 'creative' | 'music' | 'language_learning' | 'puzzles_games' | 'new_hobby' | 'novelty'
+  | 'sleep_rest';
 
 export type LearningMethod = 'active_recall' | 'spaced_repetition' | 'problem_solving'
   | 'deep_reading' | 'skill_practice' | 'teaching';
@@ -33,6 +34,8 @@ export interface FocusSession extends Base {
   date: ISODate; startedAt: ISODateTime; durationMin: number; plannedMin: number;
   subject: string; method: LearningMethod; focusRating: Rating; difficulty: Rating;
   distractions: number; notes?: string;
+  practicedRetrieval?: boolean;
+  reviewedPrior?: boolean;
 }
 export interface MovementLog extends Base {
   date: ISODate; type: 'walk'|'run'|'cycle'|'sport'|'gym'|'stretch'|'other';
@@ -60,6 +63,34 @@ export interface GratitudeEntry extends Base {
   items: string[];
 }
 
+export type PersonalActivityType =
+  | 'social'
+  | 'creative'
+  | 'music'
+  | 'language_learning'
+  | 'puzzles_games'
+  | 'new_hobby'
+  | 'novelty';
+
+export interface ActivityLog extends Base {
+  date: ISODate;
+  type: PersonalActivityType;
+  durationMin: number;
+  enjoyment: Rating;
+  note?: string;
+}
+
+export type ReviewDifficulty = 'easy' | 'okay' | 'hard';
+
+export interface ReviewItem extends Base {
+  topic: string;
+  intervalStep: number;
+  nextReviewDate: ISODate;
+  lastReviewedDate?: ISODate;
+  reviewCount: number;
+  notes?: string;
+}
+
 export type ExperimentMetric = 'concentration' | 'mood' | 'energy' | 'stress' | 'focusRating';
 export interface Experiment extends Base {
   title: string; hypothesis: string; changeDescription: string; metric: ExperimentMetric;
@@ -70,6 +101,8 @@ export interface Experiment extends Base {
 export interface InsightInput {
   settings: UserSettings; sleep: SleepLog[]; checkins: DailyCheckin[]; focus: FocusSession[];
   movement: MovementLog[]; nutrition: NutritionLog[]; habits: Habit[]; habitLogs: HabitLog[];
+  activities?: ActivityLog[]; mindfulness?: MindfulnessSession[];
+  journal?: JournalEntry[]; gratitude?: GratitudeEntry[];
 }
 export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
 export interface Insight {
