@@ -73,6 +73,8 @@ import { ReviewQueueSection } from "./ReviewQueueSection";
 
 export interface FocusWorkspaceProps {
   defaultFocusMin: number;
+  initialSubject?: string;
+  initialPlannedMin?: number;
   sessions: FocusSession[];
   reviewItems: ReviewItem[];
   onCreateSession: (values: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => Promise<void>;
@@ -104,6 +106,8 @@ function readNotificationPermission(): NotificationPermission | "unsupported" {
 
 export function FocusWorkspace({
   defaultFocusMin,
+  initialSubject,
+  initialPlannedMin,
   sessions,
   reviewItems,
   onCreateSession,
@@ -141,9 +145,9 @@ export function FocusWorkspace({
   const setupForm = useForm<FocusSetupValues>({
     resolver: zodResolver(focusSetupSchema),
     defaultValues: {
-      subject: "",
+      subject: initialSubject ?? "",
       method: "active_recall",
-      plannedMin: defaultFocusMin || 25,
+      plannedMin: initialPlannedMin ?? (defaultFocusMin || 25),
     },
   });
 
