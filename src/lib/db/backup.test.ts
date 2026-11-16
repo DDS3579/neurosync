@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { BackupError, SCHEMA_VERSION, buildBackup, exportAll, importAll } from "@/lib/db/backup";
 import { NeuroSyncDatabase, getDb } from "@/lib/db/dexie";
 import {
+  activityRepository,
   checkinRepository,
   focusRepository,
   gratitudeRepository,
@@ -11,6 +12,7 @@ import {
   habitRepository,
   journalRepository,
   mindfulnessRepository,
+  reviewRepository,
   settingsRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
@@ -55,6 +57,8 @@ async function seed(): Promise<void> {
     focusRating: 4,
     difficulty: 3,
     distractions: 0,
+    practicedRetrieval: true,
+    reviewedPrior: false,
   });
 
   const habit = await habitRepository.create({ name: "Evening walk", archived: false });
@@ -75,6 +79,22 @@ async function seed(): Promise<void> {
   await gratitudeRepository.create({
     date: DATE,
     items: ["Warm tea", "Uninterrupted focus block"],
+  });
+
+  await activityRepository.create({
+    date: DATE,
+    type: "puzzles_games",
+    durationMin: 25,
+    enjoyment: 4,
+    note: "Crossword over tea",
+  });
+
+  await reviewRepository.create({
+    topic: "Hippocampal memory indexing",
+    intervalStep: 1,
+    nextReviewDate: "2026-03-05",
+    lastReviewedDate: DATE,
+    reviewCount: 1,
   });
 }
 
@@ -106,9 +126,11 @@ describe("backup round-trip", () => {
     expect(summary.imported.mindfulnessSessions).toBe(1);
     expect(summary.imported.journalEntries).toBe(1);
     expect(summary.imported.gratitudeEntries).toBe(1);
+    expect(summary.imported.activityLogs).toBe(1);
+    expect(summary.imported.reviewItems).toBe(1);
   });
 
-  it("imports a v0.1 backup (schemaVersion 1) and migrates settings to v2", async () => {
+  it("imports a v0.1 backup (schemaVersion 1) and migrates settings to current schema", async () => {
     const v1Backup = {
       schemaVersion: 1,
       exportedAt: `${DATE}T12:00:00.000Z`,
@@ -157,9 +179,57 @@ describe("backup round-trip", () => {
     const restoredSettings = await getDb().settings.get("me");
     expect(restoredSettings?.schemaVersion).toBe(SCHEMA_VERSION);
     expect(await getDb().sleepLogs.count()).toBe(1);
+    expect(await getDb().activityLogs.count()).toBe(0);
   });
 
-  it("upgrades an existing Dexie v1 database to v2 preserving rows and migrating settings", async () => {
+  it("imports a v2 backup (schemaVersion 2) and migrates settings to current schema", async () => {
+    const v2Backup = {
+      schemaVersion: 2,
+      exportedAt: `${DATE}T12:00:00.000Z`,
+      tables: {
+        settings: [
+          {
+            id: "me",
+            createdAt: `${DATE}T08:00:00.000Z`,
+            updatedAt: `${DATE}T08:00:00.000Z`,
+            sleepTargetMin: 480,
+            focusDefaultMin: 25,
+            breakDefaultMin: 5,
+            onboarded: true,
+            schemaVersion: 2,
+          },
+        ],
+        sleepLogs: [],
+        checkins: [],
+        focusSessions: [],
+        movementLogs: [],
+        nutritionLogs: [],
+        habits: [],
+        habitLogs: [],
+        experiments: [],
+        mindfulnessSessions: [
+          {
+            id: "mind-v2",
+            createdAt: `${DATE}T08:00:00.000Z`,
+            updatedAt: `${DATE}T08:00:00.000Z`,
+            date: DATE,
+            type: "meditation",
+            durationMin: 10,
+          },
+        ],
+        journalEntries: [],
+        gratitudeEntries: [],
+      },
+    };
+
+    const summary = await importAll(JSON.stringify(v2Backup), "replace");
+    expect(summary.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(summary.imported.mindfulnessSessions).toBe(1);
+    expect(summary.imported.activityLogs).toBe(0);
+    expect((await getDb().settings.get("me"))?.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("upgrades an existing Dexie v1 database to v3 preserving rows and migrating settings", async () => {
     const dbName = `neurosync-migration-test-${Date.now()}`;
     const v1Db = new Dexie(dbName);
     v1Db.version(1).stores({
@@ -184,15 +254,34 @@ describe("backup round-trip", () => {
       onboarded: true,
       schemaVersion: 1,
     });
+    await v1Db.table("focusSessions").put({
+      id: "focus-v1",
+      createdAt: `${DATE}T09:00:00.000Z`,
+      updatedAt: `${DATE}T09:00:00.000Z`,
+      date: DATE,
+      startedAt: `${DATE}T09:00:00.000Z`,
+      durationMin: 25,
+      plannedMin: 25,
+      subject: "Recall drill",
+      method: "active_recall",
+      focusRating: 4,
+      difficulty: 3,
+      distractions: 0,
+    });
     v1Db.close();
 
     const upgradedDb = new NeuroSyncDatabase(dbName);
     await upgradedDb.open();
     const migratedSettings = await upgradedDb.settings.get("me");
-    expect(migratedSettings?.schemaVersion).toBe(2);
+    const migratedFocus = await upgradedDb.focusSessions.get("focus-v1");
+    expect(migratedSettings?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migratedFocus?.practicedRetrieval).toBe(true);
+    expect(migratedFocus?.reviewedPrior).toBe(false);
     expect(await upgradedDb.mindfulnessSessions.count()).toBe(0);
     expect(await upgradedDb.journalEntries.count()).toBe(0);
     expect(await upgradedDb.gratitudeEntries.count()).toBe(0);
+    expect(await upgradedDb.activityLogs.count()).toBe(0);
+    expect(await upgradedDb.reviewItems.count()).toBe(0);
     upgradedDb.close();
     await Dexie.delete(dbName);
   });
