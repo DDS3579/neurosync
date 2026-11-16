@@ -6,6 +6,7 @@ import { upsertCheckin } from "@/features/checkin/checkinUtils";
 import { HabitsSkeleton, HabitsWorkspace } from "@/features/habits/components/HabitsWorkspace";
 import { DEFAULT_HABIT_NAMES, HABITS_SEEDED_KEY } from "@/features/habits/habitUtils";
 import {
+  useActivityLogs,
   useCheckins,
   useGratitudeEntries,
   useHabitLogs,
@@ -18,6 +19,7 @@ import {
   useSleepLogs,
 } from "@/lib/db/hooks";
 import {
+  activityRepository,
   checkinRepository,
   getGratitudeByDate,
   gratitudeRepository,
@@ -30,6 +32,7 @@ import {
   sleepRepository,
 } from "@/lib/db/repositories";
 import type {
+  ActivityLog,
   DailyCheckin,
   GratitudeEntry,
   ISODate,
@@ -51,6 +54,7 @@ export default function HabitsPage() {
   const mindfulness = useMindfulnessSessions();
   const journal = useJournalEntries();
   const gratitude = useGratitudeEntries();
+  const activities = useActivityLogs();
   const seededAttemptRef = useRef(false);
 
   // Seed the 4 default habits exactly once on first use if no habits exist yet.
@@ -201,6 +205,22 @@ export default function HabitsPage() {
 
   const onDeleteGratitude = useCallback((id: string) => gratitudeRepository.remove(id), []);
 
+  const onCreateActivity = useCallback(
+    async (values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">) => {
+      await activityRepository.create(values);
+    },
+    [],
+  );
+
+  const onUpdateActivity = useCallback(
+    async (id: string, values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">) => {
+      await activityRepository.update(id, values);
+    },
+    [],
+  );
+
+  const onDeleteActivity = useCallback((id: string) => activityRepository.remove(id), []);
+
   const isLoading =
     settings.isLoading ||
     checkins.isLoading ||
@@ -211,7 +231,8 @@ export default function HabitsPage() {
     habitLogs.isLoading ||
     mindfulness.isLoading ||
     journal.isLoading ||
-    gratitude.isLoading;
+    gratitude.isLoading ||
+    activities.isLoading;
 
   if (
     isLoading ||
@@ -224,7 +245,8 @@ export default function HabitsPage() {
     !habitLogs.data ||
     !mindfulness.data ||
     !journal.data ||
-    !gratitude.data
+    !gratitude.data ||
+    !activities.data
   ) {
     return <HabitsSkeleton />;
   }
@@ -241,6 +263,7 @@ export default function HabitsPage() {
       mindfulnessSessions={mindfulness.data}
       journalEntries={journal.data}
       gratitudeEntries={gratitude.data}
+      activityLogs={activities.data}
       onSaveCheckin={onSaveCheckin}
       onDeleteCheckin={onDeleteCheckin}
       onCreateSleep={onCreateSleep}
@@ -264,6 +287,9 @@ export default function HabitsPage() {
       onDeleteJournal={onDeleteJournal}
       onSaveGratitude={onSaveGratitude}
       onDeleteGratitude={onDeleteGratitude}
+      onCreateActivity={onCreateActivity}
+      onUpdateActivity={onUpdateActivity}
+      onDeleteActivity={onDeleteActivity}
     />
   );
 }
