@@ -16,6 +16,7 @@ import { computeInsights, generateDemoData } from "@/lib/insights";
 import type { OverviewViewProps } from "@/features/overview/OverviewView";
 import type {
   ActivityKind,
+  ActivityLog,
   DailyCheckin,
   FocusSession,
   Habit,
@@ -68,6 +69,8 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         mindfulnessSessions: [],
         journalEntries: [],
         gratitudeEntries: [],
+        activityLogs: [],
+        reviewItems: [],
       },
     }),
     "merge",
@@ -106,6 +109,7 @@ export interface OverviewAggregationInput {
   habits: Habit[];
   habitLogs: HabitLog[];
   mindfulness?: MindfulnessSession[];
+  activities?: ActivityLog[];
   today?: Date;
 }
 
@@ -140,6 +144,7 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
   const todayFocus = input.focus.filter((row) => row.date === todayISO);
   const todayMovement = input.movement.filter((row) => row.date === todayISO);
   const todayMindfulness = (input.mindfulness ?? []).filter((row) => row.date === todayISO);
+  const todayActivities = (input.activities ?? []).filter((row) => row.date === todayISO);
   const todaySleep = sleepByDate.get(todayISO);
 
   const activityItems: { kind: ActivityKind; minutes: number }[] = [];
@@ -151,6 +156,9 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
   }
   for (const ms of todayMindfulness) {
     activityItems.push({ kind: "mindfulness", minutes: ms.durationMin });
+  }
+  for (const act of todayActivities) {
+    activityItems.push({ kind: act.type, minutes: act.durationMin });
   }
   if (todaySleep) {
     activityItems.push({ kind: "sleep_rest", minutes: Math.min(120, Math.round(todaySleep.durationMin / 4)) });
@@ -172,6 +180,8 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
       nutrition: input.nutrition,
       habits: input.habits,
       habitLogs: input.habitLogs,
+      activities: input.activities,
+      mindfulness: input.mindfulness,
     },
     todayISO,
   ).slice(0, 3);
