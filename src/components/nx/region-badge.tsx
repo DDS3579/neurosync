@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { BRAIN_REGION_BY_ID } from "@/data/brainRegions";
+import { BRAIN_REGIONS } from "@/data/brainRegions";
 import type { RegionId } from "@/types/domain";
 
 export interface RegionBadgeProps {
@@ -8,7 +8,7 @@ export interface RegionBadgeProps {
 
 // TODO(stub): replaced by Opus output
 export function RegionBadge({ region }: RegionBadgeProps) {
-  const info = BRAIN_REGION_BY_ID[region];
+  const info = BRAIN_REGIONS.find((entry) => entry.id === region);
 
   return (
     <Badge variant="outline" className="border-violet/30 bg-violet/10 text-violet">
