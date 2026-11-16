@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 
 import type {
+  ActivityLog,
   DailyCheckin,
   Experiment,
   FocusSession,
@@ -11,6 +12,7 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  ReviewItem,
   SleepLog,
   UserSettings,
 } from "@/types/domain";
@@ -20,7 +22,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 export const DB_NAME = "neurosync";
 
@@ -40,6 +42,8 @@ export class NeuroSyncDatabase extends Dexie {
   mindfulnessSessions!: Table<MindfulnessSession, string>;
   journalEntries!: Table<JournalEntry, string>;
   gratitudeEntries!: Table<GratitudeEntry, string>;
+  activityLogs!: Table<ActivityLog, string>;
+  reviewItems!: Table<ReviewItem, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -56,7 +60,7 @@ export class NeuroSyncDatabase extends Dexie {
       experiments: "id, status, metric, baselineStart",
     });
 
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         settings: "id",
         sleepLogs: "id, date",
@@ -72,6 +76,75 @@ export class NeuroSyncDatabase extends Dexie {
         gratitudeEntries: "id, date",
       })
       .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = 2;
+          });
+      });
+
+    this.version(3)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = 3;
+          });
+      });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("focusSessions")
+          .toCollection()
+          .modify(
+            (row: {
+              method?: string;
+              practicedRetrieval?: boolean;
+              reviewedPrior?: boolean;
+            }) => {
+              if (row.practicedRetrieval === undefined) {
+                row.practicedRetrieval = row.method === "active_recall";
+              }
+              if (row.reviewedPrior === undefined) {
+                row.reviewedPrior = row.method === "spaced_repetition";
+              }
+            },
+          );
+
         await tx
           .table("settings")
           .toCollection()
