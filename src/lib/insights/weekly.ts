@@ -1,4 +1,13 @@
-import type { InsightInput, ISODate, LearningMethod, SleepLog } from '@/types/domain';
+import { activityToRegionIntensity, BRAIN_REGIONS } from '@/data/brainRegions';
+import type {
+  ActivityKind,
+  InsightInput,
+  ISODate,
+  LearningMethod,
+  PersonalActivityType,
+  RegionId,
+  SleepLog,
+} from '@/types/domain';
 import { addDays, format, parseISO } from 'date-fns';
 import { groupByDate, mean, round1 } from './stats';
 
@@ -6,10 +15,44 @@ export interface WeeklyReport {
   weekStart: ISODate;
   weekEnd: ISODate;
   sleep: { avgMin: number | null; nightsLogged: number; nightsBelowTarget: number; bedtimeSpreadMin: number | null };
-  focus: { totalMin: number; sessions: number; avgFocusRating: number | null; methodsUsed: LearningMethod[] };
+  focus: {
+    totalMin: number;
+    sessions: number;
+    avgFocusRating: number | null;
+    methodsUsed: LearningMethod[];
+    methodBreakdown: { method: LearningMethod; sessions: number; totalMin: number }[];
+    retrievalSessions: number;
+    reviewedPriorSessions: number;
+  };
   movement: { daysActive: number; totalMin: number };
   wellbeing: { avgMood: number | null; avgStress: number | null; avgEnergy: number | null; avgConcentration: number | null; checkins: number };
   nutrition: { daysLogged: number; regularMealDays: number; avgWater: number | null };
+  mind: {
+    mindfulnessSessions: number;
+    mindfulnessMin: number;
+    journalEntries: number;
+    gratitudeDays: number;
+  };
+  activities: {
+    totalLogs: number;
+    totalMin: number;
+    distinctTypes: number;
+    typesUsed: PersonalActivityType[];
+    byType: { type: PersonalActivityType; count: number; totalMin: number }[];
+  };
+  brainActivity: {
+    regions: Partial<Record<RegionId, number>>;
+    topRegions: { region: RegionId; intensity: number }[];
+  };
+  daily: {
+    date: ISODate;
+    sleepHours: number | null;
+    focusMin: number;
+    movementMin: number;
+    mood: number | null;
+    concentration: number | null;
+    mindAndActivityMin: number;
+  }[];
   vsPreviousWeek: Record<string, { delta: number; direction: 'up' | 'down' | 'flat' }>;
   highlights: string[];
   reflectionPrompts: string[];
@@ -62,7 +105,19 @@ function fmtDur(min: number): string {
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-type Sections = Pick<WeeklyReport, 'sleep' | 'focus' | 'movement' | 'wellbeing' | 'nutrition'>;
+const METHOD_TO_ACTIVITY: Record<LearningMethod, ActivityKind> = {
+  active_recall: 'active_recall',
+  spaced_repetition: 'spaced_repetition',
+  problem_solving: 'problem_solving',
+  deep_reading: 'reading',
+  skill_practice: 'skill_practice',
+  teaching: 'teaching',
+};
+
+type Sections = Pick<
+  WeeklyReport,
+  'sleep' | 'focus' | 'movement' | 'wellbeing' | 'nutrition' | 'mind' | 'activities'
+>;
 
 function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sections {
   const nights = inWindow(input.sleep, start, end);
@@ -72,6 +127,24 @@ function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sec
 
   const sessions = inWindow(input.focus, start, end);
   const focusAvg = mean(sessions.map((s) => s.focusRating));
+  const methodMap = new Map<LearningMethod, { sessions: number; totalMin: number }>();
+  let retrievalSessions = 0;
+  let reviewedPriorSessions = 0;
+  for (const s of sessions) {
+    const prev = methodMap.get(s.method) ?? { sessions: 0, totalMin: 0 };
+    methodMap.set(s.method, {
+      sessions: prev.sessions + 1,
+      totalMin: prev.totalMin + s.durationMin,
+    });
+    if (s.practicedRetrieval === true || s.method === 'active_recall') retrievalSessions += 1;
+    if (s.reviewedPrior === true || s.method === 'spaced_repetition') reviewedPriorSessions += 1;
+  }
+  const methodsUsed = [...methodMap.keys()].sort();
+  const methodBreakdown = methodsUsed.map((method) => ({
+    method,
+    sessions: methodMap.get(method)!.sessions,
+    totalMin: methodMap.get(method)!.totalMin,
+  }));
 
   const movement = inWindow(input.movement, start, end);
 
@@ -87,6 +160,26 @@ function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sec
   const nutritionDays = [...nutritionByDate.values()];
   const waterAvg = mean(nutritionDays.map((n) => n.waterGlasses));
 
+  const mindfulness = inWindow(input.mindfulness ?? [], start, end);
+  const journal = inWindow(input.journal ?? [], start, end);
+  const gratitude = inWindow(input.gratitude ?? [], start, end);
+
+  const activityLogs = inWindow(input.activities ?? [], start, end);
+  const activityMap = new Map<PersonalActivityType, { count: number; totalMin: number }>();
+  for (const act of activityLogs) {
+    const prev = activityMap.get(act.type) ?? { count: 0, totalMin: 0 };
+    activityMap.set(act.type, {
+      count: prev.count + 1,
+      totalMin: prev.totalMin + act.durationMin,
+    });
+  }
+  const typesUsed = [...activityMap.keys()].sort();
+  const byType = typesUsed.map((type) => ({
+    type,
+    count: activityMap.get(type)!.count,
+    totalMin: activityMap.get(type)!.totalMin,
+  }));
+
   return {
     sleep: {
       avgMin: sleepAvg === null ? null : round1(sleepAvg),
@@ -98,7 +191,10 @@ function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sec
       totalMin: sessions.reduce((a, s) => a + s.durationMin, 0),
       sessions: sessions.length,
       avgFocusRating: focusAvg === null ? null : round1(focusAvg),
-      methodsUsed: [...new Set(sessions.map((s) => s.method))].sort(),
+      methodsUsed,
+      methodBreakdown,
+      retrievalSessions,
+      reviewedPriorSessions,
     },
     movement: {
       daysActive: new Set(movement.map((m) => m.date)).size,
@@ -116,6 +212,19 @@ function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sec
       regularMealDays: nutritionDays.filter((n) => n.regularMeals).length,
       avgWater: waterAvg === null ? null : round1(waterAvg),
     },
+    mind: {
+      mindfulnessSessions: mindfulness.length,
+      mindfulnessMin: mindfulness.reduce((sum, m) => sum + m.durationMin, 0),
+      journalEntries: journal.length,
+      gratitudeDays: new Set(gratitude.map((g) => g.date)).size,
+    },
+    activities: {
+      totalLogs: activityLogs.length,
+      totalMin: activityLogs.reduce((sum, a) => sum + a.durationMin, 0),
+      distinctTypes: typesUsed.length,
+      typesUsed,
+      byType,
+    },
   };
 }
 
@@ -127,12 +236,17 @@ function computeSections(input: InsightInput, start: ISODate, end: ISODate): Sec
 const COMPARISONS: readonly { key: string; tolerance: number; pick: (s: Sections) => number | null; needsData: boolean }[] = [
   { key: 'sleepAvgMin', tolerance: 15, pick: (s) => s.sleep.avgMin, needsData: false },
   { key: 'focusTotalMin', tolerance: 30, pick: (s) => s.focus.totalMin, needsData: true },
+  { key: 'focusSessions', tolerance: 1, pick: (s) => s.focus.sessions, needsData: true },
   { key: 'movementDaysActive', tolerance: 0, pick: (s) => s.movement.daysActive, needsData: true },
+  { key: 'movementTotalMin', tolerance: 20, pick: (s) => s.movement.totalMin, needsData: true },
   { key: 'avgMood', tolerance: 0.3, pick: (s) => s.wellbeing.avgMood, needsData: false },
   { key: 'avgStress', tolerance: 0.3, pick: (s) => s.wellbeing.avgStress, needsData: false },
   { key: 'avgEnergy', tolerance: 0.3, pick: (s) => s.wellbeing.avgEnergy, needsData: false },
   { key: 'avgConcentration', tolerance: 0.3, pick: (s) => s.wellbeing.avgConcentration, needsData: false },
   { key: 'avgWater', tolerance: 1, pick: (s) => s.nutrition.avgWater, needsData: false },
+  { key: 'mindfulnessMin', tolerance: 5, pick: (s) => s.mind.mindfulnessMin, needsData: true },
+  { key: 'activitiesMin', tolerance: 15, pick: (s) => s.activities.totalMin, needsData: true },
+  { key: 'activitiesDistinctTypes', tolerance: 0, pick: (s) => s.activities.distinctTypes, needsData: true },
 ];
 
 function bestFocusDay(input: InsightInput, start: ISODate, end: ISODate): { date: ISODate; avg: number } | null {
@@ -145,6 +259,77 @@ function bestFocusDay(input: InsightInput, start: ISODate, end: ISODate): { date
   let best: { date: ISODate; avg: number } | null = null;
   for (const day of perDay) if (best === null || day.avg > best.avg) best = day; // strict > keeps earliest on ties
   return best;
+}
+
+function buildWeekBrainActivity(input: InsightInput, start: ISODate, end: ISODate): WeeklyReport['brainActivity'] {
+  const items: { kind: ActivityKind; minutes: number }[] = [];
+
+  for (const s of inWindow(input.focus, start, end)) {
+    if (s.durationMin > 0) items.push({ kind: METHOD_TO_ACTIVITY[s.method], minutes: s.durationMin });
+  }
+  for (const m of inWindow(input.movement, start, end)) {
+    if (m.durationMin > 0) items.push({ kind: 'exercise', minutes: m.durationMin });
+  }
+  for (const ms of inWindow(input.mindfulness ?? [], start, end)) {
+    if (ms.durationMin > 0) items.push({ kind: 'mindfulness', minutes: ms.durationMin });
+  }
+  for (const a of inWindow(input.activities ?? [], start, end)) {
+    if (a.durationMin > 0) items.push({ kind: a.type, minutes: a.durationMin });
+  }
+  for (const sl of inWindow(input.sleep, start, end)) {
+    if (sl.durationMin > 0) items.push({ kind: 'sleep_rest', minutes: Math.max(15, Math.round(sl.durationMin / 16)) });
+  }
+
+  const regions = activityToRegionIntensity(items);
+  const topRegions = BRAIN_REGIONS
+    .map((r) => ({ region: r.id, intensity: regions[r.id] ?? 0 }))
+    .filter((entry) => entry.intensity > 0)
+    .sort((a, b) => b.intensity - a.intensity);
+
+  return { regions, topRegions };
+}
+
+function buildDailySeries(input: InsightInput, weekStart: ISODate, weekEnd: ISODate): WeeklyReport['daily'] {
+  const sleepByDate = new Map<ISODate, SleepLog>();
+  for (const sl of inWindow(input.sleep, weekStart, weekEnd)) sleepByDate.set(sl.date, sl);
+
+  const checkinByDate = new Map<ISODate, (typeof input.checkins)[number]>();
+  for (const c of inWindow(input.checkins, weekStart, weekEnd)) checkinByDate.set(c.date, c);
+
+  const focusMinByDate = new Map<ISODate, number>();
+  for (const f of inWindow(input.focus, weekStart, weekEnd)) {
+    focusMinByDate.set(f.date, (focusMinByDate.get(f.date) ?? 0) + f.durationMin);
+  }
+
+  const movementMinByDate = new Map<ISODate, number>();
+  for (const m of inWindow(input.movement, weekStart, weekEnd)) {
+    movementMinByDate.set(m.date, (movementMinByDate.get(m.date) ?? 0) + m.durationMin);
+  }
+
+  const mindActMinByDate = new Map<ISODate, number>();
+  for (const ms of inWindow(input.mindfulness ?? [], weekStart, weekEnd)) {
+    mindActMinByDate.set(ms.date, (mindActMinByDate.get(ms.date) ?? 0) + ms.durationMin);
+  }
+  for (const a of inWindow(input.activities ?? [], weekStart, weekEnd)) {
+    mindActMinByDate.set(a.date, (mindActMinByDate.get(a.date) ?? 0) + a.durationMin);
+  }
+
+  const out: WeeklyReport['daily'] = [];
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = isoAdd(weekStart, offset);
+    const sl = sleepByDate.get(date);
+    const ck = checkinByDate.get(date);
+    out.push({
+      date,
+      sleepHours: sl ? Number((sl.durationMin / 60).toFixed(2)) : null,
+      focusMin: focusMinByDate.get(date) ?? 0,
+      movementMin: movementMinByDate.get(date) ?? 0,
+      mood: ck ? ck.mood : null,
+      concentration: ck ? ck.concentration : null,
+      mindAndActivityMin: mindActMinByDate.get(date) ?? 0,
+    });
+  }
+  return out;
 }
 
 // ---------- public API ----------
@@ -169,7 +354,7 @@ export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): W
   }
 
   const highlights: string[] = [];
-  const { sleep, focus, movement, wellbeing } = current;
+  const { sleep, focus, movement, wellbeing, mind, activities } = current;
   if (sleep.nightsLogged > 0 && sleep.avgMin !== null) {
     highlights.push(`You logged ${plural(sleep.nightsLogged, 'night')} of sleep, averaging ${fmtDur(sleep.avgMin)}.`);
   }
@@ -186,6 +371,12 @@ export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): W
   } else if (movement.daysActive > 0) {
     highlights.push(`You moved on ${plural(movement.daysActive, 'day')} this week.`);
   }
+  if (mind.mindfulnessSessions > 0) {
+    highlights.push(`You paused for ${plural(mind.mindfulnessSessions, 'mindfulness session')} (${fmtDur(mind.mindfulnessMin)}).`);
+  }
+  if (activities.totalLogs > 0) {
+    highlights.push(`Beyond study, you logged ${plural(activities.totalLogs, 'activity')} across ${plural(activities.distinctTypes, 'category')}.`);
+  }
   if (wellbeing.checkins >= 5) {
     highlights.push(`${wellbeing.checkins} check-ins — a week of noticing how you are.`);
   }
@@ -197,6 +388,9 @@ export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): W
   if (focus.sessions > 0) prompts.push('What made your best-focus day different?');
   if (sleep.nightsLogged > 0) prompts.push('What did the evening before your longest night look like?');
   if (movement.daysActive > 0) prompts.push('How did the days you moved feel in your body and mood?');
+  if (activities.totalLogs > 0 || mind.mindfulnessSessions > 0) {
+    prompts.push('Which unhurried activity or quiet pause felt most restorative this week?');
+  }
   if (wellbeing.checkins > 0) prompts.push('Which check-in surprised you, and what was happening around it?');
   prompts.push('What is one small thing from this week you would like to keep?');
   prompts.push('What would make next week feel a little easier?');
@@ -205,6 +399,8 @@ export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): W
     weekStart,
     weekEnd,
     ...current,
+    brainActivity: buildWeekBrainActivity(input, weekStart, weekEnd),
+    daily: buildDailySeries(input, weekStart, weekEnd),
     vsPreviousWeek,
     highlights: highlights.slice(0, 5),
     reflectionPrompts: prompts.slice(0, 3),
