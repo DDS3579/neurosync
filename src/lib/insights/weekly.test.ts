@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { format, parseISO, subDays, subMinutes } from 'date-fns';
-import type { DailyCheckin, FocusSession, InsightInput, ISODate, MovementLog, NutritionLog, SleepLog, UserSettings } from '@/types/domain';
+import type {
+  ActivityLog,
+  DailyCheckin,
+  FocusSession,
+  GratitudeEntry,
+  InsightInput,
+  ISODate,
+  JournalEntry,
+  MindfulnessSession,
+  MovementLog,
+  NutritionLog,
+  SleepLog,
+  UserSettings,
+} from '@/types/domain';
 import { buildWeeklyReport } from './weekly';
 
 const WEEK: ISODate = '2026-11-09'; // Monday; week = Nov 9–15, previous = Nov 2–8
@@ -98,11 +111,67 @@ describe('buildWeeklyReport — computation', () => {
       nutrition: [nutriLog(w(0), { regularMeals: false, waterGlasses: 4 }), nutriLog(w(0), { regularMeals: true, waterGlasses: 8 }), nutriLog(w(1), { regularMeals: false, waterGlasses: 6 })],
     }), WEEK);
     expect(r.focus.methodsUsed).toEqual(['active_recall', 'spaced_repetition']);
+    expect(r.focus.methodBreakdown).toEqual([
+      { method: 'active_recall', sessions: 2, totalMin: 50 },
+      { method: 'spaced_repetition', sessions: 1, totalMin: 25 },
+    ]);
+    expect(r.focus.retrievalSessions).toBe(2);
+    expect(r.focus.reviewedPriorSessions).toBe(1);
     expect(r.movement.daysActive).toBe(2);
     expect(r.movement.totalMin).toBe(80);
     expect(r.nutrition.daysLogged).toBe(2);
     expect(r.nutrition.regularMealDays).toBe(1);
     expect(r.nutrition.avgWater).toBe(7);
+    expect(r.daily).toHaveLength(7);
+  });
+
+  it('aggregates v0.2 mind, activities, brainActivity, and week-over-week deltas', () => {
+    const mindfulness: MindfulnessSession[] = [
+      { ...base(), date: w(0), type: 'box_breathing', durationMin: 5 },
+      { ...base(), date: w(2), type: 'meditation', durationMin: 15 },
+      { ...base(), date: w(-3), type: 'box_breathing', durationMin: 5 },
+    ];
+    const activities: ActivityLog[] = [
+      { ...base(), date: w(1), type: 'social', durationMin: 45, enjoyment: 5 },
+      { ...base(), date: w(3), type: 'novelty', durationMin: 30, enjoyment: 4 },
+      { ...base(), date: w(-4), type: 'music', durationMin: 20, enjoyment: 4 },
+    ];
+    const journal: JournalEntry[] = [
+      { ...base(), date: w(0), text: 'Quiet morning.' },
+      { ...base(), date: w(4), text: 'Good afternoon walk.' },
+    ];
+    const gratitude: GratitudeEntry[] = [
+      { ...base(), date: w(1), items: ['Warm coffee', 'Helpful chat'] },
+    ];
+
+    const r = buildWeeklyReport(
+      input({ mindfulness, activities, journal, gratitude }),
+      WEEK,
+    );
+
+    expect(r.mind).toEqual({
+      mindfulnessSessions: 2,
+      mindfulnessMin: 20,
+      journalEntries: 2,
+      gratitudeDays: 1,
+    });
+    expect(r.activities).toEqual({
+      totalLogs: 2,
+      totalMin: 75,
+      distinctTypes: 2,
+      typesUsed: ['novelty', 'social'],
+      byType: [
+        { type: 'novelty', count: 1, totalMin: 30 },
+        { type: 'social', count: 1, totalMin: 45 },
+      ],
+    });
+    expect(r.vsPreviousWeek.mindfulnessMin).toEqual({ delta: 15, direction: 'up' });
+    expect(r.vsPreviousWeek.activitiesMin).toEqual({ delta: 55, direction: 'up' });
+    expect(r.vsPreviousWeek.activitiesDistinctTypes).toEqual({ delta: 1, direction: 'up' });
+    expect(r.brainActivity.regions.prefrontal).toBeGreaterThan(0);
+    expect(r.brainActivity.topRegions.length).toBeGreaterThan(0);
+    expect(r.daily[0]?.mindAndActivityMin).toBe(5);
+    expect(r.daily[1]?.mindAndActivityMin).toBe(45);
   });
 });
 
