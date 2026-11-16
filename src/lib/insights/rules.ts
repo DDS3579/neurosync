@@ -5,6 +5,7 @@ import type {
   ISODate,
   LearningMethod,
   NutritionLog,
+  PersonalActivityType,
   Pillar,
   SleepLog,
 } from '@/types/domain';
@@ -78,6 +79,16 @@ const METHOD_LABELS: Record<LearningMethod, string> = {
   deep_reading: 'deep reading',
   skill_practice: 'skill practice',
   teaching: 'teaching',
+};
+
+const ACTIVITY_LABELS: Record<PersonalActivityType, string> = {
+  social: 'social time',
+  creative: 'creative work',
+  music: 'music practice',
+  language_learning: 'language learning',
+  puzzles_games: 'puzzles & games',
+  new_hobby: 'new hobby',
+  novelty: 'tried something new',
 };
 
 /**
@@ -390,6 +401,114 @@ export const RULES: readonly InsightRule[] = [
         ],
         caveat:
           'Check-ins are self-reported snapshots of moments, not measurements of anything deeper. They are for you — not a report card.',
+      };
+    },
+  },
+  {
+    id: 'activity_variety',
+    pillar: 'wellbeing',
+    minSamples: 3,
+    run(input, today) {
+      const logs = lastNDays(input.activities ?? [], today, 7);
+      if (logs.length < 3) return null;
+      const types = [...new Set(logs.map((a) => a.type))].sort();
+      if (types.length < 3) return null;
+      const totalMin = logs.reduce((sum, a) => sum + a.durationMin, 0);
+      const labels = types.map((t) => ACTIVITY_LABELS[t]).join(', ');
+      return {
+        id: 'activity_variety',
+        pillar: 'wellbeing',
+        kind: 'milestone',
+        title: `You explored ${types.length} kinds of activities this week`,
+        body: `Alongside everything else, you logged ${types.length} different kinds of non-study activities over the last 7 days: ${labels}. Making space for variety, curiosity and people belongs in a balanced week — just noticing, with zero targets to chase.`,
+        evidence: [
+          `Distinct activity types (last 7 days): ${types.length}`,
+          `Types logged: ${labels}`,
+          `Total logged time: ${fmtDur(totalMin)} across ${logs.length} logs`,
+        ],
+        caveat:
+          'Counted from your self-reported activity logs over 7 days. Variety is a gentle observation, not a standard or measurement.',
+        education:
+          'Unfamiliar and varied experiences are commonly associated with prefrontal attention networks and hippocampal memory context.',
+        regions: ['prefrontal', 'hippocampus'],
+      };
+    },
+  },
+  {
+    id: 'study_without_recovery',
+    pillar: 'wellbeing',
+    minSamples: 4,
+    run(input, today) {
+      const focusSessions = lastNDays(input.focus, today, 7);
+      if (focusSessions.length < 4) return null;
+      const focusMin = focusSessions.reduce((sum, s) => sum + s.durationMin, 0);
+      if (focusMin < 120) return null;
+
+      const activities = lastNDays(input.activities ?? [], today, 7);
+      const mindfulness = lastNDays(input.mindfulness ?? [], today, 7);
+      const movement = lastNDays(input.movement, today, 7);
+
+      const hasSocialOrMindful =
+        activities.some((a) => a.type === 'social') || mindfulness.length > 0;
+      if (hasSocialOrMindful) return null;
+
+      const recoveryMin =
+        activities.reduce((sum, a) => sum + a.durationMin, 0) +
+        mindfulness.reduce((sum, m) => sum + m.durationMin, 0) +
+        movement.reduce((sum, m) => sum + m.durationMin, 0);
+
+      if (recoveryMin > 0 && focusMin / (focusMin + recoveryMin) < 0.9) return null;
+
+      return {
+        id: 'study_without_recovery',
+        pillar: 'wellbeing',
+        kind: 'reflection',
+        title: 'A very study-heavy week so far',
+        body: `You logged ${focusSessions.length} focus sessions (${fmtDur(focusMin)}) in the last 7 days with little or no logged social, mindfulness, or unhurried break time. Full study weeks happen — especially around deadlines — and nothing here is a criticism. Whenever life leaves a small gap, even a quiet walk, a chat with a friend, or ten unhurried minutes away from screens can be a welcome counterweight.`,
+        evidence: [
+          `Focus sessions (last 7 days): ${focusSessions.length} (${fmtDur(focusMin)})`,
+          `Logged social or mindfulness sessions: 0`,
+          `Other logged movement/activity time: ${fmtDur(recoveryMin)}`,
+        ],
+        caveat:
+          'Based only on what was self-reported in this browser — you may well have rested or seen friends without logging it.',
+        education:
+          'Time away from demanding tasks and supportive social contact are commonly associated with emotional regulation across prefrontal and amygdala networks.',
+        regions: ['prefrontal', 'amygdala'],
+      };
+    },
+  },
+  {
+    id: 'reading_without_retrieval',
+    pillar: 'learning',
+    minSamples: 3,
+    run(input, today) {
+      const sessions = lastNDays(input.focus, today, 14);
+      const deepReading = sessions.filter((s) => s.method === 'deep_reading');
+      if (deepReading.length < 3) return null;
+
+      const hasRetrieval = sessions.some(
+        (s) => s.practicedRetrieval === true || s.method === 'active_recall',
+      );
+      if (hasRetrieval) return null;
+
+      const readingMin = deepReading.reduce((sum, s) => sum + s.durationMin, 0);
+
+      return {
+        id: 'reading_without_retrieval',
+        pillar: 'learning',
+        kind: 'reflection',
+        title: 'Mostly reading lately — room for a quick recall check?',
+        body: `Over the last 14 days you logged ${deepReading.length} deep-reading sessions (${fmtDur(readingMin)}) without marking any retrieval practice. Re-reading feels smooth because familiar text is easy to recognize, which is a completely natural pull. Whenever it feels useful, closing your notes for two minutes and writing down what you remember is a gentle way to check what has settled.`,
+        evidence: [
+          `Deep-reading sessions (last 14 days): ${deepReading.length} (${fmtDur(readingMin)})`,
+          'Sessions with retrieval practice: 0',
+        ],
+        caveat:
+          'Based on self-reported focus sessions and retrieval toggles — you may have quizzed yourself informally without logging it.',
+        education:
+          'Retrieval practice (recalling ideas from memory rather than re-reading) is associated with more durable memory, which commonly involves the hippocampus and prefrontal cortex.',
+        regions: ['hippocampus', 'prefrontal'],
       };
     },
   },
