@@ -1,5 +1,5 @@
-export { BrainExplorer as default, BrainExplorer } from "./brain-explorer";
-export type { BrainExplorerProps } from "./brain-explorer";
+export { ACTIVITY_DISCLAIMER, BrainExplorer, default } from "./BrainExplorer";
+export type { BrainExplorerProps } from "./BrainExplorer";
 
-export { BrainHero } from "./brain-hero";
-export type { BrainHeroProps } from "./brain-hero";
+export { BrainHero } from "./BrainHero";
+export type { BrainHeroProps } from "./BrainHero";
