@@ -5,8 +5,10 @@ import { getDb } from "@/lib/db/dexie";
 import {
   activityRepository,
   checkinRepository,
+  dayPlanRepository,
   focusRepository,
   gratitudeRepository,
+  insightFeedbackRepository,
   journalRepository,
   mindfulnessRepository,
   reviewRepository,
@@ -73,6 +75,25 @@ describe("backup import validation", () => {
       nextReviewDate: "2026-11-16",
       reviewCount: 0,
     });
+    await dayPlanRepository.create({
+      date: "2026-11-15",
+      wakeTime: "07:00",
+      sleepTargetMin: 480,
+      windDownMin: 45,
+      maxStudyBlockMin: 50,
+      breakMin: 10,
+      bufferMin: 10,
+      movementGoalMin: 30,
+      preferRecoverySpacing: true,
+      commitments: [],
+      studyGoals: [],
+      blocks: [],
+      unscheduled: [],
+    });
+    await insightFeedbackRepository.snooze(
+      { id: "bedtime_irregular", title: "Your bedtime has been shifting around", pillar: "sleep" },
+      "2026-11-15",
+    );
   });
 
   it("rejects malformed JSON and leaves all tables untouched even in replace mode", async () => {
@@ -128,6 +149,8 @@ describe("backup import validation", () => {
     expect(await getDb().gratitudeEntries.count()).toBe(0);
     expect(await getDb().activityLogs.count()).toBe(0);
     expect(await getDb().reviewItems.count()).toBe(0);
+    expect(await getDb().dayPlans.count()).toBe(0);
+    expect(await getDb().insightFeedback.count()).toBe(0);
   });
 
   it("rejects invalid mindfulness, journal, gratitude, activity, or review rows without wiping existing data", async () => {
@@ -203,5 +226,36 @@ describe("backup import validation", () => {
     expect(await getDb().gratitudeEntries.count()).toBe(1);
     expect(await getDb().activityLogs.count()).toBe(1);
     expect(await getDb().reviewItems.count()).toBe(1);
+
+    const badDayPlan = structuredClone(await buildBackup());
+    badDayPlan.tables.dayPlans.push({
+      ...badDayPlan.tables.dayPlans[0]!,
+      id: "bad-wake",
+      wakeTime: "99:99",
+    });
+    await expect(importAll(JSON.stringify(badDayPlan), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+    expect(await getDb().dayPlans.count()).toBe(1);
+
+    const badFeedback = structuredClone(await buildBackup());
+    badFeedback.tables.insightFeedback.push({
+      ...badFeedback.tables.insightFeedback[0]!,
+      id: "bad-status",
+      status: "invalid" as "dismissed",
+    });
+    await expect(importAll(JSON.stringify(badFeedback), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+    expect(await getDb().insightFeedback.count()).toBe(1);
+
+    const badTextSizeBackup = structuredClone(await buildBackup());
+    badTextSizeBackup.tables.settings[0] = {
+      ...ensuredSettings,
+      textSize: "huge" as "lg",
+    };
+    await expect(importAll(JSON.stringify(badTextSizeBackup), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
   });
 });
