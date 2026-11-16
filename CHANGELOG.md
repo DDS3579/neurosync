@@ -36,6 +36,25 @@
   - Added `ReminderSettings` (`windDown`, `checkin`, `reviewDue`, `quietHours`) to `UserSettings`, with Dexie `version(5)` migration and backup `SCHEMA_VERSION = 5` (preserving `v1`–`v4` imports).
   - Added Settings "Reminders" controls with per-reminder toggles and times, quiet hours, plain-language explanation of browser-without-push-server limits, permission requested only on toggle activation, and recurring `.ics` calendar export (`Add to calendar`).
   - Added `ReminderRunner` checking on load, `visibilitychange`, focus, and a 30s timer with per-slot deduplication, quiet-hours suppression, and warm, non-judgmental copy.
+- **Rule-based Daily Schedule Planner (`/planner`)**:
+  - Added deterministic rule-based planner (`generateDayPlan`) that places fixed commitments (flagging overlaps), strictly protects sleep and wind-down windows (including midnight-crossing schedules), prefers historically highest self-rated Focus Lab hours when sufficient history exists, splits study blocks with breaks and buffers, schedules movement and recovery pauses, and explains any unscheduled items without overpacking.
+  - Added `/planner` route, sidebar & Command Palette nav entry, editable timeline blocks with time pickers, neutral study vs. recovery balance summary, `"Start this block"` Focus Lab prefill (`/focus?subject=...&plannedMin=...`), and IndexedDB save/load (`DayPlan` table, Dexie `version(6)`, backup `SCHEMA_VERSION = 6` preserving `v1`–`v5` imports).
+- **Brain Explorer v0.2 upgrade (`/brain`)**:
+  - Added Isolation mode toggle (smoothly fades non-selected regions, frames the isolated region, exits via `Esc` without breaking `BrainExplorerProps` compatibility).
+  - Added Compare mode (`violet` vs `cyan` with luminous shared-overlap highlighting), two `ACTIVITY_META` pickers, side-by-side region breakdown, pure overlap computation (`compareActivities`) with Vitest coverage, plain-language summary, and persistent educational-association disclaimer.
+  - Added Cross-section view supporting both segmented GLB clipping (`THREE.Plane`) and procedural particle cut planes across Axial Y, Sagittal X, and Coronal Z axes while preserving hippocampus & amygdala visibility inside the slice.
+  - Upgraded Region panel `"Connected regions"` chips to fly the camera to the target region and `"Related activities"` chips to open Compare mode preselected.
+- **Insight Engine v0.2 upgrade (`src/lib/insights`, `/insights`, `/overview`)**:
+  - Added 6 neutral, minimum-sample, non-causal rules: `session_length_vs_focus`, `weekday_vs_weekend_pattern`, `outdoor_time_mood_energy`, `mindfulness_vs_stress`, `activity_variety_mood`, and 28-day `sleep_consistency_long_window`.
+  - Added optional `confidence` (`low` / `moderate` / `enough` + plain one-line summary) on `Insight` and displayed it in `InsightCard`.
+  - Added topic de-duplication, per-pillar and total caps in `computeInsights`, and `selectOverviewInsights` to surface at most one insight per pillar on `/overview`.
+  - Added "Not useful" (dismiss) and 14-day snooze actions on `InsightCard` persisted via `InsightFeedback` (Dexie `version(7)`, backup `SCHEMA_VERSION = 7` preserving `v1`–`v6` imports), with restoration under **Insights → Dismissed**.
+- **Accessibility & polish pass (app + landing page)**:
+  - Upgraded `ChartCard` with visible text summaries and an accessible `"View as table"` / `"Chart"` toggle across Overview, Insights, and Weekly Report charts, plus non-color line/symbol distinction on `MoodChart`.
+  - Added `highContrast` mode and `textSize` (`S` / `M` / `L`) settings (`UserSettings`, Dexie `version(8)`, backup `SCHEMA_VERSION = 8` keeping `v1`–`v7` imports), synced globally via `<html data-high-contrast data-text-size data-reduced-motion>` CSS custom properties and respected by the 3D brain shaders and overlays.
+  - Added `"Skip to content"` links targeting `#main-content` across the app shell and landing page, top-level `<header>` / `<main>` / `<footer>` landmarks on the landing page, `min-w-0` overflow guards, focus-visible region selector bar and full state text alternative on `BrainExplorer`, and `aria-live` phase-only announcements on the breathing/meditation timer.
+  - Audited and updated `--primary` / `--violet` (`#7C3AED`, `5.70:1` with white) and `--violet-text` (`#A78BFA`, `6.35:1`–`7.31:1`) for WCAG AA normal-text compliance.
+  - Added automated `axe-core` + WCAG AA token audit suite (`pnpm test:a11y` / `src/__tests__/a11y.test.tsx`).
 
 ### Fixed
 - **Offline font bundling**: Switched root layout from `next/font/google` to the local `geist` package (`geist/font/sans` and `geist/font/mono`), keeping `--font-geist-sans` and `--font-geist-mono` so builds need no network access.
