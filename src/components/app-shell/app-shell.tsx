@@ -34,6 +34,7 @@ const QUICK_LOG_TARGETS = [
   { href: "/habits#sleep", label: "Sleep log", hint: "Last night's bedtime, wake time and quality" },
   { href: "/focus", label: "Focus session", hint: "Planned versus actual minutes" },
   { href: "/habits#mind", label: "Mind & breathing", hint: "Breathing guide, meditation timer, journal and gratitude" },
+  { href: "/habits#activities", label: "Activities beyond study", hint: "Social time, creative work, music, hobbies and novelty" },
   { href: "/habits#movement", label: "Movement", hint: "Activity type, duration and perceived effort" },
   { href: "/habits#nutrition", label: "Nutrition & water", hint: "Regular meals, fruits/veg, variety and water" },
   { href: "/habits#habits", label: "Daily habits", hint: "Check off today's habits or add one" },
