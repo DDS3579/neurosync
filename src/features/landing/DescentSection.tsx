@@ -100,19 +100,21 @@ export const DescentSection = forwardRef<HTMLElement, DescentSectionProps>(
       if (!sectionEl || !pinEl) return;
 
       const multiplier = isMobile ? 2 : 3;
-      const st = ScrollTrigger.create({
-        trigger: sectionEl,
-        pin: pinEl,
-        start: "top top",
-        end: () => `+=${Math.round(window.innerHeight * multiplier)}`,
-        scrub: true,
-        invalidateOnRefresh: true,
-      });
+      const ctx = gsap.context(() => {
+        ScrollTrigger.create({
+          trigger: sectionEl,
+          pin: pinEl,
+          start: "top top",
+          end: () => `+=${Math.round(window.innerHeight * multiplier)}`,
+          scrub: true,
+          invalidateOnRefresh: true,
+        });
+      }, sectionEl);
 
       ScrollTrigger.refresh();
 
       return () => {
-        st.kill();
+        ctx.revert();
       };
     }, [isMobile, reducedMotion]);
 
