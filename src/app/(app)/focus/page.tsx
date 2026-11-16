@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { Suspense, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { FocusSkeleton, FocusWorkspace } from "@/features/focus/components/FocusWorkspace";
 import { createInitialReviewSchedule, scheduleNextReview } from "@/features/focus/reviewScheduler";
@@ -9,10 +10,18 @@ import { useFocusSessions, useReviewItems, useSettings } from "@/lib/db/hooks";
 import { focusRepository, reviewRepository } from "@/lib/db/repositories";
 import type { FocusSession, ReviewDifficulty } from "@/types/domain";
 
-export default function FocusPage() {
+function FocusPageContent() {
+  const searchParams = useSearchParams();
   const settings = useSettings();
   const focus = useFocusSessions();
   const reviews = useReviewItems();
+
+  const prefillSubject = searchParams.get("subject")?.trim() || undefined;
+  const rawPlanned = Number(searchParams.get("plannedMin"));
+  const prefillPlannedMin =
+    Number.isFinite(rawPlanned) && rawPlanned >= 1 && rawPlanned <= 240
+      ? Math.round(rawPlanned)
+      : undefined;
 
   const onCreateSession = useCallback(
     async (values: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => {
@@ -64,6 +73,8 @@ export default function FocusPage() {
   return (
     <FocusWorkspace
       defaultFocusMin={settings.data.focusDefaultMin}
+      initialSubject={prefillSubject}
+      initialPlannedMin={prefillPlannedMin}
       sessions={focus.data}
       reviewItems={reviews.data}
       onCreateSession={onCreateSession}
@@ -72,5 +83,13 @@ export default function FocusPage() {
       onRateReviewItem={onRateReviewItem}
       onDeleteReviewItem={onDeleteReviewItem}
     />
+  );
+}
+
+export default function FocusPage() {
+  return (
+    <Suspense fallback={<FocusSkeleton />}>
+      <FocusPageContent />
+    </Suspense>
   );
 }
