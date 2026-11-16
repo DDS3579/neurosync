@@ -10,7 +10,7 @@ import { Atmosphere } from "./Atmosphere";
 import { BrainPoster } from "./BrainPoster";
 import { DescentSection } from "./DescentSection";
 import { ExperimentTeaserSection } from "./ExperimentTeaserSection";
-import { FinalCtaFooter } from "./FinalCtaFooter";
+import { FinalCtaFooter, LandingFooter } from "./FinalCtaFooter";
 import { HeroSection } from "./HeroSection";
 import { HonestScienceSection } from "./HonestScienceSection";
 import { InstrumentsSection } from "./InstrumentsSection";
@@ -48,11 +48,17 @@ export function LandingPage() {
   return (
     <SmoothScroll>
       <ServiceWorkerRegister />
-      <div className="relative min-h-svh w-full overflow-x-clip bg-[#060913] text-[#E6EAF5]">
+      <div className="relative min-h-svh w-full overflow-x-clip bg-background text-foreground">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:border focus:border-cyan focus:bg-surface focus:px-4 focus:py-2 focus:text-body focus:font-medium focus:text-foreground focus:shadow-lg"
+        >
+          Skip to content
+        </a>
         <Atmosphere />
         <LandingHeader />
 
-        <main className="relative w-full">
+        <main id="main-content" tabIndex={-1} className="relative w-full outline-none">
           {reducedMotion ? (
             <>
               <div className="relative">
@@ -101,6 +107,8 @@ export function LandingPage() {
           <PrivacySection />
           <FinalCtaFooter />
         </main>
+
+        <LandingFooter />
       </div>
     </SmoothScroll>
   );
