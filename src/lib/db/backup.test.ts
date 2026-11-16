@@ -178,6 +178,7 @@ describe("backup round-trip", () => {
 
     const restoredSettings = await getDb().settings.get("me");
     expect(restoredSettings?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(restoredSettings?.reminders?.windDown.enabled).toBe(false);
     expect(await getDb().sleepLogs.count()).toBe(1);
     expect(await getDb().activityLogs.count()).toBe(0);
   });
@@ -275,6 +276,7 @@ describe("backup round-trip", () => {
     const migratedSettings = await upgradedDb.settings.get("me");
     const migratedFocus = await upgradedDb.focusSessions.get("focus-v1");
     expect(migratedSettings?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migratedSettings?.reminders?.checkin.time).toBe("20:00");
     expect(migratedFocus?.practicedRetrieval).toBe(true);
     expect(migratedFocus?.reviewedPrior).toBe(false);
     expect(await upgradedDb.mindfulnessSessions.count()).toBe(0);
