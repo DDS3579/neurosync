@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { NAV_ITEMS } from "@/components/app-shell/nav-items";
+import { isActiveRoute, NAV_GROUPS, SETTINGS_ITEM, type NavItem } from "@/components/app-shell/nav-items";
 import {
   Sidebar,
   SidebarContent,
@@ -16,48 +16,94 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+import { motion, useReducedMotion } from "motion/react";
+
+function NavRow({ item, active, index }: { item: NavItem; active: boolean; index: number }) {
+  const Icon = item.icon;
+  const reduce = useReducedMotion();
+
+  return (
+    <SidebarMenuItem>
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.24, ease: "easeOut", delay: index * 0.04 }}
+      >
+        <SidebarMenuButton
+          asChild
+          tooltip={item.label}
+          className={cn(
+            "h-9 rounded-l-none rounded-r-control border-l-2 border-transparent pl-2 text-body transition-colors duration-[180ms] ease-out",
+            active
+              ? "border-violet text-violet hover:bg-transparent hover:text-violet"
+              : "text-muted-foreground hover:bg-transparent hover:text-foreground",
+          )}
+        >
+          <Link href={item.href} aria-current={active ? "page" : undefined}>
+            <Icon aria-hidden />
+            <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
+          </Link>
+        </SidebarMenuButton>
+      </motion.div>
+    </SidebarMenuItem>
+  );
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader className="px-3 py-4">
-        <Link href="/" className="flex items-baseline gap-2">
-          <span className="font-heading text-base font-semibold tracking-tight">NeuroSync</span>
-          <span className="font-mono text-[10px] text-muted-foreground">v0.1</span>
+        <Link
+          href="/"
+          className="flex items-baseline gap-2 overflow-hidden group-data-[collapsible=icon]:justify-center"
+        >
+          <span className="font-heading text-base font-semibold tracking-[-0.02em] whitespace-nowrap group-data-[collapsible=icon]:hidden">
+            NeuroSync
+          </span>
+          <span className="hidden font-heading text-base font-semibold tracking-[-0.02em] group-data-[collapsible=icon]:block">
+            N
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+            v0.1
+          </span>
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const isActive =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
-                      <Link href={item.href}>
-                        <Icon aria-hidden />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="text-caption tracking-[0.08em] text-muted-foreground uppercase">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item, itemIndex) => (
+                  <NavRow
+                    key={item.href}
+                    item={item}
+                    active={isActiveRoute(pathname, item.href)}
+                    index={groupIndex * 3 + itemIndex}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
-      <SidebarFooter className="px-3 py-3">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Everything stays in this browser. No account, no sync.
+      <SidebarFooter className="gap-2 border-t border-sidebar-border pt-2">
+        <SidebarMenu>
+          <NavRow
+            item={SETTINGS_ITEM}
+            active={isActiveRoute(pathname, SETTINGS_ITEM.href)}
+            index={7}
+          />
+        </SidebarMenu>
+        <p className="px-2 pb-2 text-[11px] leading-4 text-muted-foreground group-data-[collapsible=icon]:hidden">
+          Everything stays in this browser.
         </p>
       </SidebarFooter>
     </Sidebar>
