@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { ArrowUpRight, Sparkles } from "lucide-react";
 
 import { ChartCard, EmptyState, InsightCard, PageHeader, StatCard } from "@/components/nx";
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,14 @@ export function InsightsWorkspace({
       <PageHeader
         title="Insights"
         description="Deterministic observations from your own logs, each paired with its evidence and a clear caveat."
+        actions={
+          <Button asChild variant="outline" className="gap-1.5 rounded-control">
+            <Link href="/insights/weekly">
+              Your week report
+              <ArrowUpRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
+        }
       />
 
       <Tabs defaultValue="observations" className="space-y-6">
@@ -181,7 +189,7 @@ export function InsightsWorkspace({
             <p className="font-mono text-caption text-muted-foreground tabular-nums">
               {weeklyReport.weekStart} → {weeklyReport.weekEnd}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -199,6 +207,12 @@ export function InsightsWorkspace({
                 className="rounded-control"
               >
                 Last week
+              </Button>
+              <Button asChild variant="outline" size="sm" className="gap-1 rounded-control">
+                <Link href="/insights/weekly">
+                  Full report &amp; export
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </Link>
               </Button>
             </div>
           </div>
