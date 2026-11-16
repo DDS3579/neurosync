@@ -1,0 +1,146 @@
+"use client";
+
+import { PageHeader } from "@/components/nx";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type {
+  DailyCheckin,
+  Habit,
+  HabitLog,
+  ISODate,
+  MovementLog,
+  NutritionLog,
+  SleepLog,
+} from "@/types/domain";
+
+import { CheckinTab } from "./CheckinTab";
+import { HabitsTab } from "./HabitsTab";
+import { MovementTab } from "./MovementTab";
+import { NutritionTab } from "./NutritionTab";
+import { SleepTab } from "./SleepTab";
+
+export interface HabitsWorkspaceProps {
+  sleepTargetMin: number;
+  checkins: DailyCheckin[];
+  sleepLogs: SleepLog[];
+  movementLogs: MovementLog[];
+  nutritionLogs: NutritionLog[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  onSaveCheckin: (
+    values: Omit<DailyCheckin, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<"created" | "updated">;
+  onDeleteCheckin: (id: string) => Promise<void>;
+  onCreateSleep: (values: Omit<SleepLog, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+  onUpdateSleep: (
+    id: string,
+    values: Omit<SleepLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteSleep: (id: string) => Promise<void>;
+  onCreateMovement: (
+    values: Omit<MovementLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onUpdateMovement: (
+    id: string,
+    values: Omit<MovementLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteMovement: (id: string) => Promise<void>;
+  onCreateNutrition: (
+    values: Omit<NutritionLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onUpdateNutrition: (
+    id: string,
+    values: Omit<NutritionLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteNutrition: (id: string) => Promise<void>;
+  onToggleHabit: (habitId: string, date: ISODate, nextDone: boolean) => Promise<void>;
+  onAddHabit: (name: string) => Promise<void>;
+  onRenameHabit: (id: string, name: string) => Promise<void>;
+  onArchiveHabit: (id: string, archived: boolean) => Promise<void>;
+  onDeleteHabit: (id: string) => Promise<void>;
+}
+
+export function HabitsWorkspace(props: HabitsWorkspaceProps) {
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Daily Habits"
+        description="Log today's check-in, sleep, movement, nutrition, and habits locally with zero streak pressure."
+      />
+
+      <Tabs defaultValue="checkin" className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-control border border-border bg-surface p-1 sm:w-fit">
+          <TabsTrigger value="checkin">Check-in</TabsTrigger>
+          <TabsTrigger value="sleep">Sleep</TabsTrigger>
+          <TabsTrigger value="movement">Movement</TabsTrigger>
+          <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
+          <TabsTrigger value="habits">Habits</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="checkin">
+          <CheckinTab
+            checkins={props.checkins}
+            onSaveCheckin={props.onSaveCheckin}
+            onDeleteCheckin={props.onDeleteCheckin}
+          />
+        </TabsContent>
+
+        <TabsContent value="sleep">
+          <SleepTab
+            sleepLogs={props.sleepLogs}
+            sleepTargetMin={props.sleepTargetMin}
+            onCreateSleep={props.onCreateSleep}
+            onUpdateSleep={props.onUpdateSleep}
+            onDeleteSleep={props.onDeleteSleep}
+          />
+        </TabsContent>
+
+        <TabsContent value="movement">
+          <MovementTab
+            movementLogs={props.movementLogs}
+            onCreateMovement={props.onCreateMovement}
+            onUpdateMovement={props.onUpdateMovement}
+            onDeleteMovement={props.onDeleteMovement}
+          />
+        </TabsContent>
+
+        <TabsContent value="nutrition">
+          <NutritionTab
+            nutritionLogs={props.nutritionLogs}
+            onCreateNutrition={props.onCreateNutrition}
+            onUpdateNutrition={props.onUpdateNutrition}
+            onDeleteNutrition={props.onDeleteNutrition}
+          />
+        </TabsContent>
+
+        <TabsContent value="habits">
+          <HabitsTab
+            habits={props.habits}
+            habitLogs={props.habitLogs}
+            onToggleHabit={props.onToggleHabit}
+            onAddHabit={props.onAddHabit}
+            onRenameHabit={props.onRenameHabit}
+            onArchiveHabit={props.onArchiveHabit}
+            onDeleteHabit={props.onDeleteHabit}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+export function HabitsSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-44 rounded-[6px]" />
+        <Skeleton className="h-4 w-96 max-w-full rounded-[4px]" />
+      </div>
+      <Skeleton className="h-10 w-80 max-w-full rounded-control" />
+      <div className="grid gap-6 lg:grid-cols-12">
+        <Skeleton className="h-[460px] rounded-card lg:col-span-7" />
+        <Skeleton className="h-[340px] rounded-card lg:col-span-5" />
+      </div>
+    </div>
+  );
+}
