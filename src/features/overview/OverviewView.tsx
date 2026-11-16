@@ -2,7 +2,8 @@
 
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
 import { motion } from "motion/react";
 
 import {
@@ -258,6 +259,12 @@ export function OverviewView({
               Clear demo data
             </Button>
           ) : null}
+          <Button asChild variant="outline" className="gap-1.5 rounded-control">
+            <Link href="/insights/weekly">
+              Your week
+              <ArrowUpRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
           <Button onClick={onLogToday} variant="outline" className="gap-1.5 rounded-control">
             <Plus className="size-4" aria-hidden />
             Log today
