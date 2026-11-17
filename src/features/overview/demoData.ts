@@ -3,12 +3,17 @@ import { format, startOfDay, subDays } from "date-fns";
 import { activityToRegionIntensity } from "@/data/brainRegions";
 import { SCHEMA_VERSION, importAll } from "@/lib/db/backup";
 import {
+  activityRepository,
   checkinRepository,
   focusRepository,
+  gratitudeRepository,
   habitLogRepository,
   habitRepository,
+  journalRepository,
+  mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  reviewRepository,
   settingsRepository,
   sleepRepository,
 } from "@/lib/db/repositories";
@@ -52,6 +57,137 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
   if (typeof indexedDB === "undefined") return;
   await settingsRepository.ensure();
   const demo = generateDemoData(DEMO_DAYS, DEMO_SEED, today);
+  const end = startOfDay(today);
+  const day = (offset: number): ISODate => format(subDays(end, offset), "yyyy-MM-dd");
+  const stamp = (offset: number, hhmm = "19:30:00"): string => `${day(offset)}T${hhmm}`;
+
+  const mindfulnessSessions: MindfulnessSession[] = [
+    {
+      id: "demo-mind-1",
+      date: day(0),
+      type: "box_breathing",
+      durationMin: 4,
+      createdAt: stamp(0, "08:30:00"),
+      updatedAt: stamp(0, "08:30:00"),
+    },
+    {
+      id: "demo-mind-2",
+      date: day(2),
+      type: "meditation",
+      durationMin: 10,
+      createdAt: stamp(2, "21:15:00"),
+      updatedAt: stamp(2, "21:15:00"),
+    },
+    {
+      id: "demo-mind-3",
+      date: day(4),
+      type: "4_7_8_breathing",
+      durationMin: 3,
+      createdAt: stamp(4, "22:00:00"),
+      updatedAt: stamp(4, "22:00:00"),
+    },
+    {
+      id: "demo-mind-4",
+      date: day(6),
+      type: "box_breathing",
+      durationMin: 5,
+      createdAt: stamp(6, "13:00:00"),
+      updatedAt: stamp(6, "13:00:00"),
+    },
+  ];
+
+  const journalEntries = [
+    {
+      id: "demo-journal-1",
+      date: day(0),
+      text: "Felt noticeably steadier after stepping outside for 20 minutes before afternoon reading.",
+      createdAt: stamp(0, "20:00:00"),
+      updatedAt: stamp(0, "20:00:00"),
+    },
+    {
+      id: "demo-journal-2",
+      date: day(2),
+      text: "Switching to short self-testing questions helped show what actually needed a second pass.",
+      createdAt: stamp(2, "20:30:00"),
+      updatedAt: stamp(2, "20:30:00"),
+    },
+  ];
+
+  const gratitudeEntries = [
+    {
+      id: "demo-grat-1",
+      date: day(0),
+      items: ["Afternoon tea break without screens", "Clear walk before dusk"],
+      createdAt: stamp(0, "21:10:00"),
+      updatedAt: stamp(0, "21:10:00"),
+    },
+  ];
+
+  const activityLogs: ActivityLog[] = [
+    {
+      id: "demo-act-1",
+      date: day(0),
+      type: "social",
+      durationMin: 45,
+      enjoyment: 5,
+      note: "Coffee catch-up after study block",
+      createdAt: stamp(0, "17:00:00"),
+      updatedAt: stamp(0, "17:00:00"),
+    },
+    {
+      id: "demo-act-2",
+      date: day(1),
+      type: "creative",
+      durationMin: 35,
+      enjoyment: 4,
+      note: "Sketchbook warm-up",
+      createdAt: stamp(1, "19:00:00"),
+      updatedAt: stamp(1, "19:00:00"),
+    },
+    {
+      id: "demo-act-3",
+      date: day(3),
+      type: "music",
+      durationMin: 30,
+      enjoyment: 5,
+      note: "Acoustic fingerpicking practice",
+      createdAt: stamp(3, "18:30:00"),
+      updatedAt: stamp(3, "18:30:00"),
+    },
+    {
+      id: "demo-act-4",
+      date: day(5),
+      type: "novelty",
+      durationMin: 40,
+      enjoyment: 4,
+      note: "Walked a new park loop without headphones",
+      createdAt: stamp(5, "16:45:00"),
+      updatedAt: stamp(5, "16:45:00"),
+    },
+  ];
+
+  const reviewItems = [
+    {
+      id: "demo-review-1",
+      topic: "Hippocampal memory consolidation",
+      intervalStep: 1,
+      nextReviewDate: day(0),
+      lastReviewedDate: day(3),
+      reviewCount: 1,
+      createdAt: stamp(4, "10:00:00"),
+      updatedAt: stamp(3, "10:00:00"),
+    },
+    {
+      id: "demo-review-2",
+      topic: "Prefrontal working-memory gating",
+      intervalStep: 0,
+      nextReviewDate: day(0),
+      lastReviewedDate: day(1),
+      reviewCount: 1,
+      createdAt: stamp(2, "10:00:00"),
+      updatedAt: stamp(1, "10:00:00"),
+    },
+  ];
 
   await importAll(
     JSON.stringify({
@@ -67,11 +203,11 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         habits: demo.habits,
         habitLogs: demo.habitLogs,
         experiments: [],
-        mindfulnessSessions: [],
-        journalEntries: [],
-        gratitudeEntries: [],
-        activityLogs: [],
-        reviewItems: [],
+        mindfulnessSessions,
+        journalEntries,
+        gratitudeEntries,
+        activityLogs,
+        reviewItems,
         dayPlans: [],
         insightFeedback: [],
       },
@@ -91,6 +227,11 @@ export async function clearDemoDataFromDb(): Promise<void> {
     nutritionRepository,
     habitRepository,
     habitLogRepository,
+    mindfulnessRepository,
+    journalRepository,
+    gratitudeRepository,
+    activityRepository,
+    reviewRepository,
   ] as const;
 
   await Promise.all(
@@ -198,7 +339,9 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
     input.focus.length === 0 &&
     input.movement.length === 0 &&
     input.nutrition.length === 0 &&
-    input.habitLogs.length === 0;
+    input.habitLogs.length === 0 &&
+    (input.mindfulness ?? []).length === 0 &&
+    (input.activities ?? []).length === 0;
 
   const hasDemoData =
     input.sleep.some((r) => isDemoId(r.id)) ||
@@ -207,7 +350,9 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
     input.movement.some((r) => isDemoId(r.id)) ||
     input.nutrition.some((r) => isDemoId(r.id)) ||
     input.habits.some((r) => isDemoId(r.id)) ||
-    input.habitLogs.some((r) => isDemoId(r.id));
+    input.habitLogs.some((r) => isDemoId(r.id)) ||
+    (input.mindfulness ?? []).some((r) => isDemoId(r.id)) ||
+    (input.activities ?? []).some((r) => isDemoId(r.id));
 
   return {
     greetingName: input.settings.displayName?.trim() || undefined,

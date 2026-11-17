@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2 (In Progress)
+## v0.2.0 (2026-11-17)
 
 ### Added
 - **Workflow rules**: Added `## Workflow (v0.2)` to `CLAUDE.md` and initialized `CHANGELOG.md`.
@@ -55,6 +55,10 @@
   - Added `"Skip to content"` links targeting `#main-content` across the app shell and landing page, top-level `<header>` / `<main>` / `<footer>` landmarks on the landing page, `min-w-0` overflow guards, focus-visible region selector bar and full state text alternative on `BrainExplorer`, and `aria-live` phase-only announcements on the breathing/meditation timer.
   - Audited and updated `--primary` / `--violet` (`#7C3AED`, `5.70:1` with white) and `--violet-text` (`#A78BFA`, `6.35:1`–`7.31:1`) for WCAG AA normal-text compliance.
   - Added automated `axe-core` + WCAG AA token audit suite (`pnpm test:a11y` / `src/__tests__/a11y.test.tsx`).
+  - Added `(app)/error.tsx` route-segment error boundary with local reset and `/overview` recovery link.
+- **Offline PWA shell & demo coverage**:
+  - Updated `public/sw.js` (`neurosync-shell-v2` / `neurosync-assets-v2`) to pre-cache `/planner` and `/insights/weekly` alongside core routes.
+  - Extended `loadDemoDataToDb` / `clearDemoDataFromDb` to populate and clean up v0.2 pillars (`mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`) alongside v0.1 demo logs.
 
 ### Fixed
 - **Offline font bundling**: Switched root layout from `next/font/google` to the local `geist` package (`geist/font/sans` and `geist/font/mono`), keeping `--font-geist-sans` and `--font-geist-mono` so builds need no network access.
