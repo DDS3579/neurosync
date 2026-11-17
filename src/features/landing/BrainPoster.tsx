@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 interface PosterDot {
   cx: number;
   cy: number;
@@ -56,10 +54,9 @@ export function BrainPoster({ className }: { className?: string }) {
   return (
     <div
       aria-hidden="true"
-      className={cn(
-        "relative flex h-full w-full items-center justify-center overflow-hidden bg-[#060913]",
-        className,
-      )}
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden bg-[#060913]${
+        className ? ` ${className}` : ""
+      }`}
     >
       {/* Subtle radial dot matrix masked into a soft circular field */}
       <div

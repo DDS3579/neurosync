@@ -9,29 +9,42 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Atmosphere } from "./Atmosphere";
 import { BrainPoster } from "./BrainPoster";
 import { DescentSection } from "./DescentSection";
-import { ExperimentTeaserSection } from "./ExperimentTeaserSection";
-import { FinalCtaFooter, LandingFooter } from "./FinalCtaFooter";
 import { HeroSection } from "./HeroSection";
-import { HonestScienceSection } from "./HonestScienceSection";
-import { InstrumentsSection } from "./InstrumentsSection";
+import { InViewSection } from "./InViewSection";
+import { LandingFooter } from "./LandingFooter";
 import { LandingHeader } from "./LandingHeader";
-import { PrivacySection } from "./PrivacySection";
 import { SmoothScroll } from "./SmoothScroll";
 import { useScrollProgress } from "./useScrollProgress";
 
 const DynamicBrainHero = dynamic(
-  () => import("@/features/brain").then((m) => m.BrainHero),
+  () => import("@/features/brain/BrainHero").then((m) => m.BrainHero),
   {
     ssr: false,
     loading: () => <BrainPoster />,
   },
 );
 
+const DynamicInstrumentsSection = dynamic(() =>
+  import("./InstrumentsSection").then((m) => m.InstrumentsSection),
+);
+const DynamicHonestScienceSection = dynamic(() =>
+  import("./HonestScienceSection").then((m) => m.HonestScienceSection),
+);
+const DynamicExperimentTeaserSection = dynamic(() =>
+  import("./ExperimentTeaserSection").then((m) => m.ExperimentTeaserSection),
+);
+const DynamicPrivacySection = dynamic(() =>
+  import("./PrivacySection").then((m) => m.PrivacySection),
+);
+const DynamicFinalCtaFooter = dynamic(() =>
+  import("./FinalCtaFooter").then((m) => m.FinalCtaFooter),
+);
+
 /**
  * Full NeuroSync observatory landing page:
  * Global atmosphere + minimal scroll-aware header +
- * sticky WebGL particle brain (Hero + Descent) + Three Instruments +
- * Honest Science + Experiment Teaser + Privacy + Final CTA & Footer.
+ * sticky WebGL particle brain (Hero + Descent) + lazily loaded below-the-fold sections
+ * (Three Instruments, Honest Science, Experiment Teaser, Privacy, Final CTA) + Footer.
  */
 export function LandingPage() {
   const descentRef = useRef<HTMLElement>(null);
@@ -101,11 +114,21 @@ export function LandingPage() {
             </div>
           )}
 
-          <InstrumentsSection />
-          <HonestScienceSection />
-          <ExperimentTeaserSection />
-          <PrivacySection />
-          <FinalCtaFooter />
+          <InViewSection id="instruments" minHeightClass="min-h-[300svh]">
+            <DynamicInstrumentsSection />
+          </InViewSection>
+          <InViewSection id="honest-science" minHeightClass="min-h-[60svh]">
+            <DynamicHonestScienceSection />
+          </InViewSection>
+          <InViewSection id="experiments" minHeightClass="min-h-[65svh]">
+            <DynamicExperimentTeaserSection />
+          </InViewSection>
+          <InViewSection id="privacy" minHeightClass="min-h-[55svh]">
+            <DynamicPrivacySection />
+          </InViewSection>
+          <InViewSection id="ready" minHeightClass="min-h-[70svh]">
+            <DynamicFinalCtaFooter />
+          </InViewSection>
         </main>
 
         <LandingFooter />

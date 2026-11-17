@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { LandingPage } from "@/features/landing";
+import { LandingPage } from "@/features/landing/LandingPage";
 
 const TITLE = "NeuroSync — An observatory for your inner universe";
 const DESCRIPTION =

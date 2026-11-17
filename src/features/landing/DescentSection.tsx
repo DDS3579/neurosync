@@ -1,13 +1,10 @@
 "use client";
 
 import { forwardRef, useEffect, useRef } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-import { cn } from "@/lib/utils";
 import { BrainPoster } from "./BrainPoster";
-
-gsap.registerPlugin(ScrollTrigger);
+import { useSmoothScroll } from "./SmoothScroll";
+import { loadGsapScrollTrigger } from "./scrollEngine";
 
 interface BeatSpec {
   index: string;
@@ -83,6 +80,7 @@ export const DescentSection = forwardRef<HTMLElement, DescentSectionProps>(
   function DescentSection({ progress, isMobile, reducedMotion }, forwardedRef) {
     const localSectionRef = useRef<HTMLElement | null>(null);
     const pinRef = useRef<HTMLDivElement>(null);
+    const { scrollReady } = useSmoothScroll();
 
     const setSectionRef = (node: HTMLElement | null) => {
       localSectionRef.current = node;
@@ -94,29 +92,37 @@ export const DescentSection = forwardRef<HTMLElement, DescentSectionProps>(
     };
 
     useEffect(() => {
-      if (reducedMotion) return;
+      if (reducedMotion || !scrollReady) return;
       const sectionEl = localSectionRef.current;
       const pinEl = pinRef.current;
       if (!sectionEl || !pinEl) return;
 
-      const multiplier = isMobile ? 2 : 3;
-      const ctx = gsap.context(() => {
-        ScrollTrigger.create({
-          trigger: sectionEl,
-          pin: pinEl,
-          start: "top top",
-          end: () => `+=${Math.round(window.innerHeight * multiplier)}`,
-          scrub: true,
-          invalidateOnRefresh: true,
-        });
-      }, sectionEl);
+      let cancelled = false;
+      let revertCtx: (() => void) | undefined;
 
-      ScrollTrigger.refresh();
+      void loadGsapScrollTrigger().then(({ gsap, ScrollTrigger }) => {
+        if (cancelled) return;
+        const multiplier = isMobile ? 2 : 3;
+        const ctx = gsap.context(() => {
+          ScrollTrigger.create({
+            trigger: sectionEl,
+            pin: pinEl,
+            start: "top top",
+            end: () => `+=${Math.round(window.innerHeight * multiplier)}`,
+            scrub: true,
+            invalidateOnRefresh: true,
+          });
+        }, sectionEl);
+
+        ScrollTrigger.refresh();
+        revertCtx = () => ctx.revert();
+      });
 
       return () => {
-        ctx.revert();
+        cancelled = true;
+        revertCtx?.();
       };
-    }, [isMobile, reducedMotion]);
+    }, [isMobile, reducedMotion, scrollReady]);
 
     if (reducedMotion) {
       return (
@@ -272,18 +278,16 @@ export const DescentSection = forwardRef<HTMLElement, DescentSectionProps>(
                     style={{ top: `${tick.pos * 100}%` }}
                   >
                     <span
-                      className={cn(
-                        "font-mono text-[10px] tracking-[0.18em] tabular-nums transition-colors duration-200",
-                        active ? "text-[#22D3EE]" : "text-[#8A93AD]/60",
-                      )}
+                      className={`font-mono text-[10px] tracking-[0.18em] tabular-nums transition-colors duration-200 ${
+                        active ? "text-[#22D3EE]" : "text-[#8A93AD]/60"
+                      }`}
                     >
                       {tick.label}
                     </span>
                     <span
-                      className={cn(
-                        "block h-px transition-all duration-200",
-                        active ? "w-3 bg-[#22D3EE]" : "w-1.5 bg-white/[0.22]",
-                      )}
+                      className={`block h-px transition-all duration-200 ${
+                        active ? "w-3 bg-[#22D3EE]" : "w-1.5 bg-white/[0.22]"
+                      }`}
                     />
                   </div>
                 );

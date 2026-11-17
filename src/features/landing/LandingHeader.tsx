@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { cn } from "@/lib/utils";
-
 /**
  * Minimal fixed top bar: NEUROSYNC mono wordmark left, Enter link to /overview right.
  * Hides on scroll down, shows on scroll up, and stays visible at top or when focused.
@@ -60,10 +58,9 @@ export function LandingHeader() {
           setVisible(true);
         }
       }}
-      className={cn(
-        "fixed inset-x-0 top-0 z-40 border-b border-white/[0.08] bg-[#060913]/75 backdrop-blur-md transition-transform duration-300 ease-out motion-reduce:transition-none",
-        visible ? "translate-y-0" : "-translate-y-full",
-      )}
+      className={`fixed inset-x-0 top-0 z-40 border-b border-white/[0.08] bg-[#060913]/75 backdrop-blur-md transition-transform duration-300 ease-out motion-reduce:transition-none ${
+        visible ? "translate-y-0" : "-translate-y-full"
+      }`}
     >
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-5 sm:px-10 lg:px-16">
         <Link
