@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0 (2026-11-17)
+
+### Changed
+- **Workflow rules (`CLAUDE.md`)**: Updated `## Workflow (v0.3)` with `v0.3` branching guidance and added the rule that UI-only preferences live in `localStorage` under versioned keys (`ns:ui:v1:...`), wrapped in `try/catch` with safe defaults, rather than Dexie.
+- **Dev-only route gating**: Verified `/dev-brain`, `/dev-overview`, and `/dev-ui` call `notFound()` when `process.env.NODE_ENV === "production"` and remain excluded from navigation, Command Palette, manifest, and service worker caches, backed by `src/__tests__/devRoutes.test.ts`.
+- **Landing page initial JS slimming (`/`)**: Reduced initial JS on `/` from `317.3 KB` gzipped (`978.0 KB` raw across 19 scripts) to `184.4 KB` gzipped (`596.6 KB` raw across 8 scripts):
+  - Isolated Dexie (`useSettings`), `motion/react` (`MotionConfig`), and Radix `TooltipProvider` to `src/app/(app)/layout.tsx`, replacing root-level sync with lightweight `A11yPrefsSync` + `ns:ui:v1:a11y` `localStorage` cache (`src/lib/ui/a11yPrefs.ts`).
+  - Deferred GSAP/ScrollTrigger and Lenis (`src/features/landing/scrollEngine.ts`, `SmoothScroll.tsx`, `useScrollProgress.ts`, `DescentSection.tsx`) until first scroll interaction or hash navigation.
+  - Dynamically imported below-the-fold sections (`InstrumentsSection`, `HonestScienceSection`, `ExperimentTeaserSection`, `PrivacySection`, `FinalCtaFooter`) via `next/dynamic` + `InViewSection`, kept `BrainHero` lazy (`ssr: false`) via direct module path with `BrainPoster`, extracted `LandingFooter`, and removed `cn` (`tailwind-merge`) from initial landing chunks.
+
 ## v0.2.0 (2026-11-17)
 
 ### Added
