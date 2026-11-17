@@ -154,13 +154,15 @@ export function BrainExplorer({
     <div
       ref={ref}
       role="region"
+      tabIndex={-1}
       aria-label="Interactive 3D brain atlas"
       aria-describedby={descriptionId}
+      data-brain-canvas-focus="true"
       data-quality={qualityState.tier}
       data-high-contrast={highContrast ? "true" : "false"}
       data-text-size={textSize}
       className={cn(
-        "relative h-[460px] w-full overflow-hidden rounded-xl border bg-[#060913] sm:h-[520px]",
+        "relative h-[460px] w-full overflow-hidden rounded-xl border bg-[#060913] outline-none sm:h-[520px]",
         highContrast ? "border-border-strong" : "border-white/[0.08]",
         className,
       )}
