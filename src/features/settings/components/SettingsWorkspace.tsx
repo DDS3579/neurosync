@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { DurationInput, PageHeader } from "@/components/nx";
+import { resetPanelLayout } from "@/components/floating";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -414,6 +415,29 @@ export function SettingsWorkspace({
                   checked={immersiveBrain}
                   onCheckedChange={(next) => writeBrainImmersivePref(next)}
                 />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <p className="text-body font-medium text-foreground">
+                    Brain Explorer panel layout
+                  </p>
+                  <p className="text-caption text-muted-foreground">
+                    Restore the floating dock, mode, and region panels to their default positions.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    resetPanelLayout();
+                    toast.success("Brain Explorer panel layout reset to defaults.");
+                  }}
+                  className="rounded-control"
+                >
+                  Reset layout
+                </Button>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">

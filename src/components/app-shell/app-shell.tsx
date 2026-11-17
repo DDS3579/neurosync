@@ -77,17 +77,28 @@ function QuickLogContent({ onNavigate }: { onNavigate: () => void }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const [commandOpen, setCommandOpen] = useState(false);
+
   return (
-    <ImmersiveBrainProvider>
-      <AppShellInner>{children}</AppShellInner>
+    <ImmersiveBrainProvider onOpenCommandPalette={() => setCommandOpen(true)}>
+      <AppShellInner commandOpen={commandOpen} setCommandOpen={setCommandOpen}>
+        {children}
+      </AppShellInner>
     </ImmersiveBrainProvider>
   );
 }
 
-function AppShellInner({ children }: { children: ReactNode }) {
+function AppShellInner({
+  children,
+  commandOpen,
+  setCommandOpen,
+}: {
+  children: ReactNode;
+  commandOpen: boolean;
+  setCommandOpen: (open: boolean) => void;
+}) {
   const open = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, () => true);
   const [quickLogOpen, setQuickLogOpen] = useState(false);
-  const [commandOpen, setCommandOpen] = useState(false);
   const { isImmersive } = useImmersiveBrain();
 
   const handleOpenChange = useCallback((next: boolean) => {

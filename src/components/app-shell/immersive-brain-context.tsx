@@ -32,6 +32,8 @@ export interface ImmersiveBrainContextValue {
   enterImmersive: () => void;
   /** Exits immersive mode back to the standard layout for the current `/brain` visit. */
   exitImmersive: () => void;
+  /** Opens the global Command Palette from immersive panels. */
+  openCommandPalette: () => void;
 }
 
 const DEFAULT_CONTEXT: ImmersiveBrainContextValue = {
@@ -41,6 +43,7 @@ const DEFAULT_CONTEXT: ImmersiveBrainContextValue = {
   setImmersivePref: writeBrainImmersivePref,
   enterImmersive: () => {},
   exitImmersive: () => {},
+  openCommandPalette: () => {},
 };
 
 const ImmersiveBrainContext = createContext<ImmersiveBrainContextValue>(DEFAULT_CONTEXT);
@@ -59,7 +62,13 @@ function subscribeImmersivePref(callback: () => void): () => void {
   };
 }
 
-export function ImmersiveBrainProvider({ children }: { children: ReactNode }) {
+export function ImmersiveBrainProvider({
+  children,
+  onOpenCommandPalette,
+}: {
+  children: ReactNode;
+  onOpenCommandPalette?: () => void;
+}) {
   const pathname = usePathname();
   const isBrainRoute = pathname === "/brain";
 
@@ -89,6 +98,10 @@ export function ImmersiveBrainProvider({ children }: { children: ReactNode }) {
     setOverride({ pathname, active: false });
   }, [pathname]);
 
+  const openCommandPalette = useCallback(() => {
+    onOpenCommandPalette?.();
+  }, [onOpenCommandPalette]);
+
   const value = useMemo<ImmersiveBrainContextValue>(
     () => ({
       isBrainRoute,
@@ -97,8 +110,17 @@ export function ImmersiveBrainProvider({ children }: { children: ReactNode }) {
       setImmersivePref,
       enterImmersive,
       exitImmersive,
+      openCommandPalette,
     }),
-    [isBrainRoute, immersivePref, isImmersive, setImmersivePref, enterImmersive, exitImmersive],
+    [
+      isBrainRoute,
+      immersivePref,
+      isImmersive,
+      setImmersivePref,
+      enterImmersive,
+      exitImmersive,
+      openCommandPalette,
+    ],
   );
 
   return (

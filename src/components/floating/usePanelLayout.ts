@@ -19,6 +19,11 @@ export interface PanelDefaultsSpec {
   id: string;
   defaultPosition: PanelPosition;
   defaultSize?: PanelSize;
+  defaultCollapsed?: boolean;
+  resolveDefaultPosition?: (
+    viewport: ViewportSize,
+    size: { width: number; height: number },
+  ) => PanelPosition;
 }
 
 interface PanelLayoutStoreState {
@@ -87,12 +92,23 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
       for (const [id, spec] of Object.entries(state.defaults)) {
         if (!mergedPanels[id]) {
           nextTopZ += 1;
+          const size = {
+            width: spec.defaultSize?.width ?? 300,
+            height: spec.defaultSize?.height ?? 240,
+          };
+          const resolvedPos =
+            typeof window !== "undefined" && spec.resolveDefaultPosition
+              ? spec.resolveDefaultPosition(
+                  { width: window.innerWidth, height: window.innerHeight },
+                  size,
+                )
+              : spec.defaultPosition;
           mergedPanels[id] = {
-            x: spec.defaultPosition.x,
-            y: spec.defaultPosition.y,
+            x: resolvedPos.x,
+            y: resolvedPos.y,
             ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
             ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-            collapsed: false,
+            collapsed: Boolean(spec.defaultCollapsed),
             closed: false,
             zIndex: nextTopZ,
           };
@@ -130,16 +146,17 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
       }
 
       const nextTopZ = state.topZ + 1;
+      const estimatedSize = {
+        width: spec.defaultSize?.width ?? 300,
+        height: spec.defaultSize?.height ?? 240,
+      };
+      const rawDefaultPos =
+        viewport && spec.resolveDefaultPosition
+          ? spec.resolveDefaultPosition(viewport, estimatedSize)
+          : spec.defaultPosition;
       const basePos = viewport
-        ? clampPanelPosition(
-            spec.defaultPosition,
-            {
-              width: spec.defaultSize?.width ?? 300,
-              height: spec.defaultSize?.height ?? 240,
-            },
-            viewport,
-          )
-        : spec.defaultPosition;
+        ? clampPanelPosition(rawDefaultPos, estimatedSize, viewport)
+        : rawDefaultPos;
 
       const nextPanels: Record<string, PanelState> = {
         ...state.panels,
@@ -148,7 +165,7 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
           y: basePos.y,
           ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
           ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-          collapsed: false,
+          collapsed: Boolean(spec.defaultCollapsed),
           closed: false,
           zIndex: nextTopZ,
         },
@@ -325,23 +342,24 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
 
       for (const [id, spec] of Object.entries(state.defaults)) {
         nextTopZ += 1;
+        const estimatedSize = {
+          width: spec.defaultSize?.width ?? 300,
+          height: spec.defaultSize?.height ?? 240,
+        };
+        const rawPos =
+          viewport && spec.resolveDefaultPosition
+            ? spec.resolveDefaultPosition(viewport, estimatedSize)
+            : spec.defaultPosition;
         const pos = viewport
-          ? clampPanelPosition(
-              spec.defaultPosition,
-              {
-                width: spec.defaultSize?.width ?? 300,
-                height: spec.defaultSize?.height ?? 240,
-              },
-              viewport,
-            )
-          : spec.defaultPosition;
+          ? clampPanelPosition(rawPos, estimatedSize, viewport)
+          : rawPos;
 
         nextPanels[id] = {
           x: pos.x,
           y: pos.y,
           ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
           ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-          collapsed: false,
+          collapsed: Boolean(spec.defaultCollapsed),
           closed: false,
           zIndex: nextTopZ,
         };

@@ -29,7 +29,13 @@ export interface FloatingPanelProps {
   title: string;
   icon?: ReactNode;
   defaultPosition: PanelPosition;
+  resolveDefaultPosition?: (
+    viewport: { width: number; height: number },
+    size: { width: number; height: number },
+  ) => PanelPosition;
   defaultSize?: PanelSize;
+  defaultCollapsed?: boolean;
+  collapsedContent?: ReactNode;
   collapsible?: boolean;
   resizable?: boolean;
   onClose?: () => void;
@@ -50,7 +56,10 @@ export function FloatingPanel({
   title,
   icon,
   defaultPosition,
+  resolveDefaultPosition,
   defaultSize,
+  defaultCollapsed = false,
+  collapsedContent,
   collapsible = true,
   resizable = false,
   onClose,
@@ -107,7 +116,10 @@ export function FloatingPanel({
       typeof window !== "undefined"
         ? { width: window.innerWidth, height: window.innerHeight }
         : undefined;
-    registerPanel({ id, defaultPosition, defaultSize }, viewport);
+    registerPanel(
+      { id, defaultPosition, resolveDefaultPosition, defaultSize, defaultCollapsed },
+      viewport,
+    );
     // Intentionally register on mount or id change; caller defaults may be inline objects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, registerPanel]);
@@ -157,7 +169,7 @@ export function FloatingPanel({
   }
 
   const pos: PanelPosition = panel ? { x: panel.x, y: panel.y } : defaultPosition;
-  const collapsed = Boolean(panel?.collapsed);
+  const collapsed = panel ? Boolean(panel.collapsed) : defaultCollapsed;
   const width = panel?.width ?? defaultSize?.width ?? DEFAULT_PANEL_WIDTH;
   const height = panel?.height ?? defaultSize?.height;
   const zIndex = panel?.zIndex ?? 1;
@@ -431,7 +443,9 @@ export function FloatingPanel({
               {icon}
             </span>
           ) : null}
-          <span className="truncate">{title}</span>
+          {!(collapsed && collapsedContent) ? (
+            <span className="truncate">{title}</span>
+          ) : null}
           {collapsible ? (
             collapsed ? (
               <ChevronDown className="ml-0.5 size-3 shrink-0 text-muted-foreground" aria-hidden />
@@ -440,6 +454,10 @@ export function FloatingPanel({
             )
           ) : null}
         </button>
+
+        {collapsed && collapsedContent ? (
+          <div className="flex items-center gap-1">{collapsedContent}</div>
+        ) : null}
 
         {onClose && !collapsed ? (
           <button
