@@ -1120,7 +1120,7 @@ export function BrainExplorerWorkspace({
           aria-label="Selected region details"
           className={
             isImmersive
-              ? "pointer-events-auto absolute top-16 right-4 z-20 hidden max-h-[calc(100dvh-9rem)] w-80 flex-col gap-3 overflow-y-auto pr-0.5 md:flex lg:w-96"
+              ? "pointer-events-auto absolute top-16 right-4 z-30 hidden max-h-[calc(100dvh-9rem)] w-80 space-y-3 overflow-y-auto overscroll-contain pr-1 md:block lg:w-96"
               : "space-y-4 lg:col-span-5"
           }
         >

@@ -118,6 +118,13 @@ describe("Immersive /brain shell, Escape hierarchy, and wheel controls", () => {
     expect(exitBtn).not.toBeNull();
     expect(node.querySelector('button[aria-label="Fit to screen"]')).not.toBeNull();
     expect(node.querySelector('button[aria-label="Reset view"]')).not.toBeNull();
+
+    // Inspector aside must scroll vertically via block flow (not flex-col shrinking overflow-hidden Cards)
+    const aside = node.querySelector('aside[aria-label="Selected region details"]');
+    expect(aside).not.toBeNull();
+    expect(aside?.className).toContain("overflow-y-auto");
+    expect(aside?.className).toContain("md:block");
+    expect(aside?.className).not.toContain("flex-col");
   });
 
   it("exits immersive on Exit button or Esc only after no region is selected, and honors localStorage pref", async () => {
