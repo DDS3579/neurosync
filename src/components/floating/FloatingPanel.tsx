@@ -27,6 +27,7 @@ import { usePanelLayout } from "./usePanelLayout";
 export interface FloatingPanelProps {
   id: string;
   title: string;
+  chipLabel?: string;
   icon?: ReactNode;
   defaultPosition: PanelPosition;
   resolveDefaultPosition?: (
@@ -54,6 +55,7 @@ const MIN_RESIZE_HEIGHT = 140;
 export function FloatingPanel({
   id,
   title,
+  chipLabel,
   icon,
   defaultPosition,
   resolveDefaultPosition,
@@ -125,9 +127,9 @@ export function FloatingPanel({
   }, [id, registerPanel]);
 
   useEffect(() => {
-    registerMobilePanel({ id, title, icon, closed: panel?.closed });
+    registerMobilePanel({ id, title, chipLabel, icon, closed: panel?.closed });
     return () => unregisterMobilePanel(id);
-  }, [id, title, icon, panel?.closed, registerMobilePanel, unregisterMobilePanel]);
+  }, [id, title, chipLabel, icon, panel?.closed, registerMobilePanel, unregisterMobilePanel]);
 
   // Measure rendered panel bounds so collapsing/expanding or content growth stays clamped.
   useEffect(() => {

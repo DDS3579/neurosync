@@ -18,6 +18,7 @@ import { usePanelLayout } from "./usePanelLayout";
 export interface MobilePanelMeta {
   id: string;
   title: string;
+  chipLabel?: string;
   icon?: ReactNode;
   closed?: boolean;
 }
@@ -96,6 +97,7 @@ export function FloatingPanelLayer({
       const existing = prev[idx];
       if (
         existing?.title === meta.title &&
+        existing?.chipLabel === meta.chipLabel &&
         existing?.icon === meta.icon &&
         existing?.closed === meta.closed
       ) {
@@ -233,7 +235,7 @@ export function FloatingPanelLayer({
                         {chip.icon}
                       </span>
                     ) : null}
-                    <span>{chip.title}</span>
+                    <span>{chip.chipLabel ?? chip.title}</span>
                   </button>
                 );
               })}

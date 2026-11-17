@@ -3,6 +3,12 @@
 ## v0.3.0 (2026-11-17)
 
 ### Added
+- **Brain Explorer floating panel UI (`src/features/brain/components/BrainImmersivePanels.tsx`)**:
+  - Replaced temporary fixed overlays in `/brain` immersive mode with three `<FloatingPanel>` panels inside `<FloatingPanelLayer>`:
+    - **Navigation dock** (`brain-nav-dock`, top-left, collapsed to quick icon links by default): links to Overview, Daily Habits, Focus Lab, Planner, Brain Explorer (active), Insights, Experiments, Library, and Settings, plus Command Palette button (`Ctrl+K`), `"Reset layout"`, and `"Exit immersive"`.
+    - **Modes & Controls panel** (`brain-mode-panel`, bottom-left on desktop, collapsed `<1024px`): Anatomy/Functional/Activity/Compare switcher, isolation toggle, cross-section controls & slider, `Fit` / `Reset` / `Brain size` slider, and persistent educational-association disclaimer in Activity and Compare modes.
+    - **Region Details panel** (`brain-region-panel`, right side on desktop, collapsed `<1024px`): displays selected region name, description, common associations, **networks**, connected regions (fly-to chips), related activities (Compare chips), and logged activities summary — or a persistent `"Select a region"` hint + region picker when deselected.
+  - Added `"Reset layout"` button under **Display & accessibility** in Settings (`SettingsWorkspace.tsx`) and `chipLabel` / `zIndexRange` polish so mobile (`390px`) chips fit cleanly and 3D labels stay behind open sheets.
 - **Reusable floating panel system (`src/components/floating/`)**:
   - Built `<FloatingPanelLayer>` (`pointer-events: none` full-viewport overlay) and `<FloatingPanel>` (`role="region"` non-modal glassy cards, optional close/resize, collapse-to-chip, `data-brain-panel="true"` wheel isolation, internal body scroll, `Space`/`Enter` collapse, `Alt+Arrow` 16px keyboard move, `Esc` focus return to canvas, and reduced-motion support).
   - Added Zustand `usePanelLayout` store and pure layout engine (`src/components/floating/panelLayout.ts`, `usePanelLayout.ts`) with Pointer Events dragging (`translate3d` local DOM updates during drag), `12px` viewport clamping, `24px` edge/corner snapping, window `resize`/`orientationchange` re-clamping, z-order management, `resetPanelLayout()`, and validated `ns:ui:v1:panel-layout` `localStorage` persistence.

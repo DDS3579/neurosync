@@ -236,7 +236,7 @@ export function BrainExplorer({
       {mode === "activity" || mode === "compare" ? (
         <p
           className={cn(
-            "pointer-events-none absolute inset-x-3 bottom-3 text-center text-caption",
+            "pointer-events-none absolute inset-x-3 bottom-16 text-center text-caption md:bottom-3",
             highContrast ? "text-foreground" : "text-muted-foreground",
           )}
         >

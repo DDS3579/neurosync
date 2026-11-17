@@ -169,6 +169,7 @@ export function BrainImmersivePanels({
       <FloatingPanel
         id="brain-mode-panel"
         title="Modes & Controls"
+        chipLabel="Modes"
         icon={<SlidersHorizontal className="size-3.5" aria-hidden />}
         defaultPosition={{ x: 16, y: 460 }}
         resolveDefaultPosition={(vp, size) => ({
@@ -185,6 +186,7 @@ export function BrainImmersivePanels({
       <FloatingPanel
         id="brain-region-panel"
         title="Region Details"
+        chipLabel="Region"
         icon={<Brain className="size-3.5" aria-hidden />}
         defaultPosition={{ x: 1064, y: 16 }}
         resolveDefaultPosition={(vp, size) => ({

@@ -873,7 +873,13 @@ function ExplorerCore({
         })}
 
         {labelRegion && labelPos ? (
-          <Html position={labelPos} center distanceFactor={6} style={{ pointerEvents: "none" }}>
+          <Html
+            position={labelPos}
+            center
+            distanceFactor={6}
+            zIndexRange={[10, 10]}
+            style={{ pointerEvents: "none" }}
+          >
             <div
               className={
                 highContrast
