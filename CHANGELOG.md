@@ -3,6 +3,11 @@
 ## v0.3.0 (2026-11-17)
 
 ### Added
+- **Reusable floating panel system (`src/components/floating/`)**:
+  - Built `<FloatingPanelLayer>` (`pointer-events: none` full-viewport overlay) and `<FloatingPanel>` (`role="region"` non-modal glassy cards, optional close/resize, collapse-to-chip, `data-brain-panel="true"` wheel isolation, internal body scroll, `Space`/`Enter` collapse, `Alt+Arrow` 16px keyboard move, `Esc` focus return to canvas, and reduced-motion support).
+  - Added Zustand `usePanelLayout` store and pure layout engine (`src/components/floating/panelLayout.ts`, `usePanelLayout.ts`) with Pointer Events dragging (`translate3d` local DOM updates during drag), `12px` viewport clamping, `24px` edge/corner snapping, window `resize`/`orientationchange` re-clamping, z-order management, `resetPanelLayout()`, and validated `ns:ui:v1:panel-layout` `localStorage` persistence.
+  - Added mobile (`<768px`) single-open bottom sheet stack with top handle and bottom chip row keeping the full-screen brain unobstructed above.
+  - Added unit and component tests in `src/components/floating/panelLayout.test.ts` and `src/components/floating/FloatingPanel.test.tsx` (verified via a 3-placeholder-panel `/brain` demo, then removed placeholders ahead of control migration).
 - **Immersive Brain-first `/brain` experience**:
   - Full-viewport (`100dvh x 100vw`, fixed, zero page scroll) immersive stage on `/brain` with dark space `#060913` backdrop and `Exit immersive` button + `Esc` (exits immersive only after isolation and region selection are cleared and no dialogs are open).
   - Hides `AppSidebar`, `AppTopbar`, `MobileNav`, and skip link via `hidden`, `inert`, and `aria-hidden` while keeping `AppShell` providers, `ReminderRunner`, `ServiceWorkerRegister`, and `OnboardingDialog` mounted (`src/components/app-shell/immersive-brain-context.tsx`, `src/components/app-shell/app-shell.tsx`).

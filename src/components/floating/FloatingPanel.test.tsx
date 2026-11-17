@@ -111,6 +111,54 @@ describe("FloatingPanel & FloatingPanelLayer accessibility, keyboard, and mobile
     expect(returnFocusSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("distinguishes header click (collapse) from pointer drag + edge snap", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root!.render(
+        <FloatingPanelLayer>
+          <FloatingPanel id="drag-test" title="Drag Panel" defaultPosition={{ x: 100, y: 100 }}>
+            <p>Drag body</p>
+          </FloatingPanel>
+        </FloatingPanelLayer>,
+      );
+    });
+
+    const region = container.querySelector('[role="region"][aria-label="Drag Panel"]') as HTMLElement;
+    const header = region.querySelector('[data-panel-header="true"]') as HTMLElement;
+    const toggleBtn = region.querySelector("button") as HTMLButtonElement;
+
+    // Plain pointerdown + pointerup without movement should NOT suppress click collapse
+    await act(async () => {
+      header.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 120, clientY: 110, pointerId: 1, bubbles: true }),
+      );
+      header.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 120, clientY: 110, pointerId: 1, bubbles: true }),
+      );
+      toggleBtn.click();
+    });
+    expect(region.getAttribute("data-collapsed")).toBe("true");
+
+    // Dragging >4px toward top-left edge should snap to (12, 12) and keep collapsed state intact
+    await act(async () => {
+      header.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 120, clientY: 110, pointerId: 2, bubbles: true }),
+      );
+      header.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 40, clientY: 30, pointerId: 2, bubbles: true }),
+      );
+      header.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 40, clientY: 30, pointerId: 2, bubbles: true }),
+      );
+    });
+    expect(usePanelLayout.getState().panels["drag-test"]?.x).toBe(12);
+    expect(usePanelLayout.getState().panels["drag-test"]?.y).toBe(12);
+    expect(region.getAttribute("data-collapsed")).toBe("true");
+  });
+
   it("renders mobile bottom chip row and single-open bottom sheet under 768px", async () => {
     mockIsMobile = true;
     container = document.createElement("div");

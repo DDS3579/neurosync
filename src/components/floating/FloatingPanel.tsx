@@ -184,11 +184,6 @@ export function FloatingPanel({
     if (target?.closest('[data-panel-action="true"]')) return;
 
     bringToFront(id);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore synthetic pointer events without active pointer capture.
-    }
 
     dragStateRef.current = {
       active: true,
@@ -212,6 +207,12 @@ export function FloatingPanel({
     const dy = e.clientY - drag.startY;
     if (!drag.moved && Math.hypot(dx, dy) > 4) {
       drag.moved = true;
+      // Capture only once a drag actually starts so plain clicks reach the inner toggle button.
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore synthetic pointer events without active pointer capture.
+      }
     }
     if (!drag.moved) return;
 
