@@ -19,11 +19,21 @@ export interface PanelDefaultsSpec {
   id: string;
   defaultPosition: PanelPosition;
   defaultSize?: PanelSize;
-  defaultCollapsed?: boolean;
+  defaultCollapsed?: boolean | ((viewport: ViewportSize) => boolean);
   resolveDefaultPosition?: (
     viewport: ViewportSize,
     size: { width: number; height: number },
   ) => PanelPosition;
+}
+
+function resolveCollapsedDefault(
+  defaultCollapsed: PanelDefaultsSpec["defaultCollapsed"],
+  viewport?: ViewportSize,
+): boolean {
+  if (typeof defaultCollapsed === "function") {
+    return viewport ? defaultCollapsed(viewport) : false;
+  }
+  return Boolean(defaultCollapsed);
 }
 
 interface PanelLayoutStoreState {
@@ -96,19 +106,20 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
             width: spec.defaultSize?.width ?? 300,
             height: spec.defaultSize?.height ?? 240,
           };
+          const viewport =
+            typeof window !== "undefined"
+              ? { width: window.innerWidth, height: window.innerHeight }
+              : undefined;
           const resolvedPos =
-            typeof window !== "undefined" && spec.resolveDefaultPosition
-              ? spec.resolveDefaultPosition(
-                  { width: window.innerWidth, height: window.innerHeight },
-                  size,
-                )
+            viewport && spec.resolveDefaultPosition
+              ? spec.resolveDefaultPosition(viewport, size)
               : spec.defaultPosition;
           mergedPanels[id] = {
             x: resolvedPos.x,
             y: resolvedPos.y,
             ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
             ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-            collapsed: Boolean(spec.defaultCollapsed),
+            collapsed: resolveCollapsedDefault(spec.defaultCollapsed, viewport),
             closed: false,
             zIndex: nextTopZ,
           };
@@ -165,7 +176,7 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
           y: basePos.y,
           ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
           ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-          collapsed: Boolean(spec.defaultCollapsed),
+          collapsed: resolveCollapsedDefault(spec.defaultCollapsed, viewport),
           closed: false,
           zIndex: nextTopZ,
         },
@@ -359,7 +370,7 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
           y: pos.y,
           ...(spec.defaultSize?.width !== undefined ? { width: spec.defaultSize.width } : {}),
           ...(spec.defaultSize?.height !== undefined ? { height: spec.defaultSize.height } : {}),
-          collapsed: Boolean(spec.defaultCollapsed),
+          collapsed: resolveCollapsedDefault(spec.defaultCollapsed, viewport),
           closed: false,
           zIndex: nextTopZ,
         };
