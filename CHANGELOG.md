@@ -3,6 +3,12 @@
 ## v0.3.0 (2026-11-17)
 
 ### Added
+- **Brain Impact panel, Time Scrubber, and Quick Log panel (`src/features/brain/`)**:
+  - Added pure timeline & impact helpers (`deriveBrainTimeline`, `rankLoggedActivitiesForImpact`, `getRegionImpactContributions`, `hasAnyBrainActivityData`) in `src/features/brain/brainActivity.ts` plus shader-uniform `activityRef` support in `BrainScene.tsx` and `BrainExplorer.tsx` so scrubbing updates brain region glow without React re-render storms.
+  - Built `<BrainImpactPanel>` (floating bottom-right by default): ranks logged activities by total minutes with region-weight bars and click-to-highlight in overview mode; lists region contribution shares, minutes, and plain one-line educational explanations when a region is selected; gates `"Load demo data"` strictly on empty user history (`!hasAnyData`); and keeps `"Educational association, not a measurement of your brain activity."` visible.
+  - Built `<BrainTimeScrubber>` (floating bottom-center, slim & collapsible): supports 7-day / 30-day windows, `"That day"` vs `"Cumulative"` accumulation modes, clickable 7-day ticks, step `<` / `>` buttons, and optional play animation (never autoplays; disabled when reduced motion is enabled).
+  - Built `<BrainQuickLogPanel>` (floating top-left under Navigation dock, collapsed by default): logs personal activities, saves 1–5 quick mood check-ins (with `/habits#checkin` link), and links/logs focus sessions directly without leaving `/brain`, updating the brain glow immediately via Dexie live queries.
+  - Added logic and component/integration tests in `src/features/brain/brainActivity.test.ts` and `src/features/brain/components/brainImpactPanels.test.tsx`.
 - **Brain Explorer floating panel UI (`src/features/brain/components/BrainImmersivePanels.tsx`)**:
   - Replaced temporary fixed overlays in `/brain` immersive mode with three `<FloatingPanel>` panels inside `<FloatingPanelLayer>`:
     - **Navigation dock** (`brain-nav-dock`, top-left, collapsed to quick icon links by default): links to Overview, Daily Habits, Focus Lab, Planner, Brain Explorer (active), Insights, Experiments, Library, and Settings, plus Command Palette button (`Ctrl+K`), `"Reset layout"`, and `"Exit immersive"`.

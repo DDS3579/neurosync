@@ -35,8 +35,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ACTIVITY_META, BRAIN_REGIONS } from "@/data/brainRegions";
-import type { LoggedActivitySummary } from "@/features/brain/brainActivity";
+import { ACTIVITY_META, BRAIN_REGIONS, activityToRegionIntensity } from "@/data/brainRegions";
+import type {
+  BrainTimelineData,
+  LoggedActivitySummary,
+} from "@/features/brain/brainActivity";
 import type { BrainCameraAction } from "@/features/brain/BrainScene";
 import {
   ACTIVITY_COMPARE_OPTIONS,
@@ -58,6 +61,7 @@ import {
   type CrossSectionConfig,
   type CutPlaneAxis,
 } from "@/features/brain/regionZones";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import {
   BRAIN_UI_PREFS_EVENT,
   DEFAULT_BRAIN_SIZE,
@@ -66,8 +70,11 @@ import {
   writeBrainSizePref,
 } from "@/lib/ui/brainUiPrefs";
 import { cn } from "@/lib/utils";
-import type { ActivityKind, RegionId } from "@/types/domain";
+import type { ActivityKind, PersonalActivityType, Rating, RegionId } from "@/types/domain";
 import { BrainImmersivePanels } from "./BrainImmersivePanels";
+import { BrainImpactPanel } from "./BrainImpactPanel";
+import { BrainQuickLogPanel } from "./BrainQuickLogPanel";
+import { BrainTimeScrubber } from "./BrainTimeScrubber";
 
 const ACTIVITY_DISCLAIMER =
   "Educational association, not a measurement of your brain activity.";
@@ -114,11 +121,55 @@ function isAnyDialogOpen(): boolean {
   );
 }
 
+function buildFallbackTimeline(
+  windowDays: 7 | 30,
+  windowStart: string,
+  windowEnd: string,
+  items: readonly LoggedActivitySummary[],
+  activity: Partial<Record<RegionId, number>>,
+): BrainTimelineData {
+  const totalMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
+  const snapshot = {
+    items: [...items],
+    regionIntensity: activity,
+    totalMinutes,
+  };
+  return {
+    windowDays,
+    windowStart,
+    windowEnd,
+    days: [
+      {
+        date: windowEnd,
+        shortLabel: windowEnd,
+        dayOnly: snapshot,
+        cumulative: snapshot,
+      },
+    ],
+  };
+}
+
 export interface BrainExplorerWorkspaceProps {
   activity: Partial<Record<RegionId, number>>;
   loggedItems: LoggedActivitySummary[];
   windowStart: string;
   windowEnd: string;
+  timeline7?: BrainTimelineData;
+  timeline30?: BrainTimelineData;
+  hasAnyData?: boolean;
+  onLoadDemo?: () => Promise<void>;
+  onCreateActivity?: (input: {
+    date: string;
+    type: PersonalActivityType;
+    durationMin: number;
+    enjoyment: Rating;
+  }) => Promise<void>;
+  onQuickMoodCheckin?: (mood: Rating, date: string) => Promise<"created" | "updated">;
+  onQuickFocusLog?: (input: {
+    date: string;
+    subject: string;
+    durationMin: number;
+  }) => Promise<void>;
 }
 
 export function BrainExplorerWorkspace({
@@ -126,9 +177,17 @@ export function BrainExplorerWorkspace({
   loggedItems,
   windowStart,
   windowEnd,
+  timeline7,
+  timeline30,
+  hasAnyData,
+  onLoadDemo,
+  onCreateActivity,
+  onQuickMoodCheckin,
+  onQuickFocusLog,
 }: BrainExplorerWorkspaceProps) {
   const { isImmersive, enterImmersive, exitImmersive, openCommandPalette } =
     useImmersiveBrain();
+  const reducedMotion = usePrefersReducedMotion();
   const stageContainerRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<BrainMode>("anatomy");
@@ -143,6 +202,55 @@ export function BrainExplorerWorkspace({
     axis: "y",
     position: CUT_AXIS_DEFAULTS.y.defaultPos,
   });
+
+  // Time scrubber + Impact panel state
+  const [windowDays, setWindowDays] = useState<7 | 30>(7);
+  const [cumulative, setCumulative] = useState(true);
+  const [dayOffsets, setDayOffsets] = useState<{ 7: number | null; 30: number | null }>({
+    7: null,
+    30: null,
+  });
+  const [highlightedActivity, setHighlightedActivity] = useState<ActivityKind | null>(null);
+
+  const activeTimeline = useMemo(() => {
+    const picked = windowDays === 30 ? timeline30 : timeline7;
+    if (picked && picked.days.length > 0) return picked;
+    return buildFallbackTimeline(windowDays, windowStart, windowEnd, loggedItems, activity);
+  }, [windowDays, timeline30, timeline7, windowStart, windowEnd, loggedItems, activity]);
+
+  const maxDayIndex = Math.max(0, activeTimeline.days.length - 1);
+  const rawOffset = dayOffsets[windowDays];
+  const dayIndex =
+    rawOffset === null ? maxDayIndex : Math.min(maxDayIndex, Math.max(0, rawOffset));
+  const activeDay = activeTimeline.days[dayIndex];
+  const activeSnapshot = activeDay
+    ? cumulative
+      ? activeDay.cumulative
+      : activeDay.dayOnly
+    : {
+        items: loggedItems,
+        regionIntensity: activity,
+        totalMinutes: loggedItems.reduce((sum, i) => sum + i.minutes, 0),
+      };
+
+  const highlightedIntensity = useMemo(() => {
+    if (!highlightedActivity) return null;
+    const matched = activeSnapshot.items.find((i) => i.kind === highlightedActivity);
+    return activityToRegionIntensity([
+      { kind: highlightedActivity, minutes: matched?.minutes ?? 60 },
+    ]);
+  }, [highlightedActivity, activeSnapshot.items]);
+
+  // Ref updated synchronously for 60fps shader uniform updates during timeline scrubbing.
+  const activityRef = useRef<Partial<Record<RegionId, number>> | null>(
+    highlightedIntensity ?? activeSnapshot.regionIntensity,
+  );
+  useEffect(() => {
+    activityRef.current = highlightedIntensity ?? activeSnapshot.regionIntensity;
+  }, [highlightedIntensity, activeSnapshot.regionIntensity]);
+
+  const effectiveHasAnyData =
+    hasAnyData ?? (loggedItems.length > 0 || Object.keys(activity).length > 0);
 
   const brainSize = useSyncExternalStore(
     subscribeBrainSizePref,
@@ -188,6 +296,7 @@ export function BrainExplorerWorkspace({
     setCompareB((prev) => pickDefaultComparePartner(act, prev));
     setIsolated(false);
     setSelectedRegion(null);
+    setHighlightedActivity(null);
     setMode("compare");
   }, []);
 
@@ -195,10 +304,44 @@ export function BrainExplorerWorkspace({
     if (!next) return;
     const nextMode = next as BrainMode;
     setMode(nextMode);
+    if (nextMode !== "activity") {
+      setHighlightedActivity(null);
+    }
     if (nextMode === "compare") {
       setIsolated(false);
     }
   }, []);
+
+  const handleHighlightActivity = useCallback(
+    (kind: ActivityKind | null) => {
+      setHighlightedActivity(kind);
+      if (kind !== null) {
+        const matched = activeSnapshot.items.find((i) => i.kind === kind);
+        activityRef.current = activityToRegionIntensity([
+          { kind, minutes: matched?.minutes ?? 60 },
+        ]);
+        setMode("activity");
+      } else {
+        activityRef.current = activeSnapshot.regionIntensity;
+      }
+    },
+    [activeSnapshot.items, activeSnapshot.regionIntensity],
+  );
+
+  const handleSelectDay = useCallback(
+    (nextIndex: number) => {
+      const clamped = Math.min(maxDayIndex, Math.max(0, nextIndex));
+      const nextDay = activeTimeline.days[clamped];
+      if (nextDay) {
+        const snap = cumulative ? nextDay.cumulative : nextDay.dayOnly;
+        activityRef.current = snap.regionIntensity;
+      }
+      setHighlightedActivity(null);
+      setDayOffsets((prev) => ({ ...prev, [windowDays]: clamped }));
+      setMode((prev) => (prev === "activity" ? prev : "activity"));
+    },
+    [activeTimeline.days, cumulative, maxDayIndex, windowDays],
+  );
 
   const handleToggleCrossSection = useCallback(() => {
     setCrossSection((prev) => ({
@@ -600,9 +743,7 @@ export function BrainExplorerWorkspace({
         {crossSectionControls}
       </div>
 
-      <div className="border-t border-border pt-3">
-        {cameraControls}
-      </div>
+      <div className="border-t border-border pt-3">{cameraControls}</div>
     </div>
   );
 
@@ -814,7 +955,7 @@ export function BrainExplorerWorkspace({
           <RegionBadge region={regionInfo.id} />
           {mode === "activity" ? (
             <span className="font-mono text-caption text-cyan tabular-nums">
-              Index {Math.round((activity[regionInfo.id] ?? 0) * 100)}%
+              Index {Math.round(((highlightedIntensity ?? activeSnapshot.regionIntensity)[regionInfo.id] ?? 0) * 100)}%
             </span>
           ) : null}
         </div>
@@ -918,38 +1059,60 @@ export function BrainExplorerWorkspace({
     </div>
   );
 
-  const loggedActivitiesBlock = (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-        <h2 className="text-section font-medium text-foreground">Your logged activities</h2>
-        <span className="font-mono text-caption text-muted-foreground tabular-nums">
-          {windowStart} → {windowEnd}
-        </span>
-      </div>
+  const activeDateLabel = activeDay
+    ? cumulative
+      ? `${activeTimeline.windowStart} → ${activeDay.date}`
+      : `${activeDay.shortLabel} (${activeDay.date})`
+    : undefined;
 
-      {loggedItems.length === 0 ? (
-        <p className="text-body text-muted-foreground">
-          No focus, movement, sleep, or habit entries in the last 7 days yet. Log activities to
-          light up Activity mode with educational associations.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {loggedItems.map((item) => (
-            <li key={item.kind} className="flex items-center justify-between gap-2 text-body">
-              <span className="text-foreground">{item.label}</span>
-              <span className="font-mono text-caption text-muted-foreground tabular-nums">
-                {item.count} {item.count === 1 ? "entry" : "entries"} · {item.minutes}m
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <p className="border-t border-border pt-3 text-caption text-muted-foreground">
-        {ACTIVITY_DISCLAIMER}
-      </p>
-    </div>
+  const impactPanelContent = (
+    <BrainImpactPanel
+      selectedRegion={selectedRegion}
+      items={activeSnapshot.items}
+      windowDays={windowDays}
+      windowStart={activeTimeline.windowStart}
+      windowEnd={activeTimeline.windowEnd}
+      activeDateLabel={activeDateLabel}
+      highlightedActivity={highlightedActivity}
+      onHighlightActivity={handleHighlightActivity}
+      onClearSelectedRegion={() => handleSelectRegion(null)}
+      hasAnyData={effectiveHasAnyData}
+      onLoadDemo={onLoadDemo}
+    />
   );
+
+  const timelinePanelContent = (
+    <BrainTimeScrubber
+      timeline={activeTimeline}
+      windowDays={windowDays}
+      onChangeWindowDays={(days) => {
+        setHighlightedActivity(null);
+        setWindowDays(days);
+      }}
+      dayIndex={dayIndex}
+      cumulative={cumulative}
+      onChangeCumulative={(nextCum) => {
+        setHighlightedActivity(null);
+        setCumulative(nextCum);
+        if (activeDay) {
+          activityRef.current = nextCum
+            ? activeDay.cumulative.regionIntensity
+            : activeDay.dayOnly.regionIntensity;
+        }
+      }}
+      onSelectDay={handleSelectDay}
+      reducedMotion={reducedMotion}
+    />
+  );
+
+  const quickLogPanelContent =
+    onCreateActivity && onQuickMoodCheckin ? (
+      <BrainQuickLogPanel
+        onCreateActivity={onCreateActivity}
+        onQuickMoodCheckin={onQuickMoodCheckin}
+        onQuickFocusLog={onQuickFocusLog}
+      />
+    ) : undefined;
 
   const immersiveRegionContent = (
     <div className="space-y-5">
@@ -967,8 +1130,6 @@ export function BrainExplorerWorkspace({
       ) : null}
 
       {regionBlock}
-
-      <div className="border-t border-border pt-5">{loggedActivitiesBlock}</div>
     </div>
   );
 
@@ -1024,7 +1185,8 @@ export function BrainExplorerWorkspace({
             <DynamicBrainExplorer
               mode={mode}
               selectedRegion={selectedRegion}
-              activity={activity}
+              activity={highlightedIntensity ?? activeSnapshot.regionIntensity}
+              activityRef={activityRef}
               onSelectRegion={handleSelectRegion}
               quality="auto"
               isolated={isolated}
@@ -1049,6 +1211,9 @@ export function BrainExplorerWorkspace({
                 {stageToolbar}
                 {crossSectionControls}
               </Card>
+              <Card className="rounded-control border border-border bg-surface p-3.5 shadow-none">
+                {timelinePanelContent}
+              </Card>
               {regionChips}
             </>
           ) : null}
@@ -1065,7 +1230,7 @@ export function BrainExplorerWorkspace({
               {regionBlock}
             </Card>
             <Card className="rounded-card border border-border bg-surface p-5 shadow-none">
-              {loggedActivitiesBlock}
+              {impactPanelContent}
             </Card>
           </aside>
         ) : null}
@@ -1077,6 +1242,9 @@ export function BrainExplorerWorkspace({
           onOpenCommandPalette={openCommandPalette}
           modeContent={modePanelContent}
           regionContent={immersiveRegionContent}
+          impactContent={impactPanelContent}
+          timelineContent={timelinePanelContent}
+          quickLogContent={quickLogPanelContent}
         />
       ) : null}
     </div>

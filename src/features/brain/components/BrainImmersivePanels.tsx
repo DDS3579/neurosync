@@ -4,11 +4,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Brain,
+  Clock,
   Command as CommandIcon,
   Compass,
   LayoutGrid,
   Minimize2,
+  PlusCircle,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -22,13 +25,19 @@ export interface BrainImmersivePanelsProps {
   onOpenCommandPalette: () => void;
   modeContent: ReactNode;
   regionContent: ReactNode;
+  impactContent: ReactNode;
+  timelineContent: ReactNode;
+  quickLogContent?: ReactNode;
 }
 
 /**
  * Immersive /brain floating workspace:
  * - Navigation Dock (top-left, collapsed to icons by default)
+ * - Quick Log (top-left under dock, collapsed by default)
  * - Modes & Controls (bottom-left on desktop, collapsed <1024px)
- * - Region Inspector (right side on desktop, collapsed <1024px)
+ * - Time Scrubber (bottom-center, slim, collapsible)
+ * - Region Details (top-right on desktop, collapsed <1024px)
+ * - Activity Impact (bottom-right on desktop, collapsed <1024px)
  * On mobile (<768px), FloatingPanelLayer renders them as a bottom chip row + single-open sheet.
  */
 export function BrainImmersivePanels({
@@ -36,6 +45,9 @@ export function BrainImmersivePanels({
   onOpenCommandPalette,
   modeContent,
   regionContent,
+  impactContent,
+  timelineContent,
+  quickLogContent,
 }: BrainImmersivePanelsProps) {
   const pathname = usePathname();
 
@@ -92,6 +104,7 @@ export function BrainImmersivePanels({
       <FloatingPanel
         id="brain-nav-dock"
         title="Navigation"
+        chipLabel="Nav"
         icon={<Compass className="size-3.5" aria-hidden />}
         defaultPosition={{ x: 16, y: 16 }}
         defaultSize={{ width: 248 }}
@@ -166,6 +179,20 @@ export function BrainImmersivePanels({
         </div>
       </FloatingPanel>
 
+      {quickLogContent ? (
+        <FloatingPanel
+          id="brain-quick-log"
+          title="Quick Log"
+          chipLabel="Log"
+          icon={<PlusCircle className="size-3.5" aria-hidden />}
+          defaultPosition={{ x: 16, y: 72 }}
+          defaultSize={{ width: 312 }}
+          defaultCollapsed
+        >
+          {quickLogContent}
+        </FloatingPanel>
+      ) : null}
+
       <FloatingPanel
         id="brain-mode-panel"
         title="Modes & Controls"
@@ -174,9 +201,9 @@ export function BrainImmersivePanels({
         defaultPosition={{ x: 16, y: 460 }}
         resolveDefaultPosition={(vp, size) => ({
           x: 16,
-          y: Math.max(16, vp.height - Math.max(size.height, 360) - 16),
+          y: Math.max(120, vp.height - Math.max(size.height, 360) - 16),
         })}
-        defaultSize={{ width: 344 }}
+        defaultSize={{ width: 332 }}
         defaultCollapsed={(vp) => vp.width < 1024}
         resizable
       >
@@ -184,20 +211,53 @@ export function BrainImmersivePanels({
       </FloatingPanel>
 
       <FloatingPanel
+        id="brain-time-scrubber"
+        title="Timeline"
+        chipLabel="Time"
+        icon={<Clock className="size-3.5" aria-hidden />}
+        defaultPosition={{ x: 460, y: 740 }}
+        resolveDefaultPosition={(vp, size) => ({
+          x: Math.max(16, Math.round((vp.width - size.width) / 2)),
+          y: Math.max(16, vp.height - Math.max(size.height, 140) - 16),
+        })}
+        defaultSize={{ width: 396 }}
+        defaultCollapsed={(vp) => vp.width < 1024}
+      >
+        {timelineContent}
+      </FloatingPanel>
+
+      <FloatingPanel
         id="brain-region-panel"
         title="Region Details"
         chipLabel="Region"
         icon={<Brain className="size-3.5" aria-hidden />}
-        defaultPosition={{ x: 1064, y: 16 }}
+        defaultPosition={{ x: 1068, y: 16 }}
         resolveDefaultPosition={(vp, size) => ({
           x: Math.max(16, vp.width - size.width - 16),
           y: 16,
         })}
-        defaultSize={{ width: 360 }}
+        defaultSize={{ width: 356, height: 420 }}
         defaultCollapsed={(vp) => vp.width < 1024}
         resizable
       >
         {regionContent}
+      </FloatingPanel>
+
+      <FloatingPanel
+        id="brain-impact-panel"
+        title="Activity Impact"
+        chipLabel="Impact"
+        icon={<Activity className="size-3.5" aria-hidden />}
+        defaultPosition={{ x: 1068, y: 540 }}
+        resolveDefaultPosition={(vp, size) => ({
+          x: Math.max(16, vp.width - size.width - 16),
+          y: Math.max(16, vp.height - Math.max(size.height, 340) - 16),
+        })}
+        defaultSize={{ width: 356, height: 340 }}
+        defaultCollapsed={(vp) => vp.width < 1024}
+        resizable
+      >
+        {impactContent}
       </FloatingPanel>
     </FloatingPanelLayer>
   );
