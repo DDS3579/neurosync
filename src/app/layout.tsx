@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 
-import { ReducedMotionProvider } from "@/components/app-shell/reduced-motion-sync";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { A11yPrefsSync } from "@/components/app-shell/a11y-prefs-sync";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,9 +19,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`dark ${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <ReducedMotionProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </ReducedMotionProvider>
+        <A11yPrefsSync />
+        {children}
       </body>
     </html>
   );
