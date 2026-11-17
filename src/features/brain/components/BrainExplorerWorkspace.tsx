@@ -910,180 +910,55 @@ export function BrainExplorerWorkspace({
     </>
   );
 
-  if (isImmersive) {
-    return (
-      <div
-        ref={stageContainerRef}
-        className="fixed inset-0 z-30 h-dvh w-screen overflow-hidden bg-[#060913] animate-in fade-in duration-200 motion-reduce:animate-none"
-      >
-        <h1 className="sr-only">Brain Explorer</h1>
-
-        <DynamicBrainExplorer
-          mode={mode}
-          selectedRegion={selectedRegion}
-          activity={activity}
-          onSelectRegion={handleSelectRegion}
-          quality="auto"
-          isolated={isolated}
-          onExitIsolation={handleExitIsolation}
-          compare={mode === "compare" ? { activityA: compareA, activityB: compareB } : null}
-          crossSection={crossSection}
-          focusRequestKey={focusRequestKey}
-          onGlbStatusChange={setHasGlb}
-          brainSize={brainSize}
-          cameraAction={cameraAction}
-          className="h-full w-full rounded-none border-0 sm:h-full"
-        />
-
-        {/* Top-left overlay: modes, stage actions, region chips */}
-        <div
-          data-brain-panel="true"
-          className="pointer-events-auto absolute top-3 left-3 z-20 flex max-w-[calc(100vw-8.5rem)] flex-col gap-2 sm:top-4 sm:left-4 sm:max-w-xl"
-        >
-          <div className="flex flex-wrap items-center gap-2 rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
-            <ToggleGroup
-              type="single"
-              value={mode}
-              onValueChange={handleModeChange}
-              variant="outline"
-              size="sm"
-              aria-label="Brain explorer mode"
-              className="flex-wrap"
-            >
-              {MODES.map((item) => (
-                <ToggleGroupItem key={item.value} value={item.value}>
-                  {item.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
-
-          <div className="rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
-            {stageToolbar}
-            {crossSectionControls}
-          </div>
-
-          <div className="rounded-control border border-border-strong bg-surface/80 p-1.5 backdrop-blur-md">
-            {regionChips}
-          </div>
-
-          {showDisclaimer ? (
-            <p
-              role="note"
-              className="rounded-control border border-cyan/30 bg-surface/90 px-3 py-1.5 text-caption text-foreground backdrop-blur-md"
-            >
-              {ACTIVITY_DISCLAIMER}
-            </p>
-          ) : null}
-        </div>
-
-        {/* Top-right overlay: Exit immersive */}
-        <div
-          data-brain-panel="true"
-          className="pointer-events-auto absolute top-3 right-3 z-20 sm:top-4 sm:right-4"
-        >
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={exitImmersive}
-            aria-label="Exit immersive mode"
-            className="gap-1.5 rounded-control border-border-strong bg-surface/85 text-foreground shadow-lg backdrop-blur-md hover:bg-surface"
-          >
-            <Minimize2 className="size-3.5 text-cyan" aria-hidden />
-            <span className="hidden sm:inline">Exit immersive</span>
-            <span className="sm:hidden">Exit</span>
-          </Button>
-        </div>
-
-        {/* Desktop right-side inspector overlay (wheel-scrollable) */}
-        <aside
-          data-brain-panel="true"
-          aria-label="Selected region details"
-          className="pointer-events-auto absolute top-16 right-4 z-20 hidden max-h-[calc(100dvh-9rem)] w-80 flex-col gap-3 overflow-y-auto pr-0.5 md:flex lg:w-96"
-        >
-          {inspectorPanels}
-        </aside>
-
-        {/* Mobile collapsible inspector pill + drawer */}
-        <div
-          data-brain-panel="true"
-          className="pointer-events-auto absolute bottom-16 left-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2 md:hidden"
-        >
-          {mobileInspectorOpen ? (
-            <aside
-              aria-label="Selected region details"
-              className="max-h-[42dvh] w-[min(22rem,calc(100vw-1.5rem))] space-y-3 overflow-y-auto rounded-card border border-border-strong bg-surface/95 p-2 shadow-xl backdrop-blur-md"
-            >
-              {inspectorPanels}
-            </aside>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-expanded={mobileInspectorOpen}
-            onClick={() => setMobileInspectorOpen((prev) => !prev)}
-            className="gap-1.5 rounded-chip border-border-strong bg-surface/90 text-caption text-foreground shadow-lg backdrop-blur-md"
-          >
-            {mobileInspectorOpen ? (
-              <ChevronDown className="size-3.5 text-cyan" aria-hidden />
-            ) : (
-              <ChevronUp className="size-3.5 text-cyan" aria-hidden />
-            )}
-            <span>
-              {regionInfo ? regionInfo.name : mode === "compare" ? "Compare details" : "Region details"}
-            </span>
-          </Button>
-        </div>
-
-        {/* Bottom-right control cluster */}
-        <div className="pointer-events-auto absolute right-3 bottom-3 z-20 sm:right-4 sm:bottom-4">
-          {cameraCluster}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-200 motion-reduce:animate-none">
-      <PageHeader
-        title="Brain Explorer"
-        description="Seven regions with educational notes on networks and everyday activities. Nothing here measures your brain."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <ToggleGroup
-              type="single"
-              value={mode}
-              onValueChange={handleModeChange}
-              variant="outline"
-              size="sm"
-              aria-label="Brain explorer mode"
-              className="flex-wrap"
-            >
-              {MODES.map((item) => (
-                <ToggleGroupItem key={item.value} value={item.value}>
-                  {item.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+    <div
+      className={
+        isImmersive
+          ? "fixed inset-0 z-30 h-dvh w-screen overflow-hidden bg-[#060913] transition-opacity duration-200 motion-reduce:transition-none"
+          : "space-y-6 transition-opacity duration-200 motion-reduce:transition-none"
+      }
+    >
+      {isImmersive ? (
+        <h1 className="sr-only">Brain Explorer</h1>
+      ) : (
+        <PageHeader
+          title="Brain Explorer"
+          description="Seven regions with educational notes on networks and everyday activities. Nothing here measures your brain."
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <ToggleGroup
+                type="single"
+                value={mode}
+                onValueChange={handleModeChange}
+                variant="outline"
+                size="sm"
+                aria-label="Brain explorer mode"
+                className="flex-wrap"
+              >
+                {MODES.map((item) => (
+                  <ToggleGroupItem key={item.value} value={item.value}>
+                    {item.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
 
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={enterImmersive}
-              aria-label="Enter full-screen immersive mode"
-              className="gap-1.5 rounded-control"
-            >
-              <Maximize2 className="size-3.5 text-cyan" aria-hidden />
-              <span>Full-screen</span>
-            </Button>
-          </div>
-        }
-      />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={enterImmersive}
+                aria-label="Enter full-screen immersive mode"
+                className="gap-1.5 rounded-control"
+              >
+                <Maximize2 className="size-3.5 text-cyan" aria-hidden />
+                <span>Full-screen</span>
+              </Button>
+            </div>
+          }
+        />
+      )}
 
-      {showDisclaimer ? (
+      {!isImmersive && showDisclaimer ? (
         <p
           role="note"
           className="rounded-control border border-cyan/30 bg-cyan/10 px-4 py-2.5 text-caption text-foreground"
@@ -1092,9 +967,12 @@ export function BrainExplorerWorkspace({
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="space-y-3 lg:col-span-7">
-          <div ref={stageContainerRef} className="relative">
+      <div className={isImmersive ? "relative h-full w-full" : "grid gap-6 lg:grid-cols-12"}>
+        <div className={isImmersive ? "h-full w-full" : "space-y-3 lg:col-span-7"}>
+          <div
+            ref={stageContainerRef}
+            className={isImmersive ? "relative h-full w-full" : "relative"}
+          >
             <DynamicBrainExplorer
               mode={mode}
               selectedRegion={selectedRegion}
@@ -1109,21 +987,143 @@ export function BrainExplorerWorkspace({
               onGlbStatusChange={setHasGlb}
               brainSize={brainSize}
               cameraAction={cameraAction}
+              className={isImmersive ? "h-full w-full rounded-none border-0 sm:h-full" : undefined}
             />
-            <div className="absolute right-3 bottom-3 z-10">
+
+            {isImmersive ? (
+              <>
+                {/* Top-left overlay: modes, stage actions, region chips */}
+                <div
+                  data-brain-panel="true"
+                  className="pointer-events-auto absolute top-3 left-3 z-20 flex max-w-[calc(100vw-7.5rem)] flex-col gap-2 sm:top-4 sm:left-4 sm:max-w-xl"
+                >
+                  <div className="flex flex-wrap items-center gap-2 rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
+                    <ToggleGroup
+                      type="single"
+                      value={mode}
+                      onValueChange={handleModeChange}
+                      variant="outline"
+                      size="sm"
+                      aria-label="Brain explorer mode"
+                      className="flex-wrap"
+                    >
+                      {MODES.map((item) => (
+                        <ToggleGroupItem key={item.value} value={item.value}>
+                          {item.label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  </div>
+
+                  <div className="rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
+                    {stageToolbar}
+                    {crossSectionControls}
+                  </div>
+
+                  <div className="rounded-control border border-border-strong bg-surface/80 p-1.5 backdrop-blur-md">
+                    {regionChips}
+                  </div>
+
+                  {showDisclaimer ? (
+                    <p
+                      role="note"
+                      className="rounded-control border border-cyan/30 bg-surface/90 px-3 py-1.5 text-caption text-foreground backdrop-blur-md"
+                    >
+                      {ACTIVITY_DISCLAIMER}
+                    </p>
+                  ) : null}
+                </div>
+
+                {/* Top-right overlay: Exit immersive */}
+                <div
+                  data-brain-panel="true"
+                  className="pointer-events-auto absolute top-3 right-3 z-20 sm:top-4 sm:right-4"
+                >
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={exitImmersive}
+                    aria-label="Exit immersive mode"
+                    className="gap-1.5 rounded-control border-border-strong bg-surface/85 text-foreground shadow-lg backdrop-blur-md hover:bg-surface"
+                  >
+                    <Minimize2 className="size-3.5 text-cyan" aria-hidden />
+                    <span className="hidden sm:inline">Exit immersive</span>
+                    <span className="sm:hidden">Exit</span>
+                  </Button>
+                </div>
+
+                {/* Mobile collapsible inspector pill + drawer */}
+                <div
+                  data-brain-panel="true"
+                  className="pointer-events-auto absolute bottom-16 left-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2 md:hidden"
+                >
+                  {mobileInspectorOpen ? (
+                    <div
+                      role="region"
+                      aria-label="Selected region details drawer"
+                      className="max-h-[42dvh] w-[min(22rem,calc(100vw-1.5rem))] space-y-3 overflow-y-auto rounded-card border border-border-strong bg-surface/95 p-2 shadow-xl backdrop-blur-md"
+                    >
+                      {inspectorPanels}
+                    </div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-expanded={mobileInspectorOpen}
+                    onClick={() => setMobileInspectorOpen((prev) => !prev)}
+                    className="gap-1.5 rounded-chip border-border-strong bg-surface/90 text-caption text-foreground shadow-lg backdrop-blur-md"
+                  >
+                    {mobileInspectorOpen ? (
+                      <ChevronDown className="size-3.5 text-cyan" aria-hidden />
+                    ) : (
+                      <ChevronUp className="size-3.5 text-cyan" aria-hidden />
+                    )}
+                    <span>
+                      {regionInfo
+                        ? regionInfo.name
+                        : mode === "compare"
+                          ? "Compare details"
+                          : "Region details"}
+                    </span>
+                  </Button>
+                </div>
+              </>
+            ) : null}
+
+            {/* Bottom-right control cluster */}
+            <div
+              className={
+                isImmersive
+                  ? "pointer-events-auto absolute right-3 bottom-3 z-20 sm:right-4 sm:bottom-4"
+                  : "absolute right-3 bottom-3 z-10"
+              }
+            >
               {cameraCluster}
             </div>
           </div>
 
-          <Card className="rounded-control border border-border bg-surface p-3.5 shadow-none">
-            {stageToolbar}
-            {crossSectionControls}
-          </Card>
-
-          {regionChips}
+          {!isImmersive ? (
+            <>
+              <Card className="rounded-control border border-border bg-surface p-3.5 shadow-none">
+                {stageToolbar}
+                {crossSectionControls}
+              </Card>
+              {regionChips}
+            </>
+          ) : null}
         </div>
 
-        <aside aria-label="Selected region details" className="space-y-4 lg:col-span-5">
+        <aside
+          data-brain-panel="true"
+          aria-label="Selected region details"
+          className={
+            isImmersive
+              ? "pointer-events-auto absolute top-16 right-4 z-20 hidden max-h-[calc(100dvh-9rem)] w-80 flex-col gap-3 overflow-y-auto pr-0.5 md:flex lg:w-96"
+              : "space-y-4 lg:col-span-5"
+          }
+        >
           {inspectorPanels}
         </aside>
       </div>
