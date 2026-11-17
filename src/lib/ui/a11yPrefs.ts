@@ -24,7 +24,7 @@ export function readUiA11yPrefs(): UiA11yPrefs {
   try {
     const raw = window.localStorage.getItem(UI_A11Y_STORAGE_KEY);
     if (!raw) return DEFAULT_UI_A11Y_PREFS;
-    const parsed = JSON.parse(raw) as Partial<UiA11Y_PREFS> | null;
+    const parsed = JSON.parse(raw) as Partial<UiA11yPrefs> | null;
     if (!parsed || typeof parsed !== "object") return DEFAULT_UI_A11Y_PREFS;
     return {
       reducedMotion: Boolean(parsed.reducedMotion),
