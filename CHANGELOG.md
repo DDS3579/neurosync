@@ -2,6 +2,15 @@
 
 ## v0.3.0 (2026-11-17)
 
+### Added
+- **Immersive Brain-first `/brain` experience**:
+  - Full-viewport (`100dvh x 100vw`, fixed, zero page scroll) immersive stage on `/brain` with dark space `#060913` backdrop and `Exit immersive` button + `Esc` (exits immersive only after isolation and region selection are cleared and no dialogs are open).
+  - Hides `AppSidebar`, `AppTopbar`, `MobileNav`, and skip link via `hidden`, `inert`, and `aria-hidden` while keeping `AppShell` providers, `ReminderRunner`, `ServiceWorkerRegister`, and `OnboardingDialog` mounted (`src/components/app-shell/immersive-brain-context.tsx`, `src/components/app-shell/app-shell.tsx`).
+  - Added `ns:ui:v1:brain-immersive` (default `true`) and `ns:ui:v1:brain-size` (default `1.0`, clamped `[0.5, 2.0]`) `localStorage` helpers (`src/lib/ui/brainUiPrefs.ts`) plus Settings toggle `"Open the Brain Explorer in full-screen mode"` (`src/features/settings/components/SettingsWorkspace.tsx`).
+  - Added camera and size controls (`src/features/brain/brainControls.ts`, `BrainScene.tsx`, `BrainExplorerWorkspace.tsx`): plain wheel camera zoom, non-passive `ctrlKey`/trackpad-pinch brain scaling (`0.5x–2.0x` damped) that leaves wheel events over floating panels (`data-brain-panel="true"`) untouched, two-finger touch pinch zoom, bottom-right `Fit` / `Reset` / `Size` slider cluster, and keyboard shortcuts (`+`/`-`, `0`, `F`, arrow keys).
+  - Kept `BrainExplorer` prop signatures backwards-compatible (`brainSize` and `cameraAction` optional), preserved single-mount WebGL across immersive/standard toggles, and added `ResizeObserver` `hasSize` guard in `useBrainStage` so rendering stays paused when hidden.
+  - Added unit and integration tests in `src/lib/ui/brainUiPrefs.test.ts`, `src/features/brain/brainControls.test.ts`, and `src/__tests__/immersiveBrain.test.tsx`, plus forwarded `aria-label`/`aria-labelledby` to `SliderPrimitive.Thumb` in `src/components/ui/slider.tsx`.
+
 ### Changed
 - **Workflow rules (`CLAUDE.md`)**: Updated `## Workflow (v0.3)` with `v0.3` branching guidance and added the rule that UI-only preferences live in `localStorage` under versioned keys (`ns:ui:v1:...`), wrapped in `try/catch` with safe defaults, rather than Dexie.
 - **Dev-only route gating**: Verified `/dev-brain`, `/dev-overview`, and `/dev-ui` call `notFound()` when `process.env.NODE_ENV === "production"` and remain excluded from navigation, Command Palette, manifest, and service worker caches, backed by `src/__tests__/devRoutes.test.ts`.
