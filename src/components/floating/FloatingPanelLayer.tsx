@@ -171,6 +171,7 @@ export function FloatingPanelLayer({
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.stopPropagation();
+                    e.nativeEvent.stopPropagation();
                     setMobileActivePanel(null);
                     returnFocusToCanvas();
                   }

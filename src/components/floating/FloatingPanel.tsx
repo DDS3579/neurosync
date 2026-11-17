@@ -34,7 +34,7 @@ export interface FloatingPanelProps {
     size: { width: number; height: number },
   ) => PanelPosition;
   defaultSize?: PanelSize;
-  defaultCollapsed?: boolean;
+  defaultCollapsed?: boolean | ((viewport: { width: number; height: number }) => boolean);
   collapsedContent?: ReactNode;
   collapsible?: boolean;
   resizable?: boolean;
@@ -169,7 +169,11 @@ export function FloatingPanel({
   }
 
   const pos: PanelPosition = panel ? { x: panel.x, y: panel.y } : defaultPosition;
-  const collapsed = panel ? Boolean(panel.collapsed) : defaultCollapsed;
+  const collapsed = panel
+    ? Boolean(panel.collapsed)
+    : typeof defaultCollapsed === "boolean"
+      ? defaultCollapsed
+      : false;
   const width = panel?.width ?? defaultSize?.width ?? DEFAULT_PANEL_WIDTH;
   const height = panel?.height ?? defaultSize?.height;
   const zIndex = panel?.zIndex ?? 1;
@@ -307,6 +311,7 @@ export function FloatingPanel({
   const handlePanelKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
     if (e.key === "Escape") {
       e.stopPropagation();
+      e.nativeEvent.stopPropagation();
       returnFocusToCanvas();
       return;
     }

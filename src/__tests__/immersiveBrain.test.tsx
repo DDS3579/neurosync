@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/app-shell/app-shell";
+import { usePanelLayout } from "@/components/floating";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrainExplorerWorkspace } from "@/features/brain/components/BrainExplorerWorkspace";
 import { UI_BRAIN_IMMERSIVE_KEY, UI_BRAIN_SIZE_KEY, readBrainSizePref } from "@/lib/ui/brainUiPrefs";
@@ -76,6 +77,14 @@ describe("Immersive /brain shell, Escape hierarchy, and wheel controls", () => {
       container = null;
     }
     window.localStorage.clear();
+    usePanelLayout.setState({
+      hydrated: false,
+      topZ: 1,
+      panels: {},
+      defaults: {},
+      measuredSizes: {},
+      activeMobilePanelId: null,
+    });
     mockPathname = "/brain";
   });
 
@@ -114,17 +123,61 @@ describe("Immersive /brain shell, Escape hierarchy, and wheel controls", () => {
     expect(topbarWrapper?.hasAttribute("hidden")).toBe(true);
     expect(topbarWrapper?.hasAttribute("inert")).toBe(true);
 
-    const exitBtn = node.querySelector('button[aria-label="Exit immersive mode"]');
-    expect(exitBtn).not.toBeNull();
-    expect(node.querySelector('button[aria-label="Fit to screen"]')).not.toBeNull();
-    expect(node.querySelector('button[aria-label="Reset view"]')).not.toBeNull();
+    const navDock = node.querySelector('[data-panel-id="brain-nav-dock"]') as HTMLElement;
+    const modePanel = node.querySelector('[data-panel-id="brain-mode-panel"]') as HTMLElement;
+    const regionPanel = node.querySelector('[data-panel-id="brain-region-panel"]') as HTMLElement;
+    expect(navDock).not.toBeNull();
+    expect(modePanel).not.toBeNull();
+    expect(regionPanel).not.toBeNull();
 
-    // Inspector aside must scroll vertically via block flow (not flex-col shrinking overflow-hidden Cards)
-    const aside = node.querySelector('aside[aria-label="Selected region details"]');
-    expect(aside).not.toBeNull();
-    expect(aside?.className).toContain("overflow-y-auto");
-    expect(aside?.className).toContain("md:block");
-    expect(aside?.className).not.toContain("flex-col");
+    // Navigation dock starts collapsed to quick icons; Mode and Region panels start open on >=1024px.
+    expect(navDock.getAttribute("data-collapsed")).toBe("true");
+    expect(modePanel.getAttribute("data-collapsed")).toBe("false");
+    expect(regionPanel.getAttribute("data-collapsed")).toBe("false");
+
+    // No duplicated non-floating aside overlay in immersive mode.
+    expect(node.querySelector('aside[aria-label="Selected region details"]')).toBeNull();
+
+    // Collapsed dock still exposes route icons, Command Palette, and Exit immersive.
+    expect(navDock.querySelector('a[href="/overview"]')).not.toBeNull();
+    expect(navDock.querySelector('a[href="/brain"][aria-current="page"]')).not.toBeNull();
+    expect(navDock.querySelector('a[href="/settings"]')).not.toBeNull();
+
+    // Region panel includes Networks and stays open with "Select a region" hint when deselected.
+    expect(regionPanel.textContent).toContain("Networks");
+    expect(regionPanel.textContent).toContain("Frontoparietal control network");
+
+    const prefrontalChip = Array.from(regionPanel.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Prefrontal Cortex",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      prefrontalChip.click();
+    });
+    expect(node.querySelector('[data-panel-id="brain-region-panel"]')).not.toBeNull();
+    expect(regionPanel.textContent).toContain("Select a region");
+
+    // Mode panel houses modes, Fit/Reset/Size controls, and Activity disclaimer.
+    expect(modePanel.querySelector('button[aria-label="Fit to screen"]')).not.toBeNull();
+    expect(modePanel.querySelector('button[aria-label="Reset view"]')).not.toBeNull();
+    const activityTab = Array.from(modePanel.querySelectorAll('[role="radio"]')).find(
+      (el) => el.textContent?.trim() === "Activity",
+    ) as HTMLElement;
+    await act(async () => {
+      activityTab.click();
+    });
+    expect(modePanel.textContent).toContain(
+      "Educational association, not a measurement of your brain activity.",
+    );
+
+    // Expanding Navigation dock reveals full labeled links, Command Palette hint, Reset layout, and Exit.
+    const expandDockBtn = navDock.querySelector("button") as HTMLButtonElement;
+    await act(async () => {
+      expandDockBtn.click();
+    });
+    expect(navDock.getAttribute("data-collapsed")).toBe("false");
+    expect(navDock.textContent).toContain("Reset layout");
+    expect(navDock.textContent).toContain("Ctrl+K");
+    expect(navDock.querySelector('button[aria-label="Exit immersive mode"]')).not.toBeNull();
   });
 
   it("exits immersive on Exit button or Esc only after no region is selected, and honors localStorage pref", async () => {

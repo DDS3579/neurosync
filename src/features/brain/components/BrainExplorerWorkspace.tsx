@@ -11,14 +11,11 @@ import {
 import dynamic from "next/dynamic";
 import {
   ArrowLeftRight,
-  ChevronDown,
-  ChevronUp,
   Compass,
   Eye,
   Layers,
   LocateFixed,
   Maximize2,
-  Minimize2,
   RotateCcw,
   Scan,
 } from "lucide-react";
@@ -70,6 +67,7 @@ import {
 } from "@/lib/ui/brainUiPrefs";
 import { cn } from "@/lib/utils";
 import type { ActivityKind, RegionId } from "@/types/domain";
+import { BrainImmersivePanels } from "./BrainImmersivePanels";
 
 const ACTIVITY_DISCLAIMER =
   "Educational association, not a measurement of your brain activity.";
@@ -129,7 +127,8 @@ export function BrainExplorerWorkspace({
   windowStart,
   windowEnd,
 }: BrainExplorerWorkspaceProps) {
-  const { isImmersive, enterImmersive, exitImmersive } = useImmersiveBrain();
+  const { isImmersive, enterImmersive, exitImmersive, openCommandPalette } =
+    useImmersiveBrain();
   const stageContainerRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<BrainMode>("anatomy");
@@ -139,7 +138,6 @@ export function BrainExplorerWorkspace({
   const [compareA, setCompareA] = useState<ActivityKind>("deep_focus");
   const [compareB, setCompareB] = useState<ActivityKind>("mindfulness");
   const [hasGlb, setHasGlb] = useState(false);
-  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
   const [crossSection, setCrossSection] = useState<CrossSectionConfig>({
     enabled: false,
     axis: "y",
@@ -199,7 +197,6 @@ export function BrainExplorerWorkspace({
     setMode(nextMode);
     if (nextMode === "compare") {
       setIsolated(false);
-      setMobileInspectorOpen(true);
     }
   }, []);
 
@@ -246,13 +243,17 @@ export function BrainExplorerWorkspace({
     };
   }, [isImmersive]);
 
-  // Keyboard shortcuts: Esc exits immersive when nothing is selected/open;
+  // Keyboard shortcuts: Esc exits immersive when canvas is focused and nothing is selected/open;
   // + / - zoom, 0 resets view, F fits to screen, arrow keys rotate.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (!isImmersive) return;
-        if (selectedRegion !== null || isolated || isAnyDialogOpen()) return;
+        const activeInPanel =
+          typeof document !== "undefined" &&
+          document.activeElement instanceof Element &&
+          Boolean(document.activeElement.closest('[data-brain-panel="true"]'));
+        if (activeInPanel || selectedRegion !== null || isolated || isAnyDialogOpen()) return;
         exitImmersive();
         return;
       }
@@ -323,6 +324,24 @@ export function BrainExplorerWorkspace({
   );
 
   const showDisclaimer = mode === "activity" || mode === "compare";
+
+  const modeToggle = (
+    <ToggleGroup
+      type="single"
+      value={mode}
+      onValueChange={handleModeChange}
+      variant="outline"
+      size="sm"
+      aria-label="Brain explorer mode"
+      className="flex-wrap"
+    >
+      {MODES.map((item) => (
+        <ToggleGroupItem key={item.value} value={item.value}>
+          {item.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
 
   const stageToolbar = (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -474,12 +493,7 @@ export function BrainExplorerWorkspace({
     <div
       role="group"
       aria-label="Select a brain region"
-      className={cn(
-        "flex gap-1.5",
-        isImmersive
-          ? "flex-nowrap overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0"
-          : "flex-wrap",
-      )}
+      className="flex flex-wrap gap-1.5"
     >
       {BRAIN_REGIONS.map((region) => {
         const selected = selectedRegion === region.id;
@@ -500,11 +514,14 @@ export function BrainExplorerWorkspace({
     </div>
   );
 
-  const cameraCluster = (
+  const cameraControls = (
     <div
-      data-brain-panel="true"
       aria-label="Camera and size controls"
-      className="flex flex-wrap items-center gap-2 rounded-control border border-border-strong bg-surface/90 px-3 py-2 shadow-lg backdrop-blur-md"
+      className={cn(
+        "flex flex-wrap items-center gap-2",
+        !isImmersive &&
+          "rounded-control border border-border-strong bg-surface/90 px-3 py-2 shadow-lg backdrop-blur-md",
+      )}
     >
       <Button
         type="button"
@@ -532,7 +549,7 @@ export function BrainExplorerWorkspace({
         <span>Reset</span>
       </Button>
 
-      <div className="flex items-center gap-2 pl-1">
+      <div className="flex flex-1 items-center gap-2 pl-1">
         <label
           htmlFor="brain-size-slider"
           className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground"
@@ -551,363 +568,408 @@ export function BrainExplorerWorkspace({
             if (typeof nextVal !== "number") return;
             writeBrainSizePref(nextVal);
           }}
-          className="w-20 sm:w-24"
+          className="min-w-20 flex-1 sm:w-24 sm:flex-none"
         />
-        <span className="w-10 text-right font-mono text-caption text-cyan tabular-nums">
+        <span className="w-11 text-right font-mono text-caption text-cyan tabular-nums">
           {brainSize.toFixed(2)}x
         </span>
       </div>
     </div>
   );
 
-  const inspectorPanels = (
-    <>
-      {mode === "compare" ? (
-        <Card className="rounded-card border border-border bg-surface/95 p-5 shadow-none backdrop-blur-md">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-2 border-b border-border pb-3">
-              <div>
-                <h2 className="text-section font-medium text-foreground">
-                  Compare activities
-                </h2>
-                <p className="text-caption text-muted-foreground">
-                  Side-by-side educational region associations
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                aria-label="Swap compared activities"
-                onClick={() => {
-                  setCompareA(compareB);
-                  setCompareB(compareA);
-                }}
-                className="gap-1 rounded-chip text-caption"
-              >
-                <ArrowLeftRight className="size-3.5" aria-hidden />
-                Swap
-              </Button>
-            </div>
+  const modePanelContent = (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <span className="block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          View mode
+        </span>
+        {modeToggle}
+      </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="compare-activity-a"
-                  className="flex items-center gap-1.5 text-caption text-foreground"
-                >
-                  <span aria-hidden className="inline-block size-2 rounded-full bg-violet" />
-                  Activity A (Violet)
-                </Label>
-                <Select
-                  value={compareA}
-                  onValueChange={(v) => setCompareA(v as ActivityKind)}
-                >
-                  <SelectTrigger
-                    id="compare-activity-a"
-                    aria-label="First activity to compare"
-                    className="w-full"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACTIVITY_COMPARE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.kind} value={opt.kind}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="compare-activity-b"
-                  className="flex items-center gap-1.5 text-caption text-foreground"
-                >
-                  <span aria-hidden className="inline-block size-2 rounded-full bg-cyan" />
-                  Activity B (Cyan)
-                </Label>
-                <Select
-                  value={compareB}
-                  onValueChange={(v) => setCompareB(v as ActivityKind)}
-                >
-                  <SelectTrigger
-                    id="compare-activity-b"
-                    aria-label="Second activity to compare"
-                    className="w-full"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACTIVITY_COMPARE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.kind} value={opt.kind}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-surface-2 px-3 py-2 text-caption text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-violet" />
-                {ACTIVITY_META[compareA].label}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="size-2 rounded-full bg-cyan" />
-                {ACTIVITY_META[compareB].label}
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-foreground">
-                <span aria-hidden className="size-2 rounded-full bg-[#E2E8FF]" />
-                Shared overlap ({comparison.sharedRegions.length})
-              </span>
-            </div>
-
-            <p className="text-body text-foreground/90">{comparison.summary}</p>
-
-            {comparison.sharedRegions.length > 0 ? (
-              <div className="space-y-1.5">
-                <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
-                  Shared overlap
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {comparison.sharedRegions.map((item) => (
-                    <Button
-                      key={item.regionId}
-                      type="button"
-                      size="sm"
-                      variant={selectedRegion === item.regionId ? "default" : "outline"}
-                      onClick={() => selectAndFlyToRegion(item.regionId)}
-                      className="rounded-chip border-[#E2E8FF]/30 text-caption"
-                    >
-                      {item.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2 rounded-control border border-violet/30 bg-surface-2/70 p-3">
-                <div className="flex items-center gap-1.5 text-caption font-medium text-foreground">
-                  <span aria-hidden className="size-2 rounded-full bg-violet" />
-                  {ACTIVITY_META[compareA].label}
-                </div>
-                <ul className="space-y-1.5">
-                  {comparison.items
-                    .filter((item) => item.weightA > 0)
-                    .sort((a, b) => b.weightA - a.weightA)
-                    .map((item) => (
-                      <li key={item.regionId}>
-                        <button
-                          type="button"
-                          onClick={() => selectAndFlyToRegion(item.regionId)}
-                          className="w-full rounded px-1 py-0.5 text-left transition-colors hover:bg-white/[0.04]"
-                        >
-                          <div className="flex items-center justify-between gap-2 text-caption">
-                            <span className="truncate text-foreground">{item.name}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                              {item.status === "both" ? "Shared" : "Only A"}
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
-                            <div
-                              className={cn(
-                                "h-full rounded-full",
-                                item.status === "both" ? "bg-[#E2E8FF]" : "bg-violet",
-                              )}
-                              style={{ width: `${Math.round(item.weightA * 100)}%` }}
-                            />
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-
-              <div className="space-y-2 rounded-control border border-cyan/30 bg-surface-2/70 p-3">
-                <div className="flex items-center gap-1.5 text-caption font-medium text-foreground">
-                  <span aria-hidden className="size-2 rounded-full bg-cyan" />
-                  {ACTIVITY_META[compareB].label}
-                </div>
-                <ul className="space-y-1.5">
-                  {comparison.items
-                    .filter((item) => item.weightB > 0)
-                    .sort((a, b) => b.weightB - a.weightB)
-                    .map((item) => (
-                      <li key={item.regionId}>
-                        <button
-                          type="button"
-                          onClick={() => selectAndFlyToRegion(item.regionId)}
-                          className="w-full rounded px-1 py-0.5 text-left transition-colors hover:bg-white/[0.04]"
-                        >
-                          <div className="flex items-center justify-between gap-2 text-caption">
-                            <span className="truncate text-foreground">{item.name}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                              {item.status === "both" ? "Shared" : "Only B"}
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
-                            <div
-                              className={cn(
-                                "h-full rounded-full",
-                                item.status === "both" ? "bg-[#E2E8FF]" : "bg-cyan",
-                              )}
-                              style={{ width: `${Math.round(item.weightB * 100)}%` }}
-                            />
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            </div>
-
-            <p className="border-t border-border pt-3 text-caption text-muted-foreground">
-              {ACTIVITY_DISCLAIMER}
-            </p>
-          </div>
-        </Card>
+      {showDisclaimer ? (
+        <p
+          role="note"
+          className="rounded-control border border-cyan/30 bg-cyan/10 px-3 py-2 text-caption text-foreground"
+        >
+          {ACTIVITY_DISCLAIMER}
+        </p>
       ) : null}
 
-      <Card className="rounded-card border border-border bg-surface/95 p-5 shadow-none backdrop-blur-md">
-        {regionInfo ? (
-          <div className="space-y-5">
-            <div className="space-y-2 border-b border-border pb-4">
-              <div className="flex items-center justify-between gap-2">
-                <RegionBadge region={regionInfo.id} />
-                {mode === "activity" ? (
-                  <span className="font-mono text-caption text-cyan tabular-nums">
-                    Index {Math.round((activity[regionInfo.id] ?? 0) * 100)}%
-                  </span>
-                ) : null}
-              </div>
-              <h2 className="text-section font-medium text-foreground">
-                {regionInfo.name}
-              </h2>
-              <p className="text-body text-muted-foreground">
-                {regionInfo.shortDescription}
-              </p>
-            </div>
+      <div className="border-t border-border pt-3">
+        {stageToolbar}
+        {crossSectionControls}
+      </div>
 
-            <div className="space-y-2">
-              <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
-                Common associations
-              </h3>
-              <ul className="space-y-1.5 text-body text-foreground/90">
-                {regionInfo.associatedWith.map((item) => (
-                  <li key={item} className="flex gap-2">
-                    <span aria-hidden className="text-cyan">
-                      ·
-                    </span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+      <div className="border-t border-border pt-3">
+        {cameraControls}
+      </div>
+    </div>
+  );
 
-            <div className="space-y-2">
-              <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
-                Connected regions
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {regionInfo.connectedTo.map((connId) => {
-                  const connName = regionNameById.get(connId) ?? connId;
-                  return (
-                    <Button
-                      key={connId}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      aria-label={`Inspect and fly camera to ${connName}`}
-                      onClick={() => selectAndFlyToRegion(connId)}
-                      className="gap-1.5 rounded-chip text-caption"
-                    >
-                      <Compass className="size-3 text-cyan" aria-hidden />
-                      {connName}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
-                Related activities
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {regionInfo.relatedActivities.map((act) => (
-                  <Button
-                    key={act}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    aria-label={`Compare ${ACTIVITY_META[act].label} with another activity`}
-                    onClick={() => openCompareWithActivity(act)}
-                    className="gap-1.5 rounded-chip border-border bg-surface-2 text-caption text-foreground hover:border-violet/50 hover:text-foreground"
-                  >
-                    <ArrowLeftRight className="size-3 text-violet-text" aria-hidden />
-                    {ACTIVITY_META[act].label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <p className="border-t border-border pt-3 text-caption text-muted-foreground">
-              {regionInfo.caveat}
+  const compareBlock =
+    mode === "compare" ? (
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-2 border-b border-border pb-3">
+          <div>
+            <h2 className="text-section font-medium text-foreground">Compare activities</h2>
+            <p className="text-caption text-muted-foreground">
+              Side-by-side educational region associations
             </p>
           </div>
-        ) : (
-          <div className="space-y-2">
-            <h2 className="text-section font-medium text-foreground">
-              Select a region
-            </h2>
-            <p className="text-body text-muted-foreground">
-              Click any region on the 3D atlas or choose one to inspect its networks,
-              connected regions, and related everyday activities.
-            </p>
-          </div>
-        )}
-      </Card>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label="Swap compared activities"
+            onClick={() => {
+              setCompareA(compareB);
+              setCompareB(compareA);
+            }}
+            className="gap-1 rounded-chip text-caption"
+          >
+            <ArrowLeftRight className="size-3.5" aria-hidden />
+            Swap
+          </Button>
+        </div>
 
-      <Card className="rounded-card border border-border bg-surface/95 p-5 shadow-none backdrop-blur-md">
-        <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-          <h2 className="text-section font-medium text-foreground">
-            Your logged activities
-          </h2>
-          <span className="font-mono text-caption text-muted-foreground tabular-nums">
-            {windowStart} → {windowEnd}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="compare-activity-a"
+              className="flex items-center gap-1.5 text-caption text-foreground"
+            >
+              <span aria-hidden className="inline-block size-2 rounded-full bg-violet" />
+              Activity A (Violet)
+            </Label>
+            <Select value={compareA} onValueChange={(v) => setCompareA(v as ActivityKind)}>
+              <SelectTrigger
+                id="compare-activity-a"
+                aria-label="First activity to compare"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTIVITY_COMPARE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.kind} value={opt.kind}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="compare-activity-b"
+              className="flex items-center gap-1.5 text-caption text-foreground"
+            >
+              <span aria-hidden className="inline-block size-2 rounded-full bg-cyan" />
+              Activity B (Cyan)
+            </Label>
+            <Select value={compareB} onValueChange={(v) => setCompareB(v as ActivityKind)}>
+              <SelectTrigger
+                id="compare-activity-b"
+                aria-label="Second activity to compare"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTIVITY_COMPARE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.kind} value={opt.kind}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-surface-2 px-3 py-2 text-caption text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="size-2 rounded-full bg-violet" />
+            {ACTIVITY_META[compareA].label}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="size-2 rounded-full bg-cyan" />
+            {ACTIVITY_META[compareB].label}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-foreground">
+            <span aria-hidden className="size-2 rounded-full bg-[#E2E8FF]" />
+            Shared overlap ({comparison.sharedRegions.length})
           </span>
         </div>
 
-        {loggedItems.length === 0 ? (
-          <p className="mt-3 text-body text-muted-foreground">
-            No focus, movement, sleep, or habit entries in the last 7 days yet. Log activities
-            to light up Activity mode with educational associations.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {loggedItems.map((item) => (
-              <li
-                key={item.kind}
-                className="flex items-center justify-between gap-2 text-body"
-              >
-                <span className="text-foreground">{item.label}</span>
-                <span className="font-mono text-caption text-muted-foreground tabular-nums">
-                  {item.count} {item.count === 1 ? "entry" : "entries"} · {item.minutes}m
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="text-body text-foreground/90">{comparison.summary}</p>
 
-        <p className="mt-4 border-t border-border pt-3 text-caption text-muted-foreground">
+        {comparison.sharedRegions.length > 0 ? (
+          <div className="space-y-1.5">
+            <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
+              Shared overlap
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {comparison.sharedRegions.map((item) => (
+                <Button
+                  key={item.regionId}
+                  type="button"
+                  size="sm"
+                  variant={selectedRegion === item.regionId ? "default" : "outline"}
+                  onClick={() => selectAndFlyToRegion(item.regionId)}
+                  className="rounded-chip border-[#E2E8FF]/30 text-caption"
+                >
+                  {item.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2 rounded-control border border-violet/30 bg-surface-2/70 p-3">
+            <div className="flex items-center gap-1.5 text-caption font-medium text-foreground">
+              <span aria-hidden className="size-2 rounded-full bg-violet" />
+              {ACTIVITY_META[compareA].label}
+            </div>
+            <ul className="space-y-1.5">
+              {comparison.items
+                .filter((item) => item.weightA > 0)
+                .sort((a, b) => b.weightA - a.weightA)
+                .map((item) => (
+                  <li key={item.regionId}>
+                    <button
+                      type="button"
+                      onClick={() => selectAndFlyToRegion(item.regionId)}
+                      className="w-full rounded px-1 py-0.5 text-left transition-colors hover:bg-white/[0.04]"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-caption">
+                        <span className="truncate text-foreground">{item.name}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                          {item.status === "both" ? "Shared" : "Only A"}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                        <div
+                          className={cn(
+                            "h-full rounded-full",
+                            item.status === "both" ? "bg-[#E2E8FF]" : "bg-violet",
+                          )}
+                          style={{ width: `${Math.round(item.weightA * 100)}%` }}
+                        />
+                      </div>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
+
+          <div className="space-y-2 rounded-control border border-cyan/30 bg-surface-2/70 p-3">
+            <div className="flex items-center gap-1.5 text-caption font-medium text-foreground">
+              <span aria-hidden className="size-2 rounded-full bg-cyan" />
+              {ACTIVITY_META[compareB].label}
+            </div>
+            <ul className="space-y-1.5">
+              {comparison.items
+                .filter((item) => item.weightB > 0)
+                .sort((a, b) => b.weightB - a.weightB)
+                .map((item) => (
+                  <li key={item.regionId}>
+                    <button
+                      type="button"
+                      onClick={() => selectAndFlyToRegion(item.regionId)}
+                      className="w-full rounded px-1 py-0.5 text-left transition-colors hover:bg-white/[0.04]"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-caption">
+                        <span className="truncate text-foreground">{item.name}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                          {item.status === "both" ? "Shared" : "Only B"}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                        <div
+                          className={cn(
+                            "h-full rounded-full",
+                            item.status === "both" ? "bg-[#E2E8FF]" : "bg-cyan",
+                          )}
+                          style={{ width: `${Math.round(item.weightB * 100)}%` }}
+                        />
+                      </div>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        </div>
+
+        <p className="border-t border-border pt-3 text-caption text-muted-foreground">
           {ACTIVITY_DISCLAIMER}
         </p>
-      </Card>
-    </>
+      </div>
+    ) : null;
+
+  const regionBlock = regionInfo ? (
+    <div className="space-y-5">
+      <div className="space-y-2 border-b border-border pb-4">
+        <div className="flex items-center justify-between gap-2">
+          <RegionBadge region={regionInfo.id} />
+          {mode === "activity" ? (
+            <span className="font-mono text-caption text-cyan tabular-nums">
+              Index {Math.round((activity[regionInfo.id] ?? 0) * 100)}%
+            </span>
+          ) : null}
+        </div>
+        <h2 className="text-section font-medium text-foreground">{regionInfo.name}</h2>
+        <p className="text-body text-muted-foreground">{regionInfo.shortDescription}</p>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
+          Common associations
+        </h3>
+        <ul className="space-y-1.5 text-body text-foreground/90">
+          {regionInfo.associatedWith.map((item) => (
+            <li key={item} className="flex gap-2">
+              <span aria-hidden className="text-cyan">
+                ·
+              </span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
+          Networks
+        </h3>
+        <ul className="flex flex-wrap gap-1.5">
+          {regionInfo.networks.map((net) => (
+            <li
+              key={net}
+              className="rounded-chip border border-border bg-surface-2 px-2.5 py-1 text-caption text-foreground/90"
+            >
+              {net}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
+          Connected regions
+        </h3>
+        <div className="flex flex-wrap gap-1.5">
+          {regionInfo.connectedTo.map((connId) => {
+            const connName = regionNameById.get(connId) ?? connId;
+            return (
+              <Button
+                key={connId}
+                type="button"
+                size="sm"
+                variant="outline"
+                aria-label={`Inspect and fly camera to ${connName}`}
+                onClick={() => selectAndFlyToRegion(connId)}
+                className="gap-1.5 rounded-chip text-caption"
+              >
+                <Compass className="size-3 text-cyan" aria-hidden />
+                {connName}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-mono text-caption uppercase tracking-[0.14em] text-muted-foreground">
+          Related activities
+        </h3>
+        <div className="flex flex-wrap gap-1.5">
+          {regionInfo.relatedActivities.map((act) => (
+            <Button
+              key={act}
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-label={`Compare ${ACTIVITY_META[act].label} with another activity`}
+              onClick={() => openCompareWithActivity(act)}
+              className="gap-1.5 rounded-chip border-border bg-surface-2 text-caption text-foreground hover:border-violet/50 hover:text-foreground"
+            >
+              <ArrowLeftRight className="size-3 text-violet-text" aria-hidden />
+              {ACTIVITY_META[act].label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <p className="border-t border-border pt-3 text-caption text-muted-foreground">
+        {regionInfo.caveat}
+      </p>
+    </div>
+  ) : (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <h2 className="text-section font-medium text-foreground">Select a region</h2>
+        <p className="text-body text-muted-foreground">
+          Click any region on the 3D atlas or pick one below to inspect its networks,
+          connected regions, and related everyday activities.
+        </p>
+      </div>
+      {regionChips}
+    </div>
+  );
+
+  const loggedActivitiesBlock = (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+        <h2 className="text-section font-medium text-foreground">Your logged activities</h2>
+        <span className="font-mono text-caption text-muted-foreground tabular-nums">
+          {windowStart} → {windowEnd}
+        </span>
+      </div>
+
+      {loggedItems.length === 0 ? (
+        <p className="text-body text-muted-foreground">
+          No focus, movement, sleep, or habit entries in the last 7 days yet. Log activities to
+          light up Activity mode with educational associations.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {loggedItems.map((item) => (
+            <li key={item.kind} className="flex items-center justify-between gap-2 text-body">
+              <span className="text-foreground">{item.label}</span>
+              <span className="font-mono text-caption text-muted-foreground tabular-nums">
+                {item.count} {item.count === 1 ? "entry" : "entries"} · {item.minutes}m
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="border-t border-border pt-3 text-caption text-muted-foreground">
+        {ACTIVITY_DISCLAIMER}
+      </p>
+    </div>
+  );
+
+  const immersiveRegionContent = (
+    <div className="space-y-5">
+      {compareBlock ? (
+        <div className="border-b border-border pb-5">{compareBlock}</div>
+      ) : null}
+
+      {regionInfo ? (
+        <div className="space-y-2">
+          <span className="block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Regions
+          </span>
+          {regionChips}
+        </div>
+      ) : null}
+
+      {regionBlock}
+
+      <div className="border-t border-border pt-5">{loggedActivitiesBlock}</div>
+    </div>
   );
 
   return (
@@ -926,21 +988,7 @@ export function BrainExplorerWorkspace({
           description="Seven regions with educational notes on networks and everyday activities. Nothing here measures your brain."
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <ToggleGroup
-                type="single"
-                value={mode}
-                onValueChange={handleModeChange}
-                variant="outline"
-                size="sm"
-                aria-label="Brain explorer mode"
-                className="flex-wrap"
-              >
-                {MODES.map((item) => (
-                  <ToggleGroupItem key={item.value} value={item.value}>
-                    {item.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              {modeToggle}
 
               <Button
                 type="button"
@@ -990,118 +1038,9 @@ export function BrainExplorerWorkspace({
               className={isImmersive ? "h-full w-full rounded-none border-0 sm:h-full" : undefined}
             />
 
-            {isImmersive ? (
-              <>
-                {/* Top-left overlay: modes, stage actions, region chips */}
-                <div
-                  data-brain-panel="true"
-                  className="pointer-events-auto absolute top-3 left-3 z-20 flex max-w-[calc(100vw-7.5rem)] flex-col gap-2 sm:top-4 sm:left-4 sm:max-w-xl"
-                >
-                  <div className="flex flex-wrap items-center gap-2 rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
-                    <ToggleGroup
-                      type="single"
-                      value={mode}
-                      onValueChange={handleModeChange}
-                      variant="outline"
-                      size="sm"
-                      aria-label="Brain explorer mode"
-                      className="flex-wrap"
-                    >
-                      {MODES.map((item) => (
-                        <ToggleGroupItem key={item.value} value={item.value}>
-                          {item.label}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  </div>
-
-                  <div className="rounded-control border border-border-strong bg-surface/85 p-2 shadow-lg backdrop-blur-md">
-                    {stageToolbar}
-                    {crossSectionControls}
-                  </div>
-
-                  <div className="rounded-control border border-border-strong bg-surface/80 p-1.5 backdrop-blur-md">
-                    {regionChips}
-                  </div>
-
-                  {showDisclaimer ? (
-                    <p
-                      role="note"
-                      className="rounded-control border border-cyan/30 bg-surface/90 px-3 py-1.5 text-caption text-foreground backdrop-blur-md"
-                    >
-                      {ACTIVITY_DISCLAIMER}
-                    </p>
-                  ) : null}
-                </div>
-
-                {/* Top-right overlay: Exit immersive */}
-                <div
-                  data-brain-panel="true"
-                  className="pointer-events-auto absolute top-3 right-3 z-20 sm:top-4 sm:right-4"
-                >
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={exitImmersive}
-                    aria-label="Exit immersive mode"
-                    className="gap-1.5 rounded-control border-border-strong bg-surface/85 text-foreground shadow-lg backdrop-blur-md hover:bg-surface"
-                  >
-                    <Minimize2 className="size-3.5 text-cyan" aria-hidden />
-                    <span className="hidden sm:inline">Exit immersive</span>
-                    <span className="sm:hidden">Exit</span>
-                  </Button>
-                </div>
-
-                {/* Mobile collapsible inspector pill + drawer */}
-                <div
-                  data-brain-panel="true"
-                  className="pointer-events-auto absolute bottom-16 left-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2 md:hidden"
-                >
-                  {mobileInspectorOpen ? (
-                    <div
-                      role="region"
-                      aria-label="Selected region details drawer"
-                      className="max-h-[42dvh] w-[min(22rem,calc(100vw-1.5rem))] space-y-3 overflow-y-auto rounded-card border border-border-strong bg-surface/95 p-2 shadow-xl backdrop-blur-md"
-                    >
-                      {inspectorPanels}
-                    </div>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    aria-expanded={mobileInspectorOpen}
-                    onClick={() => setMobileInspectorOpen((prev) => !prev)}
-                    className="gap-1.5 rounded-chip border-border-strong bg-surface/90 text-caption text-foreground shadow-lg backdrop-blur-md"
-                  >
-                    {mobileInspectorOpen ? (
-                      <ChevronDown className="size-3.5 text-cyan" aria-hidden />
-                    ) : (
-                      <ChevronUp className="size-3.5 text-cyan" aria-hidden />
-                    )}
-                    <span>
-                      {regionInfo
-                        ? regionInfo.name
-                        : mode === "compare"
-                          ? "Compare details"
-                          : "Region details"}
-                    </span>
-                  </Button>
-                </div>
-              </>
+            {!isImmersive ? (
+              <div className="absolute right-3 bottom-3 z-10">{cameraControls}</div>
             ) : null}
-
-            {/* Bottom-right control cluster */}
-            <div
-              className={
-                isImmersive
-                  ? "pointer-events-auto absolute right-3 bottom-3 z-20 sm:right-4 sm:bottom-4"
-                  : "absolute right-3 bottom-3 z-10"
-              }
-            >
-              {cameraCluster}
-            </div>
           </div>
 
           {!isImmersive ? (
@@ -1115,18 +1054,31 @@ export function BrainExplorerWorkspace({
           ) : null}
         </div>
 
-        <aside
-          data-brain-panel="true"
-          aria-label="Selected region details"
-          className={
-            isImmersive
-              ? "pointer-events-auto absolute top-16 right-4 z-30 hidden max-h-[calc(100dvh-9rem)] w-80 space-y-3 overflow-y-auto overscroll-contain pr-1 md:block lg:w-96"
-              : "space-y-4 lg:col-span-5"
-          }
-        >
-          {inspectorPanels}
-        </aside>
+        {!isImmersive ? (
+          <aside aria-label="Selected region details" className="space-y-4 lg:col-span-5">
+            {compareBlock ? (
+              <Card className="rounded-card border border-border bg-surface p-5 shadow-none">
+                {compareBlock}
+              </Card>
+            ) : null}
+            <Card className="rounded-card border border-border bg-surface p-5 shadow-none">
+              {regionBlock}
+            </Card>
+            <Card className="rounded-card border border-border bg-surface p-5 shadow-none">
+              {loggedActivitiesBlock}
+            </Card>
+          </aside>
+        ) : null}
       </div>
+
+      {isImmersive ? (
+        <BrainImmersivePanels
+          onExitImmersive={exitImmersive}
+          onOpenCommandPalette={openCommandPalette}
+          modeContent={modePanelContent}
+          regionContent={immersiveRegionContent}
+        />
+      ) : null}
     </div>
   );
 }
