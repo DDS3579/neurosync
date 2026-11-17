@@ -7,6 +7,10 @@ import { ChevronRight } from "lucide-react";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { AppTopbar } from "@/components/app-shell/app-topbar";
 import { CommandPalette } from "@/components/app-shell/command-palette";
+import {
+  ImmersiveBrainProvider,
+  useImmersiveBrain,
+} from "@/components/app-shell/immersive-brain-context";
 import { MobileNav } from "@/components/app-shell/mobile-nav";
 import { QuickLogSheet } from "@/components/app-shell/quick-log-sheet";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -73,9 +77,18 @@ function QuickLogContent({ onNavigate }: { onNavigate: () => void }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <ImmersiveBrainProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </ImmersiveBrainProvider>
+  );
+}
+
+function AppShellInner({ children }: { children: ReactNode }) {
   const open = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, () => true);
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const { isImmersive } = useImmersiveBrain();
 
   const handleOpenChange = useCallback((next: boolean) => {
     window.localStorage.setItem(COLLAPSED_KEY, next ? "0" : "1");
@@ -88,24 +101,47 @@ export function AppShell({ children }: { children: ReactNode }) {
     <SidebarProvider open={open} onOpenChange={handleOpenChange}>
       <a
         href="#main-content"
+        hidden={isImmersive}
+        aria-hidden={isImmersive || undefined}
+        tabIndex={isImmersive ? -1 : undefined}
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:border focus:border-cyan focus:bg-surface focus:px-4 focus:py-2 focus:text-body focus:font-medium focus:text-foreground focus:shadow-lg"
       >
         Skip to content
       </a>
 
-      <AppSidebar />
+      <div hidden={isImmersive} inert={isImmersive || undefined} aria-hidden={isImmersive || undefined}>
+        <AppSidebar />
+      </div>
 
-      <SidebarInset id="main-content" tabIndex={-1} className="min-w-0 outline-none">
-        <AppTopbar
-          onOpenQuickLog={openQuickLog}
-          onOpenCommand={() => setCommandOpen(true)}
-        />
-        <div className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pb-10">
+      <SidebarInset
+        id="main-content"
+        tabIndex={-1}
+        className={
+          isImmersive
+            ? "min-w-0 bg-[#060913] outline-none"
+            : "min-w-0 outline-none"
+        }
+      >
+        <div hidden={isImmersive} inert={isImmersive || undefined} aria-hidden={isImmersive || undefined}>
+          <AppTopbar
+            onOpenQuickLog={openQuickLog}
+            onOpenCommand={() => setCommandOpen(true)}
+          />
+        </div>
+        <div
+          className={
+            isImmersive
+              ? "h-dvh w-screen overflow-hidden"
+              : "mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pb-10"
+          }
+        >
           {children}
         </div>
       </SidebarInset>
 
-      <MobileNav onQuickLog={openQuickLog} />
+      <div hidden={isImmersive} inert={isImmersive || undefined} aria-hidden={isImmersive || undefined}>
+        <MobileNav onQuickLog={openQuickLog} />
+      </div>
 
       <QuickLogSheet open={quickLogOpen} onOpenChange={setQuickLogOpen}>
         <QuickLogContent onNavigate={() => setQuickLogOpen(false)} />

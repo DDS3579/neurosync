@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Bell, CalendarPlus, Download, ShieldAlert, Trash2, Upload } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -29,6 +29,13 @@ import {
   normalizeReminderSettings,
 } from "@/features/reminders/reminderUtils";
 import type { BackupMode, ImportSummary } from "@/lib/db/backup";
+import {
+  BRAIN_UI_PREFS_EVENT,
+  DEFAULT_BRAIN_IMMERSIVE,
+  UI_BRAIN_IMMERSIVE_KEY,
+  readBrainImmersivePref,
+  writeBrainImmersivePref,
+} from "@/lib/ui/brainUiPrefs";
 import type { ReminderSettings, TextSizePref, UserSettings } from "@/types/domain";
 
 const hhmmSchema = z
@@ -90,6 +97,20 @@ export interface SettingsWorkspaceProps {
   onDeleteAllData: () => Promise<void>;
 }
 
+function subscribeImmersiveBrainSetting(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === UI_BRAIN_IMMERSIVE_KEY) {
+      callback();
+    }
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  };
+}
+
 function readNotificationPermission(): NotificationPermission | "unsupported" {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   return Notification.permission;
@@ -115,6 +136,11 @@ export function SettingsWorkspace({
   const [deleting, setDeleting] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     () => readNotificationPermission(),
+  );
+  const immersiveBrain = useSyncExternalStore(
+    subscribeImmersiveBrainSetting,
+    readBrainImmersivePref,
+    () => DEFAULT_BRAIN_IMMERSIVE,
   );
 
   const form = useForm<SettingsFormValues>({
@@ -371,6 +397,22 @@ export function SettingsWorkspace({
                       onCheckedChange={field.onChange}
                     />
                   )}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-immersive-brain" className="text-body font-medium">
+                    Open the Brain Explorer in full-screen mode
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Launch /brain with a full-viewport 3D canvas (stored in this browser; press Esc or Exit to switch back anytime).
+                  </p>
+                </div>
+                <Switch
+                  id="settings-immersive-brain"
+                  checked={immersiveBrain}
+                  onCheckedChange={(next) => writeBrainImmersivePref(next)}
                 />
               </div>
 
