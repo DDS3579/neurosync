@@ -7,6 +7,7 @@ import { ACTIVITY_META, BRAIN_REGIONS } from "@/data/brainRegions";
 import { cn } from "@/lib/utils";
 import type { ActivityKind, RegionId } from "@/types/domain";
 import { BrainFallback } from "./BrainFallback";
+import type { BrainCameraAction } from "./BrainScene";
 import { CUT_AXIS_DEFAULTS, type BrainMode, type CrossSectionConfig } from "./regionZones";
 import {
   useBrainQuality,
@@ -36,6 +37,8 @@ export interface BrainExplorerProps {
   crossSection?: CrossSectionConfig | null;
   focusRequestKey?: number;
   onGlbStatusChange?: (hasGlb: boolean) => void;
+  brainSize?: number;
+  cameraAction?: BrainCameraAction | null;
 }
 
 const BrainExplorerCanvas = dynamic(
@@ -64,6 +67,8 @@ export function BrainExplorer({
   crossSection = null,
   focusRequestKey = 0,
   onGlbStatusChange,
+  brainSize = 1,
+  cameraAction = null,
 }: BrainExplorerProps) {
   const qualityState = useBrainQuality(quality);
   const reducedMotion = usePrefersReducedMotion();
@@ -219,6 +224,8 @@ export function BrainExplorer({
           crossSection={crossSection}
           focusRequestKey={focusRequestKey}
           onGlbStatusChange={onGlbStatusChange}
+          brainSize={brainSize}
+          cameraAction={cameraAction}
         />
       ) : (
         <div className="h-full w-full bg-[#060913]" />

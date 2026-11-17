@@ -24,6 +24,10 @@ type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 
 import { BRAIN_REGIONS } from "@/data/brainRegions";
 import type { ActivityKind, RegionId } from "@/types/domain";
+import {
+  clampBrainSize,
+  computeFitCameraDistance,
+} from "./brainControls";
 import { compareToSlotWeights } from "./brainCompare";
 import { generateBrainPoints, sampleBrainFromObject, type BrainPointData } from "./brainGeometry";
 import { buildConnectionGeometries } from "./connections";
@@ -90,13 +94,20 @@ const PALETTE = {
 const CAMERA = {
   fov: 42,
   explorerStart: [1.9, 0.55, 2.35] as [number, number, number],
-  minDistance: 1.45,
-  maxDistance: 4.8,
+  minDistance: 1.35,
+  maxDistance: 6.5,
   idleResumeSec: 4.0,
   idleSpeed: 0.12, // rad/sec
   dampLambda: 7.5,
   cameraDamp: 4.5,
 } as const;
+
+export interface BrainCameraAction {
+  type: "fit" | "reset" | "zoomIn" | "zoomOut" | "rotate";
+  nonce: number;
+  dx?: number;
+  dy?: number;
+}
 
 const POINTS_SIZE = { explorer: 14.5, hero: 15.5, pulse: 22 } as const;
 
@@ -371,6 +382,8 @@ interface ExplorerSceneProps {
   crossSection?: CrossSectionConfig | null;
   focusRequestKey?: number;
   onGlbStatusChange?: (hasGlb: boolean) => void;
+  brainSize?: number;
+  cameraAction?: BrainCameraAction | null;
 }
 
 const CUT_RING_ROTATION: Record<"x" | "y" | "z", [number, number, number]> = {
@@ -394,10 +407,13 @@ function ExplorerCore({
   crossSection = null,
   focusRequestKey = 0,
   onGlbStatusChange,
+  brainSize = 1,
+  cameraAction = null,
 }: ExplorerSceneProps) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const groupRef = useRef<THREE.Group>(null);
+  const brainScaleRef = useRef(clampBrainSize(brainSize));
   const [hovered, setHovered] = useState<RegionId | null>(null);
   const hoveredRef = useRef<RegionId | null>(null);
   const lastInteractRef = useRef(-10);
@@ -480,13 +496,85 @@ function ExplorerCore({
       .applyQuaternion(groupQuat);
 
     const isIsolatedView = isolated;
-    const targetScale = isIsolatedView ? 0.58 : 0.36;
-    const viewDistance = isIsolatedView ? Math.max(1.32, view.distance * 0.72) : view.distance;
+    const scaleFactor = brainScaleRef.current;
+    const targetScale = (isIsolatedView ? 0.58 : 0.36) * scaleFactor;
+    const baseDist = isIsolatedView ? Math.max(1.32, view.distance * 0.72) : view.distance;
+    const viewDistance = Math.min(
+      CAMERA.maxDistance,
+      Math.max(CAMERA.minDistance, baseDist * Math.max(0.75, scaleFactor * 0.92)),
+    );
 
     camGoalRef.current.target.copy(focus).multiplyScalar(targetScale);
     camGoalRef.current.pos.copy(camGoalRef.current.target).addScaledVector(dir, viewDistance);
     camGoalRef.current.active = true;
   }, [selectedRegion, isolated, focusRequestKey, camera]);
+
+  // Handle explicit camera controls (Fit to screen, Reset view, +/- zoom, arrow rotate)
+  useEffect(() => {
+    if (!cameraAction) return;
+    const controls = controlsRef.current;
+    const currentTarget = controls?.target ?? new THREE.Vector3(0, 0, 0);
+
+    if (cameraAction.type === "reset") {
+      if (groupRef.current) {
+        groupRef.current.rotation.set(0, 0, 0);
+      }
+      camGoalRef.current.target.set(0, 0, 0);
+      camGoalRef.current.pos.set(...CAMERA.explorerStart);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "fit") {
+      const aspect = size.width / Math.max(1, size.height);
+      const fitDist = computeFitCameraDistance(brainSize, aspect, CAMERA.fov);
+      const dir = camera.position.clone().sub(currentTarget);
+      if (dir.lengthSq() < 0.0001) {
+        dir.set(...CAMERA.explorerStart);
+      }
+      dir.normalize();
+      camGoalRef.current.target.set(0, 0, 0);
+      camGoalRef.current.pos.copy(dir).multiplyScalar(fitDist);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "zoomIn" || cameraAction.type === "zoomOut") {
+      const offset = (camGoalRef.current.active ? camGoalRef.current.pos : camera.position)
+        .clone()
+        .sub(currentTarget);
+      const currentDist = Math.max(0.2, offset.length());
+      const factor = cameraAction.type === "zoomIn" ? 0.84 : 1 / 0.84;
+      const minD = isolated && selectedRegion ? 1.1 : CAMERA.minDistance;
+      const nextDist = THREE.MathUtils.clamp(currentDist * factor, minD, CAMERA.maxDistance);
+      offset.normalize().multiplyScalar(nextDist);
+      camGoalRef.current.target.copy(currentTarget);
+      camGoalRef.current.pos.copy(currentTarget).add(offset);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "rotate") {
+      const offset = (camGoalRef.current.active ? camGoalRef.current.pos : camera.position)
+        .clone()
+        .sub(currentTarget);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta += cameraAction.dx ?? 0;
+      spherical.phi = THREE.MathUtils.clamp(
+        spherical.phi + (cameraAction.dy ?? 0),
+        0.18,
+        Math.PI - 0.18,
+      );
+      offset.setFromSpherical(spherical);
+      camGoalRef.current.target.copy(currentTarget);
+      camGoalRef.current.pos.copy(currentTarget).add(offset);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+    }
+  }, [cameraAction, brainSize, camera, isolated, selectedRegion, size.width, size.height]);
 
   // Cursor management
   useEffect(() => {
@@ -643,15 +731,21 @@ function ExplorerCore({
     uniforms.uPointer.value.lerp(state.pointer, 1 - Math.exp(-8 * dt));
     uniforms.uPointerAmt.value = dampValue(uniforms.uPointerAmt.value, hoveredRef.current ? 0.55 : 0.2, 6, dt);
 
-    // 5. Idle rotation (stops on interaction, resumes after 4s; off for reduced motion or active selection)
-    if (
-      groupRef.current &&
-      !reducedMotion &&
-      !draggingRef.current &&
-      !selectedRegion &&
-      t - lastInteractRef.current > CAMERA.idleResumeSec
-    ) {
-      groupRef.current.rotation.y += CAMERA.idleSpeed * dt;
+    // 5. Damped brain scale (Ctrl+wheel / slider 0.5x..2.0x) & idle rotation
+    const targetBrainScale = clampBrainSize(brainSize);
+    brainScaleRef.current = reducedMotion
+      ? targetBrainScale
+      : dampValue(brainScaleRef.current, targetBrainScale, CAMERA.dampLambda, dt);
+    if (groupRef.current) {
+      groupRef.current.scale.setScalar(brainScaleRef.current);
+      if (
+        !reducedMotion &&
+        !draggingRef.current &&
+        !selectedRegion &&
+        t - lastInteractRef.current > CAMERA.idleResumeSec
+      ) {
+        groupRef.current.rotation.y += CAMERA.idleSpeed * dt;
+      }
     }
 
     // 6. Camera easing on selection / deselection
@@ -697,6 +791,10 @@ function ExplorerCore({
         maxDistance={CAMERA.maxDistance}
         rotateSpeed={0.65}
         zoomSpeed={0.85}
+        touches={{
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
         onStart={() => {
           draggingRef.current = true;
           camGoalRef.current.active = false;
