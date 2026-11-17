@@ -48,6 +48,8 @@ export function useFloatingPanelLayer() {
 export interface FloatingPanelLayerProps {
   children: ReactNode;
   className?: string;
+  /** Optional class override for the mobile bottom sheet + chip wrapper (e.g. `bottom-20` above MobileNav). */
+  mobileContainerClassName?: string;
   /** Optional custom callback when Esc inside a floating panel returns focus to the canvas. */
   onReturnFocusToCanvas?: () => void;
 }
@@ -59,6 +61,7 @@ export interface FloatingPanelLayerProps {
 export function FloatingPanelLayer({
   children,
   className,
+  mobileContainerClassName = "bottom-3",
   onReturnFocusToCanvas,
 }: FloatingPanelLayerProps) {
   const isMobile = useIsMobile();
@@ -164,7 +167,12 @@ export function FloatingPanelLayer({
         {children}
 
         {isMobile && visibleChips.length > 0 ? (
-          <div className="pointer-events-none fixed inset-x-3 bottom-3 z-30 flex flex-col gap-2">
+          <div
+            className={cn(
+              "pointer-events-none fixed inset-x-3 z-30 flex flex-col gap-2",
+              mobileContainerClassName,
+            )}
+          >
             {activeMobileMeta ? (
               <section
                 role="region"
