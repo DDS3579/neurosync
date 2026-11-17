@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, type RefObject } from "react";
 
 import { ACTIVITY_META, BRAIN_REGIONS } from "@/data/brainRegions";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ export interface BrainExplorerProps {
   mode: BrainMode;
   selectedRegion: RegionId | null;
   activity: Partial<Record<RegionId, number>>; // 0..1, drives 'activity' mode
+  activityRef?: RefObject<Partial<Record<RegionId, number>> | null>;
   onSelectRegion: (id: RegionId | null) => void;
   onHoverRegion?: (id: RegionId | null) => void;
   quality?: QualityPref;
@@ -57,6 +58,7 @@ export function BrainExplorer({
   mode,
   selectedRegion,
   activity,
+  activityRef,
   onSelectRegion,
   onHoverRegion,
   quality = "auto",
@@ -213,6 +215,7 @@ export function BrainExplorer({
           mode={mode}
           selectedRegion={selectedRegion}
           activity={activity}
+          activityRef={activityRef}
           onSelectRegion={onSelectRegion}
           onHoverRegion={onHoverRegion}
           quality={qualityState}

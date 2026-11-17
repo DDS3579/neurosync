@@ -14,6 +14,7 @@ import {
   useState,
   type ComponentRef,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
@@ -371,6 +372,7 @@ interface ExplorerSceneProps {
   mode: BrainMode;
   selectedRegion: RegionId | null;
   activity: Partial<Record<RegionId, number>>;
+  activityRef?: RefObject<Partial<Record<RegionId, number>> | null>;
   onSelectRegion: (id: RegionId | null) => void;
   onHoverRegion?: (id: RegionId | null) => void;
   quality: BrainQuality;
@@ -396,6 +398,7 @@ function ExplorerCore({
   mode,
   selectedRegion,
   activity,
+  activityRef,
   onSelectRegion,
   onHoverRegion,
   quality,
@@ -654,11 +657,12 @@ function ExplorerCore({
       dt,
     );
 
+    const activeMap = activityRef?.current ?? activity;
     for (let i = 0; i < REGION_SLOTS; i++) {
       uniforms.uSelectW.value[i] = dampValue(uniforms.uSelectW.value[i], i === selIdx ? 1 : 0, CAMERA.dampLambda, dt);
       uniforms.uHoverW.value[i] = dampValue(uniforms.uHoverW.value[i], i === hovIdx ? 1 : 0, CAMERA.dampLambda * 1.4, dt);
       const id = REGION_IDS[i];
-      const actTarget = id ? THREE.MathUtils.clamp(activity[id] ?? 0, 0, 1) : 0;
+      const actTarget = id ? THREE.MathUtils.clamp(activeMap[id] ?? 0, 0, 1) : 0;
       uniforms.uActivity.value[i] = dampValue(uniforms.uActivity.value[i], actTarget, CAMERA.dampLambda, dt);
       uniforms.uCompareA.value[i] = dampValue(uniforms.uCompareA.value[i], compareTargets.weightsA[i] ?? 0, CAMERA.dampLambda, dt);
       uniforms.uCompareB.value[i] = dampValue(uniforms.uCompareB.value[i], compareTargets.weightsB[i] ?? 0, CAMERA.dampLambda, dt);
