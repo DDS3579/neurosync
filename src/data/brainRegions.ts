@@ -24,7 +24,7 @@ export const BRAIN_REGIONS: BrainRegionInfo[] = [
       'Cingulo-opercular network',
     ],
     connectedTo: ['parietal', 'temporal', 'hippocampus', 'amygdala', 'cerebellum'],
-    relatedActivities: ['deep_focus', 'problem_solving', 'active_recall', 'mindfulness', 'teaching'],
+    relatedActivities: ['deep_focus', 'problem_solving', 'active_recall', 'mindfulness', 'teaching', 'puzzles_games', 'novelty'],
     everydayExamples: [
       'Deciding what to work on first when everything feels urgent',
       'Holding a phone number in mind while you look for a pen',
@@ -51,7 +51,7 @@ export const BRAIN_REGIONS: BrainRegionInfo[] = [
       'Default mode network (posterior areas)',
     ],
     connectedTo: ['prefrontal', 'occipital', 'temporal'],
-    relatedActivities: ['problem_solving', 'deep_focus', 'skill_practice', 'music'],
+    relatedActivities: ['problem_solving', 'deep_focus', 'skill_practice', 'music', 'puzzles_games'],
     everydayExamples: [
       'Reaching for a mug without looking at it',
       'Judging whether a book will fit on a shelf',
@@ -128,7 +128,7 @@ export const BRAIN_REGIONS: BrainRegionInfo[] = [
     ],
     networks: ['Sensorimotor network', 'Cerebro-cerebellar loops with the cortex'],
     connectedTo: ['prefrontal', 'parietal'],
-    relatedActivities: ['exercise', 'skill_practice', 'music'],
+    relatedActivities: ['exercise', 'skill_practice', 'music', 'new_hobby'],
     everydayExamples: [
       'Riding a bike without thinking about balance',
       'Typing without looking at the keys',
@@ -154,7 +154,7 @@ export const BRAIN_REGIONS: BrainRegionInfo[] = [
       'Default mode network (memory interactions)',
     ],
     connectedTo: ['temporal', 'prefrontal', 'amygdala'],
-    relatedActivities: ['sleep_rest', 'active_recall', 'spaced_repetition', 'reading', 'language_learning'],
+    relatedActivities: ['sleep_rest', 'active_recall', 'spaced_repetition', 'reading', 'language_learning', 'novelty'],
     everydayExamples: [
       'Remembering what you did last weekend',
       'Finding your way around a new neighborhood',
@@ -206,6 +206,9 @@ export const ACTIVITY_META: Record<ActivityKind, { label: string; description: s
   creative: { label: 'Creative work', description: 'Making things — writing, drawing, designing, brainstorming.' },
   music: { label: 'Music', description: 'Playing, practicing or attentively listening to music.' },
   language_learning: { label: 'Language learning', description: 'Learning vocabulary, grammar and conversation in a new language.' },
+  puzzles_games: { label: 'Puzzles & games', description: 'Working through crosswords, logic puzzles, board games or strategy games.' },
+  new_hobby: { label: 'New hobby', description: 'Spending unhurried time practicing a craft, skill or personal hobby.' },
+  novelty: { label: 'Tried something new', description: 'Exploring an unfamiliar place, recipe, topic or everyday experience.' },
   sleep_rest: { label: 'Sleep & rest', description: 'Sleeping and deliberate rest — the quiet half of learning.' },
 };
 
@@ -227,6 +230,9 @@ export const ACTIVITY_REGION_MAP: Record<ActivityKind, { region: RegionId; weigh
   creative: [{ region: 'prefrontal', weight: 0.8 }, { region: 'temporal', weight: 0.6 }, { region: 'hippocampus', weight: 0.4 }],
   music: [{ region: 'temporal', weight: 1.0 }, { region: 'cerebellum', weight: 0.7 }, { region: 'prefrontal', weight: 0.5 }],
   language_learning: [{ region: 'temporal', weight: 1.0 }, { region: 'hippocampus', weight: 0.7 }, { region: 'prefrontal', weight: 0.7 }],
+  puzzles_games: [{ region: 'prefrontal', weight: 0.9 }, { region: 'parietal', weight: 0.7 }, { region: 'hippocampus', weight: 0.4 }],
+  new_hobby: [{ region: 'prefrontal', weight: 0.7 }, { region: 'cerebellum', weight: 0.6 }, { region: 'hippocampus', weight: 0.5 }],
+  novelty: [{ region: 'hippocampus', weight: 0.8 }, { region: 'prefrontal', weight: 0.7 }, { region: 'amygdala', weight: 0.4 }],
   sleep_rest: [{ region: 'hippocampus', weight: 0.9 }],
 };
 

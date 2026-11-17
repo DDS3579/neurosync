@@ -3,11 +3,13 @@ import { format, startOfDay, subDays } from "date-fns";
 import { ACTIVITY_META, activityToRegionIntensity } from "@/data/brainRegions";
 import type {
   ActivityKind,
+  ActivityLog,
   FocusSession,
   Habit,
   HabitLog,
   ISODate,
   LearningMethod,
+  MindfulnessSession,
   MovementLog,
   RegionId,
   SleepLog,
@@ -58,6 +60,8 @@ export function deriveWeeklyBrainActivity(params: {
   sleep: readonly SleepLog[];
   habits: readonly Habit[];
   habitLogs: readonly HabitLog[];
+  mindfulness?: readonly MindfulnessSession[];
+  activities?: readonly ActivityLog[];
   today?: Date;
 }): {
   activity: Partial<Record<RegionId, number>>;
@@ -103,6 +107,14 @@ export function deriveWeeklyBrainActivity(params: {
       const habitName = habitNameById.get(hl.habitId) ?? "";
       add(inferHabitActivityKind(habitName), 15);
     }
+  }
+
+  for (const ms of params.mindfulness ?? []) {
+    if (inRange(ms.date)) add("mindfulness", ms.durationMin);
+  }
+
+  for (const act of params.activities ?? []) {
+    if (inRange(act.date)) add(act.type, act.durationMin);
   }
 
   const items: LoggedActivitySummary[] = [...counts.entries()]

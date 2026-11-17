@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Bell, CheckCircle2, Pause, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
+import {
+  ArrowUpRight,
+  Bell,
+  CheckCircle2,
+  Pause,
+  Play,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import {
@@ -26,11 +36,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { METHOD_LIBRARY_LINKS } from "@/features/focus/focusAnalytics";
+import { partitionReviewQueue } from "@/features/focus/reviewScheduler";
 import {
   computeElapsedMs,
   computeRemainingMs,
   deserializeRunningSession,
+  FOCUS_HASH_EVENT,
   FOCUS_PRESETS,
   FOCUS_STORAGE_KEY,
   focusCompleteSchema,
@@ -39,6 +54,7 @@ import {
   incrementDistractions,
   isSessionPaused,
   LEARNING_METHOD_OPTIONS,
+  parseFocusTabHash,
   pauseRunningSession,
   resumeRunningSession,
   serializeRunningSession,
@@ -46,15 +62,41 @@ import {
   summarizeFocusTotals,
   type FocusCompleteValues,
   type FocusSetupValues,
+  type FocusTab,
   type RunningFocusSession,
 } from "@/features/focus/timerUtils";
-import type { FocusSession } from "@/types/domain";
+import { toLocalISODate } from "@/features/sleep/sleepUtils";
+import type { FocusSession, ReviewDifficulty, ReviewItem } from "@/types/domain";
+
+import { MethodStatsCard } from "./MethodStatsCard";
+import { ReviewQueueSection } from "./ReviewQueueSection";
 
 export interface FocusWorkspaceProps {
   defaultFocusMin: number;
+  initialSubject?: string;
+  initialPlannedMin?: number;
   sessions: FocusSession[];
+  reviewItems: ReviewItem[];
   onCreateSession: (values: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   onDeleteSession: (id: string) => Promise<void>;
+  onAddReviewItem: (values: { topic: string; notes?: string }) => Promise<void>;
+  onRateReviewItem: (id: string, rating: ReviewDifficulty) => Promise<number>;
+  onDeleteReviewItem: (id: string) => Promise<void>;
+}
+
+function subscribeFocusHash(callback: () => void): () => void {
+  window.addEventListener("hashchange", callback);
+  window.addEventListener("popstate", callback);
+  window.addEventListener(FOCUS_HASH_EVENT, callback);
+  return () => {
+    window.removeEventListener("hashchange", callback);
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(FOCUS_HASH_EVENT, callback);
+  };
+}
+
+function getFocusHashSnapshot(): FocusTab {
+  return parseFocusTabHash(window.location.hash);
 }
 
 function readNotificationPermission(): NotificationPermission | "unsupported" {
@@ -64,10 +106,31 @@ function readNotificationPermission(): NotificationPermission | "unsupported" {
 
 export function FocusWorkspace({
   defaultFocusMin,
+  initialSubject,
+  initialPlannedMin,
   sessions,
+  reviewItems,
   onCreateSession,
   onDeleteSession,
+  onAddReviewItem,
+  onRateReviewItem,
+  onDeleteReviewItem,
 }: FocusWorkspaceProps) {
+  const activeTab = useSyncExternalStore(
+    subscribeFocusHash,
+    getFocusHashSnapshot,
+    () => "timer",
+  );
+
+  const handleTabChange = useCallback((next: string) => {
+    const tab = parseFocusTabHash(next);
+    if (typeof window !== "undefined") {
+      const nextUrl = `${window.location.pathname}${window.location.search}#${tab}`;
+      window.history.replaceState(null, "", nextUrl);
+      window.dispatchEvent(new Event(FOCUS_HASH_EVENT));
+    }
+  }, []);
+
   const [running, setRunning] = useState<RunningFocusSession | null>(() => {
     if (typeof window === "undefined") return null;
     return deserializeRunningSession(window.localStorage.getItem(FOCUS_STORAGE_KEY));
@@ -82,10 +145,15 @@ export function FocusWorkspace({
   const setupForm = useForm<FocusSetupValues>({
     resolver: zodResolver(focusSetupSchema),
     defaultValues: {
-      subject: "",
+      subject: initialSubject ?? "",
       method: "active_recall",
-      plannedMin: defaultFocusMin || 25,
+      plannedMin: initialPlannedMin ?? (defaultFocusMin || 25),
     },
+  });
+
+  const selectedMethod = useWatch({
+    control: setupForm.control,
+    name: "method",
   });
 
   const completeForm = useForm<FocusCompleteValues>({
@@ -94,6 +162,9 @@ export function FocusWorkspace({
       durationMin: defaultFocusMin || 25,
       focusRating: 3,
       difficulty: 3,
+      practicedRetrieval: true,
+      reviewedPrior: false,
+      addToReviewQueue: false,
       notes: "",
     },
   });
@@ -153,6 +224,10 @@ export function FocusWorkspace({
     () => [...sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     [sessions],
   );
+  const dueCount = useMemo(
+    () => partitionReviewQueue(reviewItems, toLocalISODate()).due.length,
+    [reviewItems],
+  );
 
   const onStartSession = (values: FocusSetupValues) => {
     const parsed = focusSetupSchema.parse(values);
@@ -175,6 +250,9 @@ export function FocusWorkspace({
       durationMin: elapsedMin,
       focusRating: 3,
       difficulty: 3,
+      practicedRetrieval: running.method === "active_recall",
+      reviewedPrior: running.method === "spaced_repetition",
+      addToReviewQueue: false,
       notes: "",
     });
     setFinishing(true);
@@ -193,9 +271,18 @@ export function FocusWorkspace({
       focusRating: parsed.focusRating,
       difficulty: parsed.difficulty,
       distractions: running.distractions,
+      practicedRetrieval: parsed.practicedRetrieval,
+      reviewedPrior: parsed.reviewedPrior,
       notes: parsed.notes?.trim() || undefined,
     });
-    toast.success(`Saved ${parsed.durationMin}m focus session on ${running.subject}.`);
+    if (parsed.addToReviewQueue) {
+      await onAddReviewItem({ topic: running.subject });
+      toast.success(
+        `Saved ${parsed.durationMin}m focus session and added "${running.subject}" to review queue.`,
+      );
+    } else {
+      toast.success(`Saved ${parsed.durationMin}m focus session on ${running.subject}.`);
+    }
     setFinishing(false);
     persistRunning(null);
     setupForm.reset({
@@ -204,6 +291,23 @@ export function FocusWorkspace({
       plannedMin: defaultFocusMin || 25,
     });
   };
+
+  const handleStartReviewSession = useCallback(
+    (item: ReviewItem) => {
+      if (running) {
+        toast.info("Finish or discard your active session before starting a review session.");
+        return;
+      }
+      setupForm.reset({
+        subject: item.topic,
+        method: "spaced_repetition",
+        plannedMin: defaultFocusMin || 25,
+      });
+      handleTabChange("timer");
+      toast.success(`Prefilled timer for "${item.topic}". Press Start session when ready.`);
+    },
+    [defaultFocusMin, handleTabChange, running, setupForm],
+  );
 
   const requestBreakReminder = async () => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -219,11 +323,13 @@ export function FocusWorkspace({
     }
   };
 
+  const methodLink = METHOD_LIBRARY_LINKS[selectedMethod];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Focus Lab"
-        description="Timestamp-accurate sessions with subject, learning method, distractions, and post-session reflection."
+        description="Timestamp-accurate sessions, spaced-repetition review queue, and personal method reflections."
       />
 
       {/* Totals */}
@@ -243,13 +349,23 @@ export function FocusWorkspace({
           accent="violet"
         />
         <StatCard
-          label="All logged sessions"
-          value={sessions.length}
-          hint="Stored locally in IndexedDB"
+          label="Due for review"
+          value={dueCount}
+          hint={`${reviewItems.length} total in review queue`}
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-control border border-border bg-surface p-1 sm:w-fit">
+          <TabsTrigger value="timer">Timer &amp; history</TabsTrigger>
+          <TabsTrigger value="review">
+            Review queue{dueCount > 0 ? ` (${dueCount})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="methods">Method stats</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="timer">
+          <div className="grid gap-6 lg:grid-cols-12">
         {/* Timer / Setup / Completion stage */}
         <Card className="rounded-card border border-border bg-surface p-5 shadow-none sm:p-6 lg:col-span-6">
           {!running ? (
@@ -299,6 +415,13 @@ export function FocusWorkspace({
                     </Select>
                   )}
                 />
+                <Link
+                  href={`/library#${methodLink.entryId}`}
+                  className="inline-flex items-center gap-1 text-caption text-cyan underline-offset-4 hover:underline"
+                >
+                  Library: {methodLink.title}
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </Link>
               </div>
 
               <div className="space-y-2">
@@ -413,6 +536,74 @@ export function FocusWorkspace({
                     />
                   )}
                 />
+              </div>
+
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-3.5 py-2.5">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="focus-practiced-retrieval" className="text-body font-medium">
+                      Practiced retrieval
+                    </Label>
+                    <p className="text-caption text-muted-foreground">
+                      Tested yourself from memory without looking at notes
+                    </p>
+                  </div>
+                  <Controller
+                    control={completeForm.control}
+                    name="practicedRetrieval"
+                    render={({ field }) => (
+                      <Switch
+                        id="focus-practiced-retrieval"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-3.5 py-2.5">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="focus-reviewed-prior" className="text-body font-medium">
+                      Reviewed prior material
+                    </Label>
+                    <p className="text-caption text-muted-foreground">
+                      Revisited something learned in an earlier session
+                    </p>
+                  </div>
+                  <Controller
+                    control={completeForm.control}
+                    name="reviewedPrior"
+                    render={({ field }) => (
+                      <Switch
+                        id="focus-reviewed-prior"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-3.5 py-2.5">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="focus-add-review-queue" className="text-body font-medium">
+                      Add topic to review queue
+                    </Label>
+                    <p className="text-caption text-muted-foreground">
+                      Schedule &ldquo;{running.subject}&rdquo; for spaced review starting tomorrow
+                    </p>
+                  </div>
+                  <Controller
+                    control={completeForm.control}
+                    name="addToReviewQueue"
+                    render={({ field }) => (
+                      <Switch
+                        id="focus-add-review-queue"
+                        checked={Boolean(field.value)}
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -582,6 +773,16 @@ export function FocusWorkspace({
                         <span className="rounded-chip border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                           {methodLabel}
                         </span>
+                        {entry.practicedRetrieval ? (
+                          <span className="rounded-chip border border-cyan/40 bg-cyan/10 px-2 py-0.5 font-mono text-[11px] text-cyan">
+                            Retrieval
+                          </span>
+                        ) : null}
+                        {entry.reviewedPrior ? (
+                          <span className="rounded-chip border border-violet/40 bg-violet/10 px-2 py-0.5 font-mono text-[11px] text-foreground">
+                            Review
+                          </span>
+                        ) : null}
                       </div>
                       <p className="font-mono text-caption text-muted-foreground tabular-nums">
                         {entry.durationMin}m (planned {entry.plannedMin}m) · Focus{" "}
@@ -611,7 +812,23 @@ export function FocusWorkspace({
             </ul>
           )}
         </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="review">
+          <ReviewQueueSection
+            items={reviewItems}
+            onAddItem={onAddReviewItem}
+            onRateItem={onRateReviewItem}
+            onDeleteItem={onDeleteReviewItem}
+            onStartReviewSession={handleStartReviewSession}
+          />
+        </TabsContent>
+
+        <TabsContent value="methods">
+          <MethodStatsCard sessions={sessions} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

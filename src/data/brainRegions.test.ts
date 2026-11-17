@@ -16,7 +16,7 @@ const ALL_REGIONS: readonly RegionId[] = [
 const ALL_KINDS: readonly ActivityKind[] = [
   'deep_focus', 'active_recall', 'spaced_repetition', 'problem_solving', 'reading',
   'skill_practice', 'teaching', 'exercise', 'mindfulness', 'social', 'creative',
-  'music', 'language_learning', 'sleep_rest',
+  'music', 'language_learning', 'puzzles_games', 'new_hobby', 'novelty', 'sleep_rest',
 ];
 
 describe('BRAIN_REGIONS', () => {
@@ -62,7 +62,7 @@ describe('BRAIN_REGIONS', () => {
 });
 
 describe('ACTIVITY_META', () => {
-  it('covers exactly the 14 ActivityKinds with non-empty label and description', () => {
+  it('covers all 17 ActivityKinds with non-empty label and description', () => {
     expect(Object.keys(ACTIVITY_META).sort()).toEqual([...ALL_KINDS].sort());
     for (const kind of ALL_KINDS) {
       expect(ACTIVITY_META[kind].label.length).toBeGreaterThan(0);
@@ -187,9 +187,9 @@ describe('content safety', () => {
     }
   });
 
-  it('library has 16–20 well-formed entries, including one per region', () => {
+  it('library has well-formed entries covering all regions, novelty, social connection, and hobbies', () => {
     expect(LIBRARY_ENTRIES.length).toBeGreaterThanOrEqual(16);
-    expect(LIBRARY_ENTRIES.length).toBeLessThanOrEqual(20);
+    expect(LIBRARY_ENTRIES.length).toBeLessThanOrEqual(25);
     expect(new Set(LIBRARY_ENTRIES.map((e) => e.id)).size).toBe(LIBRARY_ENTRIES.length);
     const regionEntries = LIBRARY_ENTRIES.filter((e) => e.category === 'region');
     expect(regionEntries).toHaveLength(7);

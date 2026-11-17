@@ -11,20 +11,26 @@ import {
   type HabitTab,
 } from "@/features/habits/habitUtils";
 import type {
+  ActivityLog,
   DailyCheckin,
+  GratitudeEntry,
   Habit,
   HabitLog,
   ISODate,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
   SleepLog,
 } from "@/types/domain";
 
+import { ActivitiesTab } from "@/features/activities/components/ActivitiesTab";
 import { CheckinTab } from "./CheckinTab";
 import { HabitsTab } from "./HabitsTab";
 import { MovementTab } from "./MovementTab";
 import { NutritionTab } from "./NutritionTab";
 import { SleepTab } from "./SleepTab";
+import { MindTab } from "@/features/mind/components/MindTab";
 
 export interface HabitsWorkspaceProps {
   sleepTargetMin: number;
@@ -65,6 +71,34 @@ export interface HabitsWorkspaceProps {
   onRenameHabit: (id: string, name: string) => Promise<void>;
   onArchiveHabit: (id: string, archived: boolean) => Promise<void>;
   onDeleteHabit: (id: string) => Promise<void>;
+  mindfulnessSessions: MindfulnessSession[];
+  journalEntries: JournalEntry[];
+  gratitudeEntries: GratitudeEntry[];
+  onCreateMindfulness: (
+    values: Omit<MindfulnessSession, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteMindfulness: (id: string) => Promise<void>;
+  onCreateJournal: (
+    values: Omit<JournalEntry, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onUpdateJournal: (
+    id: string,
+    values: Omit<JournalEntry, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteJournal: (id: string) => Promise<void>;
+  onSaveGratitude: (
+    values: Omit<GratitudeEntry, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<"created" | "updated">;
+  onDeleteGratitude: (id: string) => Promise<void>;
+  activityLogs: ActivityLog[];
+  onCreateActivity: (
+    values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onUpdateActivity: (
+    id: string,
+    values: Omit<ActivityLog, "id" | "createdAt" | "updatedAt">,
+  ) => Promise<void>;
+  onDeleteActivity: (id: string) => Promise<void>;
 }
 
 function subscribeHabitHash(callback: () => void): () => void {
@@ -102,7 +136,7 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
     <div className="space-y-6">
       <PageHeader
         title="Daily Habits"
-        description="Log today's check-in, sleep, movement, nutrition, and habits locally with zero streak pressure."
+        description="Log today's check-in, sleep, movement, nutrition, habits, and mind notes locally with zero streak pressure."
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
@@ -112,6 +146,8 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
           <TabsTrigger value="movement">Movement</TabsTrigger>
           <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
           <TabsTrigger value="habits">Habits</TabsTrigger>
+          <TabsTrigger value="mind">Mind</TabsTrigger>
+          <TabsTrigger value="activities">Activities</TabsTrigger>
         </TabsList>
 
         <TabsContent value="checkin">
@@ -159,6 +195,30 @@ export function HabitsWorkspace(props: HabitsWorkspaceProps) {
             onRenameHabit={props.onRenameHabit}
             onArchiveHabit={props.onArchiveHabit}
             onDeleteHabit={props.onDeleteHabit}
+          />
+        </TabsContent>
+
+        <TabsContent value="mind">
+          <MindTab
+            mindfulnessSessions={props.mindfulnessSessions}
+            journalEntries={props.journalEntries}
+            gratitudeEntries={props.gratitudeEntries}
+            onCreateMindfulness={props.onCreateMindfulness}
+            onDeleteMindfulness={props.onDeleteMindfulness}
+            onCreateJournal={props.onCreateJournal}
+            onUpdateJournal={props.onUpdateJournal}
+            onDeleteJournal={props.onDeleteJournal}
+            onSaveGratitude={props.onSaveGratitude}
+            onDeleteGratitude={props.onDeleteGratitude}
+          />
+        </TabsContent>
+
+        <TabsContent value="activities">
+          <ActivitiesTab
+            activityLogs={props.activityLogs}
+            onCreateActivity={props.onCreateActivity}
+            onUpdateActivity={props.onUpdateActivity}
+            onDeleteActivity={props.onDeleteActivity}
           />
         </TabsContent>
       </Tabs>

@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Download, ShieldAlert, Trash2, Upload } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
+import { Bell, CalendarPlus, Download, ShieldAlert, Trash2, Upload } from "lucide-react";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -22,8 +22,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  DEFAULT_REMINDER_SETTINGS,
+  buildRemindersIcs,
+  normalizeReminderSettings,
+} from "@/features/reminders/reminderUtils";
 import type { BackupMode, ImportSummary } from "@/lib/db/backup";
-import type { UserSettings } from "@/types/domain";
+import type { ReminderSettings, TextSizePref, UserSettings } from "@/types/domain";
+
+const hhmmSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM 24-hour time.");
+
+const reminderSlotSchema = z.object({
+  enabled: z.boolean(),
+  time: hhmmSchema,
+});
 
 const settingsFormSchema = z.object({
   displayName: z.string().max(50, "Keep your name under 50 characters.").optional(),
@@ -42,6 +57,18 @@ const settingsFormSchema = z.object({
     .min(1, "At least 1 minute.")
     .max(60, "Max 60 minutes."),
   reducedMotion: z.boolean(),
+  highContrast: z.boolean(),
+  textSize: z.enum(["sm", "md", "lg"]),
+  reminders: z.object({
+    windDown: reminderSlotSchema,
+    checkin: reminderSlotSchema,
+    reviewDue: reminderSlotSchema,
+    quietHours: z.object({
+      enabled: z.boolean(),
+      start: hhmmSchema,
+      end: hhmmSchema,
+    }),
+  }),
 });
 
 type SettingsFormValues = z.input<typeof settingsFormSchema>;
@@ -54,10 +81,18 @@ export interface SettingsWorkspaceProps {
     focusDefaultMin: number;
     breakDefaultMin: number;
     reducedMotion: boolean;
+    highContrast: boolean;
+    textSize: TextSizePref;
+    reminders: ReminderSettings;
   }) => Promise<void>;
   onExportJson: () => Promise<void>;
   onImportJson: (text: string, mode: BackupMode) => Promise<ImportSummary>;
   onDeleteAllData: () => Promise<void>;
+}
+
+function readNotificationPermission(): NotificationPermission | "unsupported" {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return Notification.permission;
 }
 
 export function SettingsWorkspace({
@@ -78,6 +113,9 @@ export function SettingsWorkspace({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
+    () => readNotificationPermission(),
+  );
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -87,7 +125,15 @@ export function SettingsWorkspace({
       focusDefaultMin: settings.focusDefaultMin,
       breakDefaultMin: settings.breakDefaultMin,
       reducedMotion: Boolean(settings.reducedMotion),
+      highContrast: Boolean(settings.highContrast),
+      textSize: settings.textSize ?? "md",
+      reminders: normalizeReminderSettings(settings.reminders),
     },
+  });
+
+  const watchedReminders = useWatch({
+    control: form.control,
+    name: "reminders",
   });
 
   const handleSave = async (values: SettingsFormValues) => {
@@ -98,8 +144,47 @@ export function SettingsWorkspace({
       focusDefaultMin: parsed.focusDefaultMin,
       breakDefaultMin: parsed.breakDefaultMin,
       reducedMotion: parsed.reducedMotion,
+      highContrast: parsed.highContrast,
+      textSize: parsed.textSize,
+      reminders: parsed.reminders,
     });
     toast.success("Settings saved.");
+  };
+
+  const handleReminderToggle = async (next: boolean, onChange: (value: boolean) => void) => {
+    onChange(next);
+    if (!next) return;
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        const result = await Notification.requestPermission();
+        setNotifPermission(result);
+      } else {
+        setNotifPermission(Notification.permission);
+      }
+    }
+  };
+
+  const handleExportCalendar = () => {
+    const normalized = normalizeReminderSettings(watchedReminders);
+    const anyEnabled =
+      normalized.windDown.enabled ||
+      normalized.checkin.enabled ||
+      normalized.reviewDue.enabled;
+    if (!anyEnabled) {
+      toast.info("Turn on at least one reminder before exporting a calendar file.");
+      return;
+    }
+    const ics = buildRemindersIcs(normalized);
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "neurosync-reminders.ics";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Downloaded neurosync-reminders.ics for your calendar app.");
   };
 
   const handleFileChange = async (file: File | undefined) => {
@@ -144,6 +229,9 @@ export function SettingsWorkspace({
         focusDefaultMin: 25,
         breakDefaultMin: 5,
         reducedMotion: false,
+        highContrast: false,
+        textSize: "md",
+        reminders: DEFAULT_REMINDER_SETTINGS,
       });
       toast.success("Deleted all local NeuroSync data.");
     } finally {
@@ -237,26 +325,249 @@ export function SettingsWorkspace({
               ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="settings-reduced-motion" className="text-body font-medium">
-                  Reduced motion
-                </Label>
-                <p className="text-caption text-muted-foreground">
-                  Prefer minimal transitions inside NeuroSync (system setting is always respected).
-                </p>
+            <div className="space-y-3 border-t border-border pt-6">
+              <h2 className="text-section font-medium text-foreground">
+                Display &amp; accessibility
+              </h2>
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-reduced-motion" className="text-body font-medium">
+                    Reduced motion
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Prefer minimal transitions inside NeuroSync (system setting is always respected).
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="reducedMotion"
+                  render={({ field }) => (
+                    <Switch
+                      id="settings-reduced-motion"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  )}
+                />
               </div>
-              <Controller
-                control={form.control}
-                name="reducedMotion"
-                render={({ field }) => (
-                  <Switch
-                    id="settings-reduced-motion"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-high-contrast" className="text-body font-medium">
+                    High-contrast mode
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Increases text contrast, borders, focus outlines, and 3D brain point contrast.
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="highContrast"
+                  render={({ field }) => (
+                    <Switch
+                      id="settings-high-contrast"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <span id="settings-text-size-label" className="text-body font-medium text-foreground">
+                    Text size
+                  </span>
+                  <p className="text-caption text-muted-foreground">
+                    Scales interface and chart label typography across S, M, and L.
+                  </p>
+                </div>
+                <Controller
+                  control={form.control}
+                  name="textSize"
+                  render={({ field }) => (
+                    <ToggleGroup
+                      type="single"
+                      value={field.value}
+                      onValueChange={(next) => {
+                        if (next === "sm" || next === "md" || next === "lg") {
+                          field.onChange(next);
+                        }
+                      }}
+                      variant="outline"
+                      size="sm"
+                      aria-labelledby="settings-text-size-label"
+                    >
+                      <ToggleGroupItem value="sm" aria-label="Small text size">
+                        S
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="md" aria-label="Medium text size">
+                        M
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="lg" aria-label="Large text size">
+                        L
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Reminders */}
+            <div className="space-y-4 border-t border-border pt-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Bell className="size-4 text-cyan" aria-hidden />
+                  <h2 className="text-section font-medium text-foreground">Reminders</h2>
+                </div>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {notifPermission === "granted"
+                    ? "Browser notifications allowed"
+                    : notifPermission === "denied"
+                      ? "Browser notifications blocked (in-app active)"
+                      : notifPermission === "unsupported"
+                        ? "In-app reminders active"
+                        : "Permission asked only on toggle"}
+                </span>
+              </div>
+
+              <p className="rounded-control border border-border bg-surface-2 p-3 text-caption leading-relaxed text-muted-foreground">
+                Because NeuroSync runs locally with no push server, browser notifications can only
+                fire while the app is open or recently active—not reliably when fully closed. For
+                guaranteed alerts, export a recurring calendar file (.ics) below.
+              </p>
+
+              {(
+                [
+                  {
+                    key: "windDown",
+                    label: "Wind-down",
+                    hint: "Gentle evening cue to step away from bright work.",
+                  },
+                  {
+                    key: "checkin",
+                    label: "Daily check-in",
+                    hint: "Low-pressure prompt to note mood, energy, and focus.",
+                  },
+                  {
+                    key: "reviewDue",
+                    label: "Review due",
+                    hint: "Fires when topics are due in your Focus Lab review queue.",
+                  },
+                ] as const
+              ).map((item) => (
+                <div
+                  key={item.key}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <Label
+                      htmlFor={`reminder-${item.key}-toggle`}
+                      className="text-body font-medium"
+                    >
+                      {item.label}
+                    </Label>
+                    <p className="text-caption text-muted-foreground">{item.hint}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="time"
+                      aria-label={`${item.label} time`}
+                      {...form.register(`reminders.${item.key}.time`)}
+                      className="h-9 w-28 rounded-control border-border bg-surface font-mono text-caption tabular-nums"
+                    />
+                    <Controller
+                      control={form.control}
+                      name={`reminders.${item.key}.enabled`}
+                      render={({ field }) => (
+                        <Switch
+                          id={`reminder-${item.key}-toggle`}
+                          checked={field.value}
+                          onCheckedChange={(next) => void handleReminderToggle(next, field.onChange)}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* Quiet hours */}
+              <div className="space-y-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="reminder-quiet-toggle" className="text-body font-medium">
+                      Quiet hours
+                    </Label>
+                    <p className="text-caption text-muted-foreground">
+                      Silence in-app and browser reminders during these local hours.
+                    </p>
+                  </div>
+                  <Controller
+                    control={form.control}
+                    name="reminders.quietHours.enabled"
+                    render={({ field }) => (
+                      <Switch
+                        id="reminder-quiet-toggle"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
                   />
-                )}
-              />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor="reminder-quiet-start"
+                      className="text-caption text-muted-foreground"
+                    >
+                      From
+                    </Label>
+                    <Input
+                      id="reminder-quiet-start"
+                      type="time"
+                      {...form.register("reminders.quietHours.start")}
+                      className="h-9 w-28 rounded-control border-border bg-surface font-mono text-caption tabular-nums"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor="reminder-quiet-end"
+                      className="text-caption text-muted-foreground"
+                    >
+                      To
+                    </Label>
+                    <Input
+                      id="reminder-quiet-end"
+                      type="time"
+                      {...form.register("reminders.quietHours.end")}
+                      className="h-9 w-28 rounded-control border-border bg-surface font-mono text-caption tabular-nums"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleExportCalendar}
+                  disabled={
+                    !watchedReminders?.windDown?.enabled &&
+                    !watchedReminders?.checkin?.enabled &&
+                    !watchedReminders?.reviewDue?.enabled
+                  }
+                  className="gap-1.5 rounded-control"
+                >
+                  <CalendarPlus className="size-4" aria-hidden />
+                  Add to calendar (.ics)
+                </Button>
+                <span className="text-caption text-muted-foreground">
+                  Remember to click Save settings below to store changes.
+                </span>
+              </div>
             </div>
 
             <div className="flex justify-end">
@@ -277,9 +588,11 @@ export function SettingsWorkspace({
             <h2 className="text-section font-medium text-foreground">Backup & restore</h2>
 
             <p className="rounded-control border border-border bg-surface-2 p-3 text-caption leading-relaxed text-muted-foreground">
-              Data is stored locally in this browser (IndexedDB) and is{" "}
+              Data — including your journal entries, gratitude notes, and mindfulness sessions —
+              lives only in this browser (IndexedDB), is{" "}
               <strong className="font-medium text-foreground">not encrypted</strong> on your
-              device. Export a JSON backup anytime to keep a copy or move between devices.
+              device, and is included in JSON exports. Export a backup anytime to keep a copy or
+              move between devices.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -329,7 +642,8 @@ export function SettingsWorkspace({
               <h2 className="text-section font-medium text-foreground">Delete local data</h2>
             </div>
             <p className="text-caption text-muted-foreground">
-              Permanently removes all check-ins, sleep logs, focus sessions, habits, and
+              Permanently removes all check-ins, sleep logs, focus sessions, habits, mindfulness
+              sessions, journal entries, gratitude notes, activity logs, review queue items, and
               experiments from this browser. This cannot be undone unless you exported a JSON
               backup.
             </p>

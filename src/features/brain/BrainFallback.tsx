@@ -47,16 +47,18 @@ const SILHOUETTE_DOTS = buildSilhouetteDots();
 export function BrainFallback({
   lost,
   onRetry,
+  description,
   className,
 }: {
   lost: boolean;
   onRetry?: () => void;
+  description?: string;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden bg-[#060913] p-6 text-center",
+        "relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden bg-background p-6 text-center",
         className,
       )}
     >
@@ -72,7 +74,7 @@ export function BrainFallback({
         viewBox="0 0 240 180"
         className="relative h-40 w-56 opacity-90"
         role="img"
-        aria-label="Stylised dotted brain silhouette"
+        aria-label={description ?? "Stylised dotted brain silhouette"}
       >
         {SILHOUETTE_DOTS.map((d, idx) => (
           <circle
@@ -80,12 +82,12 @@ export function BrainFallback({
             cx={d.cx}
             cy={d.cy}
             r={d.r}
-            fill={d.cyan ? "#22D3EE" : "#8B5CF6"}
+            fill={d.cyan ? "var(--cyan)" : "var(--violet-text)"}
             fillOpacity={d.o}
           />
         ))}
       </svg>
-      <p className="relative max-w-xs text-xs text-[#8A93AD]">
+      <p className="relative max-w-xs text-caption text-muted-foreground">
         {lost
           ? "The 3D graphics context was interrupted by your browser."
           : "Interactive 3D view requires WebGL, which is unavailable in this environment."}
@@ -94,7 +96,7 @@ export function BrainFallback({
         <button
           type="button"
           onClick={onRetry}
-          className="relative rounded-md border border-white/10 bg-[#0C1222] px-3 py-1.5 text-xs font-medium text-[#E6EAF5] transition-colors hover:border-[#22D3EE]/50"
+          className="relative rounded-md border border-border-strong bg-surface px-3 py-1.5 text-caption font-medium text-foreground transition-colors hover:border-cyan/60"
         >
           Restore 3D view
         </button>

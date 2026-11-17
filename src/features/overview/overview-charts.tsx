@@ -39,7 +39,7 @@ export interface MoodChartPoint {
   concentration: number | null;
 }
 
-const axisTick = { fontSize: 11 } as const;
+const axisTick = { fontSize: 11, fill: "var(--color-muted-foreground)" } as const;
 
 const sleepConfig = {
   hours: { label: "Sleep (hours)", color: "var(--chart-2)" },
@@ -162,20 +162,20 @@ export const MoodChart = memo(function MoodChart({ data }: { data: MoodChartPoin
         <Line
           type="monotone"
           dataKey="mood"
-          name="Mood"
+          name="Mood (solid)"
           stroke="var(--color-mood)"
-          strokeWidth={2}
-          dot={false}
+          strokeWidth={2.25}
+          dot={{ r: 2.5, fill: "var(--color-mood)" }}
           connectNulls={false}
         />
         <Line
           type="monotone"
           dataKey="concentration"
-          name="Concentration"
+          name="Concentration (dashed)"
           stroke="var(--color-concentration)"
-          strokeWidth={2}
+          strokeWidth={2.25}
           strokeDasharray="4 3"
-          dot={false}
+          dot={{ r: 2.5, fill: "var(--color-background)", strokeWidth: 2 }}
           connectNulls={false}
         />
       </LineChart>

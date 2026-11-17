@@ -6,25 +6,39 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { SETTINGS_ID, isIndexedDbAvailable } from "@/lib/db/dexie";
 import {
   ALL_TIME,
+  activityRepository,
   checkinRepository,
+  dayPlanRepository,
   experimentRepository,
   focusRepository,
+  gratitudeRepository,
   habitLogRepository,
   habitRepository,
+  insightFeedbackRepository,
+  journalRepository,
+  mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  reviewRepository,
   settingsRepository,
   sleepRepository,
   type DateRange,
 } from "@/lib/db/repositories";
 import type {
+  ActivityLog,
   DailyCheckin,
+  DayPlan,
   Experiment,
   FocusSession,
+  GratitudeEntry,
   Habit,
   HabitLog,
+  InsightFeedback,
+  JournalEntry,
+  MindfulnessSession,
   MovementLog,
   NutritionLog,
+  ReviewItem,
   SleepLog,
   UserSettings,
 } from "@/types/domain";
@@ -78,6 +92,34 @@ export function useHabits(): LiveResult<Habit> {
 
 export function useExperiments(): LiveResult<Experiment> {
   return useRows(() => experimentRepository.listAll(), ["experiments"]);
+}
+
+export function useMindfulnessSessions(range: DateRange = ALL_TIME): LiveResult<MindfulnessSession> {
+  return useRows(() => mindfulnessRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useJournalEntries(range: DateRange = ALL_TIME): LiveResult<JournalEntry> {
+  return useRows(() => journalRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useGratitudeEntries(range: DateRange = ALL_TIME): LiveResult<GratitudeEntry> {
+  return useRows(() => gratitudeRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useActivityLogs(range: DateRange = ALL_TIME): LiveResult<ActivityLog> {
+  return useRows(() => activityRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useReviewItems(): LiveResult<ReviewItem> {
+  return useRows(() => reviewRepository.listAll(), ["reviewItems"]);
+}
+
+export function useDayPlans(range: DateRange = ALL_TIME): LiveResult<DayPlan> {
+  return useRows(() => dayPlanRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useInsightFeedback(): LiveResult<InsightFeedback> {
+  return useRows(() => insightFeedbackRepository.listAll(), ["insightFeedback"]);
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {

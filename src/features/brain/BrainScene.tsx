@@ -23,18 +23,22 @@ import * as THREE from "three";
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 
 import { BRAIN_REGIONS } from "@/data/brainRegions";
-import type { RegionId } from "@/types/domain";
+import type { ActivityKind, RegionId } from "@/types/domain";
+import { compareToSlotWeights } from "./brainCompare";
 import { generateBrainPoints, sampleBrainFromObject, type BrainPointData } from "./brainGeometry";
 import { buildConnectionGeometries } from "./connections";
 import {
+  CUT_AXIS_DEFAULTS,
   INTERNAL_REGIONS,
   REGION_ANCHORS,
   REGION_IDS,
   REGION_PROXIES,
   REGION_SLOTS,
   REGION_VIEWS,
+  matchRegionName,
   regionIndex,
   type BrainMode,
+  type CrossSectionConfig,
 } from "./regionZones";
 import {
   brainPointsFragment,
@@ -113,6 +117,44 @@ class GlbErrorBoundary extends Component<{ children: ReactNode }, { hasError: bo
   }
 }
 
+function normalizeGlbForClipping(root: THREE.Object3D): THREE.Group {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const scale = 2 / Math.max(size.x, size.y, size.z, 1e-6);
+
+  const wrapper = new THREE.Group();
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const geo = (obj.geometry as THREE.BufferGeometry).clone();
+    geo.applyMatrix4(obj.matrixWorld);
+    geo.translate(-center.x, -center.y, -center.z);
+    geo.scale(scale, scale, scale);
+    let named: RegionId | null = null;
+    for (let o: THREE.Object3D | null = obj; o && !named; o = o.parent) {
+      named = matchRegionName(o.name);
+    }
+    const isDeep = named !== null && INTERNAL_REGIONS.has(named);
+    const mat = new THREE.MeshStandardMaterial({
+      color: isDeep ? "#22D3EE" : "#1E293B",
+      emissive: isDeep ? "#0E7490" : "#0F172A",
+      emissiveIntensity: isDeep ? 0.55 : 0.18,
+      transparent: true,
+      opacity: isDeep ? 0.85 : 0.38,
+      roughness: 0.45,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+      depthWrite: isDeep,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.isDeep = isDeep;
+    mesh.userData.region = named;
+    wrapper.add(mesh);
+  });
+  return wrapper;
+}
+
 function GlbSampler({
   url,
   pointCount,
@@ -120,22 +162,43 @@ function GlbSampler({
 }: {
   url: string;
   pointCount: number;
-  onSampled: (data: BrainPointData) => void;
+  onSampled: (data: BrainPointData, clippedGroup: THREE.Group) => void;
 }) {
   const gltf = useGLTF(url);
   useEffect(() => {
     const sampled = sampleBrainFromObject(gltf.scene, pointCount);
-    onSampled(sampled);
+    const clippedGroup = normalizeGlbForClipping(gltf.scene);
+    onSampled(sampled, clippedGroup);
+    return () => {
+      clippedGroup.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+          else obj.material.dispose();
+        }
+      });
+    };
   }, [gltf.scene, pointCount, onSampled]);
   return null;
 }
 
 function useBrainPointData(pointCount: number) {
   const procedural = useMemo(() => generateBrainPoints(pointCount), [pointCount]);
-  const [glbData, setGlbData] = useState<BrainPointData | null>(null);
-  const onSampled = useCallback((d: BrainPointData) => setGlbData(d), []);
-  const data = glbData && glbData.count === pointCount ? glbData : procedural;
-  return { data, onSampled };
+  const [glbState, setGlbState] = useState<{
+    data: BrainPointData;
+    clippedGroup: THREE.Group;
+  } | null>(null);
+  const onSampled = useCallback((d: BrainPointData, clippedGroup: THREE.Group) => {
+    setGlbState({ data: d, clippedGroup });
+  }, []);
+  const hasGlb = Boolean(glbState && glbState.data.count === pointCount);
+  const data = hasGlb && glbState ? glbState.data : procedural;
+  return {
+    data,
+    hasGlb,
+    glbGroup: hasGlb && glbState ? glbState.clippedGroup : null,
+    onSampled,
+  };
 }
 
 function OptionalGlbLoader({
@@ -143,7 +206,7 @@ function OptionalGlbLoader({
   onSampled,
 }: {
   pointCount: number;
-  onSampled: (data: BrainPointData) => void;
+  onSampled: (data: BrainPointData, clippedGroup: THREE.Group) => void;
 }) {
   if (!GLB_URL) return null;
   return (
@@ -179,12 +242,20 @@ interface BrainUniforms {
   uPulseSize: THREE.IUniform<number>;
   uQuality: THREE.IUniform<number>;
   uMotion: THREE.IUniform<number>;
+  uContrast: THREE.IUniform<number>;
   uModeW: THREE.IUniform<THREE.Vector3>;
   uSelected: THREE.IUniform<number>;
   uHovered: THREE.IUniform<number>;
   uSelectW: THREE.IUniform<number[]>;
   uHoverW: THREE.IUniform<number[]>;
   uActivity: THREE.IUniform<number[]>;
+  uIsolateW: THREE.IUniform<number>;
+  uCompareW: THREE.IUniform<number>;
+  uCompareA: THREE.IUniform<number[]>;
+  uCompareB: THREE.IUniform<number[]>;
+  uCutW: THREE.IUniform<number>;
+  uCutNormal: THREE.IUniform<THREE.Vector3>;
+  uCutPos: THREE.IUniform<number>;
   uAnySelected: THREE.IUniform<number>;
   uInternalVis: THREE.IUniform<number>;
   uCortexAlpha: THREE.IUniform<number>;
@@ -212,12 +283,20 @@ function createBrainUniforms(dpr: number, tier: "low" | "high", size: number, in
     uPulseSize: { value: POINTS_SIZE.pulse },
     uQuality: { value: tier === "high" ? 1 : 0 },
     uMotion: { value: 1 },
+    uContrast: { value: 0 },
     uModeW: { value: new THREE.Vector3(1, 0, 0) },
     uSelected: { value: -1 },
     uHovered: { value: -1 },
     uSelectW: { value: new Array<number>(REGION_SLOTS).fill(0) },
     uHoverW: { value: new Array<number>(REGION_SLOTS).fill(0) },
     uActivity: { value: new Array<number>(REGION_SLOTS).fill(0) },
+    uIsolateW: { value: 0 },
+    uCompareW: { value: 0 },
+    uCompareA: { value: new Array<number>(REGION_SLOTS).fill(0) },
+    uCompareB: { value: new Array<number>(REGION_SLOTS).fill(0) },
+    uCutW: { value: 0 },
+    uCutNormal: { value: new THREE.Vector3(0, 1, 0) },
+    uCutPos: { value: 1 },
     uAnySelected: { value: 0 },
     uInternalVis: { value: 0.48 },
     uCortexAlpha: { value: 0.72 },
@@ -286,7 +365,19 @@ interface ExplorerSceneProps {
   quality: BrainQuality;
   qualityPref: QualityPref;
   reducedMotion: boolean;
+  highContrast?: boolean;
+  isolated?: boolean;
+  compare?: { activityA: ActivityKind; activityB: ActivityKind } | null;
+  crossSection?: CrossSectionConfig | null;
+  focusRequestKey?: number;
+  onGlbStatusChange?: (hasGlb: boolean) => void;
 }
+
+const CUT_RING_ROTATION: Record<"x" | "y" | "z", [number, number, number]> = {
+  x: [0, Math.PI / 2, 0],
+  y: [-Math.PI / 2, 0, 0],
+  z: [0, 0, 0],
+};
 
 function ExplorerCore({
   mode,
@@ -297,6 +388,12 @@ function ExplorerCore({
   quality,
   qualityPref,
   reducedMotion,
+  highContrast = false,
+  isolated = false,
+  compare = null,
+  crossSection = null,
+  focusRequestKey = 0,
+  onGlbStatusChange,
 }: ExplorerSceneProps) {
   const { camera } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -305,6 +402,9 @@ function ExplorerCore({
   const hoveredRef = useRef<RegionId | null>(null);
   const lastInteractRef = useRef(-10);
   const draggingRef = useRef(false);
+  const clipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 1));
+  const localClipPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, -1, 0), 1));
+  const targetCutNormalRef = useRef(new THREE.Vector3(0, 1, 0));
 
   // Camera transition goal (active right after a selection change).
   const camGoalRef = useRef<{
@@ -317,7 +417,24 @@ function ExplorerCore({
     target: new THREE.Vector3(0, 0, 0),
   });
 
-  const { data: pointData, onSampled: handleGlbSampled } = useBrainPointData(quality.pointCount);
+  const { data: pointData, hasGlb, glbGroup, onSampled: handleGlbSampled } = useBrainPointData(quality.pointCount);
+
+  useEffect(() => {
+    onGlbStatusChange?.(hasGlb);
+  }, [hasGlb, onGlbStatusChange]);
+
+  const compareTargets = useMemo(() => {
+    if (mode !== "compare" && !compare) {
+      return {
+        weightsA: new Array<number>(REGION_SLOTS).fill(0),
+        weightsB: new Array<number>(REGION_SLOTS).fill(0),
+        involvesDeep: false,
+      };
+    }
+    const actA = compare?.activityA ?? "deep_focus";
+    const actB = compare?.activityB ?? "mindfulness";
+    return compareToSlotWeights(actA, actB);
+  }, [mode, compare]);
 
   const pointsGeo = useMemo(() => buildPointsGeometry(pointData), [pointData]);
   useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
@@ -343,7 +460,7 @@ function ExplorerCore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update camera transition whenever selection changes
+  // Update camera transition whenever selection, isolation, or explicit fly-to request changes
   useEffect(() => {
     if (!selectedRegion) {
       camGoalRef.current.pos.set(...CAMERA.explorerStart);
@@ -362,10 +479,14 @@ function ExplorerCore({
       .normalize()
       .applyQuaternion(groupQuat);
 
-    camGoalRef.current.target.copy(focus).multiplyScalar(0.32);
-    camGoalRef.current.pos.copy(camGoalRef.current.target).addScaledVector(dir, view.distance);
+    const isIsolatedView = isolated;
+    const targetScale = isIsolatedView ? 0.58 : 0.36;
+    const viewDistance = isIsolatedView ? Math.max(1.32, view.distance * 0.72) : view.distance;
+
+    camGoalRef.current.target.copy(focus).multiplyScalar(targetScale);
+    camGoalRef.current.pos.copy(camGoalRef.current.target).addScaledVector(dir, viewDistance);
     camGoalRef.current.active = true;
-  }, [selectedRegion, camera]);
+  }, [selectedRegion, isolated, focusRequestKey, camera]);
 
   // Cursor management
   useEffect(() => {
@@ -419,21 +540,31 @@ function ExplorerCore({
     uniforms.uPixelRatio.value = quality.dpr;
     uniforms.uQuality.value = quality.tier === "high" ? 1 : 0;
     uniforms.uMotion.value = reducedMotion ? 0 : 1;
+    uniforms.uContrast.value = highContrast ? 1 : 0;
 
-    // 1. Damped mode weights
-    const targetModeX = mode === "anatomy" ? 1 : 0;
-    const targetModeY = mode === "functional" ? 1 : 0;
-    const targetModeZ = mode === "activity" ? 1 : 0;
-    uniforms.uModeW.value.x = dampValue(uniforms.uModeW.value.x, targetModeX, CAMERA.dampLambda, dt);
-    uniforms.uModeW.value.y = dampValue(uniforms.uModeW.value.y, targetModeY, CAMERA.dampLambda, dt);
-    uniforms.uModeW.value.z = dampValue(uniforms.uModeW.value.z, targetModeZ, CAMERA.dampLambda, dt);
+    // 1. Damped mode + compare weights (keep underlying base mode steady while crossfading compare)
+    if (mode !== "compare") {
+      const targetModeX = mode === "anatomy" ? 1 : 0;
+      const targetModeY = mode === "functional" ? 1 : 0;
+      const targetModeZ = mode === "activity" ? 1 : 0;
+      uniforms.uModeW.value.x = dampValue(uniforms.uModeW.value.x, targetModeX, CAMERA.dampLambda, dt);
+      uniforms.uModeW.value.y = dampValue(uniforms.uModeW.value.y, targetModeY, CAMERA.dampLambda, dt);
+      uniforms.uModeW.value.z = dampValue(uniforms.uModeW.value.z, targetModeZ, CAMERA.dampLambda, dt);
+    }
+    uniforms.uCompareW.value = dampValue(uniforms.uCompareW.value, mode === "compare" ? 1 : 0, CAMERA.dampLambda, dt);
 
-    // 2. Damped selection, hover, and activity arrays
+    // 2. Damped selection, hover, isolation, activity, and compare arrays
     const selIdx = selectedRegion ? regionIndex(selectedRegion) : -1;
     const hovIdx = hoveredRef.current ? regionIndex(hoveredRef.current) : -1;
     uniforms.uSelected.value = selIdx;
     uniforms.uHovered.value = hovIdx;
     uniforms.uAnySelected.value = dampValue(uniforms.uAnySelected.value, selIdx >= 0 ? 1 : 0, CAMERA.dampLambda, dt);
+    uniforms.uIsolateW.value = dampValue(
+      uniforms.uIsolateW.value,
+      isolated && selIdx >= 0 ? 1 : 0,
+      CAMERA.dampLambda,
+      dt,
+    );
 
     for (let i = 0; i < REGION_SLOTS; i++) {
       uniforms.uSelectW.value[i] = dampValue(uniforms.uSelectW.value[i], i === selIdx ? 1 : 0, CAMERA.dampLambda, dt);
@@ -441,12 +572,70 @@ function ExplorerCore({
       const id = REGION_IDS[i];
       const actTarget = id ? THREE.MathUtils.clamp(activity[id] ?? 0, 0, 1) : 0;
       uniforms.uActivity.value[i] = dampValue(uniforms.uActivity.value[i], actTarget, CAMERA.dampLambda, dt);
+      uniforms.uCompareA.value[i] = dampValue(uniforms.uCompareA.value[i], compareTargets.weightsA[i] ?? 0, CAMERA.dampLambda, dt);
+      uniforms.uCompareB.value[i] = dampValue(uniforms.uCompareB.value[i], compareTargets.weightsB[i] ?? 0, CAMERA.dampLambda, dt);
+    }
+
+    // 2b. Cross-section cut plane
+    const cutEnabled = Boolean(crossSection?.enabled);
+    const cutAxis = crossSection?.axis ?? "y";
+    const axisNormal = CUT_AXIS_DEFAULTS[cutAxis].normal;
+    targetCutNormalRef.current.set(axisNormal[0], axisNormal[1], axisNormal[2]);
+    if (reducedMotion) {
+      uniforms.uCutW.value = cutEnabled ? 1 : 0;
+      uniforms.uCutNormal.value.copy(targetCutNormalRef.current);
+      uniforms.uCutPos.value = crossSection?.position ?? CUT_AXIS_DEFAULTS[cutAxis].defaultPos;
+    } else {
+      uniforms.uCutW.value = dampValue(uniforms.uCutW.value, cutEnabled ? 1 : 0, CAMERA.dampLambda, dt);
+      uniforms.uCutNormal.value.lerp(targetCutNormalRef.current, 1 - Math.exp(-CAMERA.dampLambda * dt));
+      if (uniforms.uCutNormal.value.lengthSq() > 0.001) uniforms.uCutNormal.value.normalize();
+      uniforms.uCutPos.value = dampValue(
+        uniforms.uCutPos.value,
+        crossSection?.position ?? CUT_AXIS_DEFAULTS[cutAxis].defaultPos,
+        CAMERA.dampLambda * 1.6,
+        dt,
+      );
+    }
+
+    // Update Three.js clipping plane when a segmented GLB mesh group is active
+    if (cutEnabled && hasGlb && glbGroup && groupRef.current) {
+      localClipPlaneRef.current.setComponents(
+        -targetCutNormalRef.current.x,
+        -targetCutNormalRef.current.y,
+        -targetCutNormalRef.current.z,
+        uniforms.uCutPos.value,
+      );
+      clipPlaneRef.current.copy(localClipPlaneRef.current).applyMatrix4(groupRef.current.matrixWorld);
+      glbGroup.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mat = obj.material as THREE.MeshStandardMaterial;
+        mat.clippingPlanes = obj.userData.isDeep ? null : [clipPlaneRef.current];
+      });
     }
 
     // 3. Internal structures & cortex transparency
     const isInternalSel = selectedRegion ? INTERNAL_REGIONS.has(selectedRegion) : false;
-    const targetInternalVis = isInternalSel ? 1.0 : mode === "anatomy" ? 0.58 : mode === "functional" ? 0.42 : 0.22;
-    const targetCortexAlpha = isInternalSel ? 0.28 : mode === "anatomy" ? 0.72 : 1.0;
+    const targetInternalVis =
+      isInternalSel || cutEnabled
+        ? 1.0
+        : mode === "compare"
+          ? compareTargets.involvesDeep
+            ? 0.95
+            : 0.34
+          : mode === "anatomy"
+            ? 0.58
+            : mode === "functional"
+              ? 0.42
+              : 0.22;
+    const targetCortexAlpha = isInternalSel
+      ? 0.28
+      : cutEnabled
+        ? 0.72
+        : mode === "compare"
+          ? 0.85
+          : mode === "anatomy"
+            ? 0.72
+            : 1.0;
     uniforms.uInternalVis.value = dampValue(uniforms.uInternalVis.value, targetInternalVis, CAMERA.dampLambda, dt);
     uniforms.uCortexAlpha.value = dampValue(uniforms.uCortexAlpha.value, targetCortexAlpha, CAMERA.dampLambda, dt);
 
@@ -504,7 +693,7 @@ function ExplorerCore({
         enableDamping
         dampingFactor={0.06}
         enablePan={false}
-        minDistance={CAMERA.minDistance}
+        minDistance={isolated && selectedRegion ? 1.1 : CAMERA.minDistance}
         maxDistance={CAMERA.maxDistance}
         rotateSpeed={0.65}
         zoomSpeed={0.85}
@@ -523,7 +712,18 @@ function ExplorerCore({
         lastInteractRef={lastInteractRef}
       />
 
+      {crossSection?.enabled && hasGlb && glbGroup ? (
+        <>
+          <ambientLight intensity={0.65} />
+          <directionalLight position={[2, 3, 2]} intensity={0.85} />
+        </>
+      ) : null}
+
       <group ref={groupRef}>
+        {crossSection?.enabled && hasGlb && glbGroup ? (
+          <primitive object={glbGroup} />
+        ) : null}
+
         <points geometry={pointsGeo} frustumCulled={false}>
           <shaderMaterial ref={pointsMatRef} args={[shaderArgs.points]} />
         </points>
@@ -534,24 +734,55 @@ function ExplorerCore({
           <shaderMaterial args={[shaderArgs.connPulses]} />
         </points>
 
-        {/* Hidden low-poly region proxies for fast, accurate hover & click raycasting */}
-        {REGION_PROXIES.map((proxy, idx) => (
+        {/* Cross-section slice ring guide */}
+        {crossSection?.enabled ? (
           <mesh
-            key={`${proxy.region}-${idx}`}
-            position={proxy.center}
-            scale={proxy.radii}
-            onPointerOver={handleProxyOver(proxy.region)}
-            onPointerOut={handleProxyOut(proxy.region)}
-            onClick={handleProxyClick(proxy.region)}
+            position={[
+              crossSection.axis === "x" ? crossSection.position : 0,
+              crossSection.axis === "y" ? crossSection.position : 0,
+              crossSection.axis === "z" ? crossSection.position : 0,
+            ]}
+            rotation={CUT_RING_ROTATION[crossSection.axis]}
+            raycast={() => null}
           >
-            <icosahedronGeometry args={[1, 1]} />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            <ringGeometry args={[1.0, 1.022, 64]} />
+            <meshBasicMaterial
+              color="#22D3EE"
+              transparent
+              opacity={0.28}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
           </mesh>
-        ))}
+        ) : null}
+
+        {/* Hidden low-poly region proxies for fast, accurate hover & click raycasting */}
+        {REGION_PROXIES.map((proxy, idx) => {
+          const disabledInIso = isolated && selectedRegion !== null && proxy.region !== selectedRegion;
+          return (
+            <mesh
+              key={`${proxy.region}-${idx}`}
+              position={proxy.center}
+              scale={proxy.radii}
+              onPointerOver={disabledInIso ? undefined : handleProxyOver(proxy.region)}
+              onPointerOut={disabledInIso ? undefined : handleProxyOut(proxy.region)}
+              onClick={disabledInIso ? undefined : handleProxyClick(proxy.region)}
+            >
+              <icosahedronGeometry args={[1, 1]} />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+          );
+        })}
 
         {labelRegion && labelPos ? (
           <Html position={labelPos} center distanceFactor={6} style={{ pointerEvents: "none" }}>
-            <div className="whitespace-nowrap rounded-full border border-white/15 bg-[#0C1222]/90 px-2.5 py-1 text-[11px] font-medium text-[#E6EAF5] shadow-lg backdrop-blur-md">
+            <div
+              className={
+                highContrast
+                  ? "whitespace-nowrap rounded-full border border-white/50 bg-[#02040A]/95 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg backdrop-blur-md"
+                  : "whitespace-nowrap rounded-full border border-white/15 bg-[#0C1222]/90 px-2.5 py-1 text-[11px] font-medium text-[#E6EAF5] shadow-lg backdrop-blur-md"
+              }
+            >
               {REGION_NAME[labelRegion]}
             </div>
           </Html>
@@ -599,7 +830,7 @@ export function BrainExplorerCanvas(
       dpr={quality.dpr}
       frameloop={active ? "always" : "demand"}
       camera={{ position: CAMERA.explorerStart, fov: CAMERA.fov, near: 0.05, far: 30 }}
-      gl={{ antialias: false, powerPreference: "high-performance", alpha: true }}
+      gl={{ antialias: false, powerPreference: "high-performance", alpha: true, localClippingEnabled: true }}
       onPointerMissed={() => onSelectRegion(null)}
       onCreated={({ gl }) => {
         gl.domElement.addEventListener("webglcontextlost", (e) => {
@@ -627,6 +858,7 @@ interface HeroSceneProps {
   interactive: boolean;
   quality: BrainQuality;
   reducedMotion: boolean;
+  highContrast?: boolean;
 }
 
 const HERO_KEYFRAMES = {
@@ -637,7 +869,13 @@ const HERO_KEYFRAMES = {
   endTarget: new THREE.Vector3(0.28, -0.2, -0.14), // inside cortex looking at hippocampus & amygdala
 } as const;
 
-function HeroCore({ progress, interactive, quality, reducedMotion }: HeroSceneProps) {
+function HeroCore({
+  progress,
+  interactive,
+  quality,
+  reducedMotion,
+  highContrast = false,
+}: HeroSceneProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
   const dampedProgRef = useRef(progress);
@@ -671,6 +909,7 @@ function HeroCore({ progress, interactive, quality, reducedMotion }: HeroScenePr
     uniforms.uPixelRatio.value = quality.dpr;
     uniforms.uQuality.value = quality.tier === "high" ? 1 : 0;
     uniforms.uMotion.value = reducedMotion ? 0 : 1;
+    uniforms.uContrast.value = highContrast ? 1 : 0;
 
     const p = THREE.MathUtils.clamp(progress, 0, 1);
     dampedProgRef.current = reducedMotion ? p : dampValue(dampedProgRef.current, p, 5.5, dt);

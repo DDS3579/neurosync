@@ -1,12 +1,14 @@
-const SHELL_CACHE = "neurosync-shell-v1";
-const ASSET_CACHE = "neurosync-assets-v1";
+const SHELL_CACHE = "neurosync-shell-v2";
+const ASSET_CACHE = "neurosync-assets-v2";
 
 const SHELL_URLS = [
   "/",
   "/overview",
   "/habits",
   "/focus",
+  "/planner",
   "/insights",
+  "/insights/weekly",
   "/experiments",
   "/brain",
   "/library",

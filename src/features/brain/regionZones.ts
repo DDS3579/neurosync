@@ -11,7 +11,21 @@
 import type { RegionId } from "@/types/domain";
 
 export type Vec3 = [number, number, number];
-export type BrainMode = "anatomy" | "functional" | "activity";
+export type BrainMode = "anatomy" | "functional" | "activity" | "compare";
+export type CutPlaneAxis = "x" | "y" | "z";
+
+export interface CrossSectionConfig {
+  enabled: boolean;
+  axis: CutPlaneAxis;
+  /** Normalized plane position along the chosen axis (-0.95 .. 0.95). */
+  position: number;
+}
+
+export const CUT_AXIS_DEFAULTS: Record<CutPlaneAxis, { label: string; shortLabel: string; defaultPos: number; normal: Vec3 }> = {
+  y: { label: "Axial (top-down)", shortLabel: "Axial Y", defaultPos: -0.04, normal: [0, 1, 0] },
+  x: { label: "Sagittal (side)", shortLabel: "Sagittal X", defaultPos: 0.16, normal: [1, 0, 0] },
+  z: { label: "Coronal (front-back)", shortLabel: "Coronal Z", defaultPos: 0.14, normal: [0, 0, 1] },
+};
 
 export const REGION_IDS: readonly RegionId[] = [
   "prefrontal",

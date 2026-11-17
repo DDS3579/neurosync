@@ -2,7 +2,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { BackupError, buildBackup, importAll } from "@/lib/db/backup";
 import { getDb } from "@/lib/db/dexie";
-import { checkinRepository, focusRepository, sleepRepository } from "@/lib/db/repositories";
+import {
+  activityRepository,
+  checkinRepository,
+  dayPlanRepository,
+  focusRepository,
+  gratitudeRepository,
+  insightFeedbackRepository,
+  journalRepository,
+  mindfulnessRepository,
+  reviewRepository,
+  settingsRepository,
+  sleepRepository,
+} from "@/lib/db/repositories";
 
 describe("backup import validation", () => {
   beforeEach(async () => {
@@ -37,6 +49,51 @@ describe("backup import validation", () => {
       difficulty: 3,
       distractions: 1,
     });
+    await mindfulnessRepository.create({
+      date: "2026-11-15",
+      type: "4_7_8_breathing",
+      durationMin: 2,
+    });
+    await journalRepository.create({
+      date: "2026-11-15",
+      text: "Noticed calm focus after lunch.",
+    });
+    await gratitudeRepository.create({
+      date: "2026-11-15",
+      items: ["Afternoon sun", "Good conversation"],
+    });
+    await activityRepository.create({
+      date: "2026-11-15",
+      type: "novelty",
+      durationMin: 35,
+      enjoyment: 5,
+      note: "Tried a new walking trail",
+    });
+    await reviewRepository.create({
+      topic: "Synaptic pruning overview",
+      intervalStep: 0,
+      nextReviewDate: "2026-11-16",
+      reviewCount: 0,
+    });
+    await dayPlanRepository.create({
+      date: "2026-11-15",
+      wakeTime: "07:00",
+      sleepTargetMin: 480,
+      windDownMin: 45,
+      maxStudyBlockMin: 50,
+      breakMin: 10,
+      bufferMin: 10,
+      movementGoalMin: 30,
+      preferRecoverySpacing: true,
+      commitments: [],
+      studyGoals: [],
+      blocks: [],
+      unscheduled: [],
+    });
+    await insightFeedbackRepository.snooze(
+      { id: "bedtime_irregular", title: "Your bedtime has been shifting around", pillar: "sleep" },
+      "2026-11-15",
+    );
   });
 
   it("rejects malformed JSON and leaves all tables untouched even in replace mode", async () => {
@@ -87,5 +144,118 @@ describe("backup import validation", () => {
     expect(await getDb().sleepLogs.count()).toBe(0);
     expect(await getDb().checkins.count()).toBe(0);
     expect(await getDb().focusSessions.count()).toBe(0);
+    expect(await getDb().mindfulnessSessions.count()).toBe(0);
+    expect(await getDb().journalEntries.count()).toBe(0);
+    expect(await getDb().gratitudeEntries.count()).toBe(0);
+    expect(await getDb().activityLogs.count()).toBe(0);
+    expect(await getDb().reviewItems.count()).toBe(0);
+    expect(await getDb().dayPlans.count()).toBe(0);
+    expect(await getDb().insightFeedback.count()).toBe(0);
+  });
+
+  it("rejects invalid mindfulness, journal, gratitude, activity, or review rows without wiping existing data", async () => {
+    const snapshot = await buildBackup();
+
+    const badGratitude = structuredClone(snapshot);
+    badGratitude.tables.gratitudeEntries.push({
+      ...badGratitude.tables.gratitudeEntries[0]!,
+      id: "too-many-lines",
+      items: ["one", "two", "three", "four"],
+    });
+    await expect(importAll(JSON.stringify(badGratitude), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badJournal = structuredClone(snapshot);
+    badJournal.tables.journalEntries.push({
+      ...badJournal.tables.journalEntries[0]!,
+      id: "empty-journal",
+      text: "   ",
+    });
+    await expect(importAll(JSON.stringify(badJournal), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badMindfulness = structuredClone(snapshot);
+    badMindfulness.tables.mindfulnessSessions.push({
+      ...badMindfulness.tables.mindfulnessSessions[0]!,
+      id: "bad-duration",
+      durationMin: 0,
+    });
+    await expect(importAll(JSON.stringify(badMindfulness), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badActivity = structuredClone(snapshot);
+    badActivity.tables.activityLogs.push({
+      ...badActivity.tables.activityLogs[0]!,
+      id: "bad-enjoyment",
+      enjoyment: 7 as 5,
+    });
+    await expect(importAll(JSON.stringify(badActivity), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const badReview = structuredClone(snapshot);
+    badReview.tables.reviewItems.push({
+      ...badReview.tables.reviewItems[0]!,
+      id: "bad-step",
+      intervalStep: 99,
+    });
+    await expect(importAll(JSON.stringify(badReview), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    const ensuredSettings = await settingsRepository.ensure();
+    const badReminderBackup = structuredClone(await buildBackup());
+    badReminderBackup.tables.settings[0] = {
+      ...ensuredSettings,
+      reminders: {
+        windDown: { enabled: true, time: "99:99" },
+        checkin: { enabled: false, time: "20:00" },
+        reviewDue: { enabled: false, time: "18:00" },
+        quietHours: { enabled: true, start: "23:00", end: "07:00" },
+      },
+    };
+    await expect(importAll(JSON.stringify(badReminderBackup), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+
+    expect(await getDb().mindfulnessSessions.count()).toBe(1);
+    expect(await getDb().journalEntries.count()).toBe(1);
+    expect(await getDb().gratitudeEntries.count()).toBe(1);
+    expect(await getDb().activityLogs.count()).toBe(1);
+    expect(await getDb().reviewItems.count()).toBe(1);
+
+    const badDayPlan = structuredClone(await buildBackup());
+    badDayPlan.tables.dayPlans.push({
+      ...badDayPlan.tables.dayPlans[0]!,
+      id: "bad-wake",
+      wakeTime: "99:99",
+    });
+    await expect(importAll(JSON.stringify(badDayPlan), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+    expect(await getDb().dayPlans.count()).toBe(1);
+
+    const badFeedback = structuredClone(await buildBackup());
+    badFeedback.tables.insightFeedback.push({
+      ...badFeedback.tables.insightFeedback[0]!,
+      id: "bad-status",
+      status: "invalid" as "dismissed",
+    });
+    await expect(importAll(JSON.stringify(badFeedback), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
+    expect(await getDb().insightFeedback.count()).toBe(1);
+
+    const badTextSizeBackup = structuredClone(await buildBackup());
+    badTextSizeBackup.tables.settings[0] = {
+      ...ensuredSettings,
+      textSize: "huge" as "lg",
+    };
+    await expect(importAll(JSON.stringify(badTextSizeBackup), "replace")).rejects.toBeInstanceOf(
+      BackupError,
+    );
   });
 });

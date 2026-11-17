@@ -2,7 +2,8 @@
 
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
 import { motion } from "motion/react";
 
 import {
@@ -49,6 +50,8 @@ export interface OverviewViewProps {
   onLoadDemo?(): void;
   onClearDemo?(): void;
   onOpenBrain(): void;
+  onDismissInsight?(insight: Insight): void;
+  onSnoozeInsight?(insight: Insight): void;
 }
 
 /** Same wording as the brain feature's ACTIVITY_DISCLAIMER, kept local so the
@@ -170,6 +173,8 @@ export function OverviewView({
   onLoadDemo,
   onClearDemo,
   onOpenBrain,
+  onDismissInsight,
+  onSnoozeInsight,
 }: OverviewViewProps) {
   // Derived on the client only: the server has no reliable local hour.
   const greeting = useSyncExternalStore(
@@ -258,6 +263,12 @@ export function OverviewView({
               Clear demo data
             </Button>
           ) : null}
+          <Button asChild variant="outline" className="gap-1.5 rounded-control">
+            <Link href="/insights/weekly">
+              Your week
+              <ArrowUpRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
           <Button onClick={onLogToday} variant="outline" className="gap-1.5 rounded-control">
             <Plus className="size-4" aria-hidden />
             Log today
@@ -366,38 +377,60 @@ export function OverviewView({
       </Entrance>
 
       <div className={cn("flex flex-wrap gap-4 md:col-span-6 xl:col-span-8")}>
-        <Entrance index={3} className="min-w-[220px] flex-1">
+        <Entrance index={3} className="min-w-[min(220px,100%)] flex-1">
           <ChartCard
             title="Sleep"
             description={`Target ${oneDecimal(sleepTargetHours)} hours a night`}
+            summary={sleepSummary}
+            tableData={{
+              caption: "Logged sleep hours across the last 7 days",
+              columns: ["Day", "Sleep (hours)"],
+              rows: sleepSeries.map((row) => [
+                row.day,
+                row.hours === null ? "—" : row.hours.toFixed(1),
+              ]),
+            }}
             empty={sleepEmpty}
             emptyMessage="No nights logged this week yet."
           >
-            <p className="sr-only">{sleepSummary}</p>
             <SleepChart data={sleepSeries} targetHours={sleepTargetHours} />
           </ChartCard>
         </Entrance>
 
-        <Entrance index={4} className="min-w-[220px] flex-1">
+        <Entrance index={4} className="min-w-[min(220px,100%)] flex-1">
           <ChartCard
             title="Focus"
             description="Minutes per day"
+            summary={focusSummary}
+            tableData={{
+              caption: "Focus minutes across the last 7 days",
+              columns: ["Day", "Minutes"],
+              rows: focusSeries.map((row) => [row.day, row.minutes]),
+            }}
             empty={focusEmpty}
             emptyMessage="No focus sessions logged this week yet."
           >
-            <p className="sr-only">{focusSummary}</p>
             <FocusChart data={focusSeries} />
           </ChartCard>
         </Entrance>
 
-        <Entrance index={5} className="min-w-[220px] flex-1">
+        <Entrance index={5} className="min-w-[min(220px,100%)] flex-1">
           <ChartCard
             title="Mood & concentration"
             description="Rated 1 to 5 on check-in days"
+            summary={moodSummary}
+            tableData={{
+              caption: "Daily mood and concentration ratings across the last 7 days",
+              columns: ["Day", "Mood", "Concentration"],
+              rows: moodSeries.map((row) => [
+                row.day,
+                row.mood === null ? "—" : `${row.mood}/5`,
+                row.concentration === null ? "—" : `${row.concentration}/5`,
+              ]),
+            }}
             empty={moodEmpty}
             emptyMessage="No check-ins logged this week yet."
           >
-            <p className="sr-only">{moodSummary}</p>
             <MoodChart data={moodSeries} />
           </ChartCard>
         </Entrance>
@@ -415,7 +448,12 @@ export function OverviewView({
           {visibleInsights.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {visibleInsights.map((insight) => (
-                <InsightCard key={insight.id} insight={insight} />
+                <InsightCard
+                  key={insight.id}
+                  insight={insight}
+                  onDismiss={onDismissInsight}
+                  onSnooze={onSnoozeInsight}
+                />
               ))}
             </div>
           ) : (

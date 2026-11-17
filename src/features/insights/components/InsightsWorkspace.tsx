@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { ArrowUpRight, Clock, EyeOff, RotateCcw, Sparkles } from "lucide-react";
 
 import { ChartCard, EmptyState, InsightCard, PageHeader, StatCard } from "@/components/nx";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   type MoodChartPoint,
   type SleepChartPoint,
 } from "@/features/overview/overview-charts";
-import type { WeeklyReport } from "@/lib/insights";
+import type { SuppressedInsightEntry, WeeklyReport } from "@/lib/insights";
 import type { Insight, Pillar } from "@/types/domain";
 
 const PILLAR_LABELS: Record<Pillar, string> = {
@@ -47,6 +47,8 @@ function dayLabel(date: string): string {
 
 export interface InsightsWorkspaceProps {
   insights: Insight[];
+  dismissedInsights?: SuppressedInsightEntry[];
+  snoozedInsights?: SuppressedInsightEntry[];
   weeklyReport: WeeklyReport;
   sleepWeek: { date: string; hours: number | null }[];
   sleepTargetHours: number;
@@ -54,10 +56,15 @@ export interface InsightsWorkspaceProps {
   moodWeek: { date: string; mood: number | null; concentration: number | null }[];
   weekOffset: 0 | 1;
   onChangeWeekOffset: (next: 0 | 1) => void;
+  onDismissInsight?: (insight: Insight) => void;
+  onSnoozeInsight?: (insight: Insight) => void;
+  onRestoreInsight?: (insightId: string) => void;
 }
 
 export function InsightsWorkspace({
   insights,
+  dismissedInsights = [],
+  snoozedInsights = [],
   weeklyReport,
   sleepWeek,
   sleepTargetHours,
@@ -65,6 +72,9 @@ export function InsightsWorkspace({
   moodWeek,
   weekOffset,
   onChangeWeekOffset,
+  onDismissInsight,
+  onSnoozeInsight,
+  onRestoreInsight,
 }: InsightsWorkspaceProps) {
   const grouped = useMemo(() => {
     const map = new Map<Pillar, Insight[]>();
@@ -101,17 +111,44 @@ export function InsightsWorkspace({
   const focusEmpty = focusSeries.every((p) => p.minutes === 0);
   const moodEmpty = moodSeries.every((p) => p.mood === null && p.concentration === null);
 
+  const sleepLoggedHours = sleepSeries.flatMap((p) => (p.hours === null ? [] : [p.hours]));
+  const sleepSummary = sleepEmpty
+    ? "No nights logged in the last 7 days."
+    : `Average ${(sleepLoggedHours.reduce((a, b) => a + b, 0) / sleepLoggedHours.length).toFixed(1)}h across ${sleepLoggedHours.length} logged night(s).`;
+  const focusTotalMin = focusSeries.reduce((sum, p) => sum + p.minutes, 0);
+  const focusSummary = focusEmpty
+    ? "No focus minutes logged in the last 7 days."
+    : `${focusTotalMin} minutes focused over the last 7 days.`;
+  const moodRatings = moodSeries.flatMap((p) => (p.mood === null ? [] : [p.mood]));
+  const concRatings = moodSeries.flatMap((p) =>
+    p.concentration === null ? [] : [p.concentration],
+  );
+  const moodSummary = moodEmpty
+    ? "No check-ins logged in the last 7 days."
+    : `Mean mood ${moodRatings.length ? (moodRatings.reduce((a, b) => a + b, 0) / moodRatings.length).toFixed(1) : "—"}/5 · concentration ${concRatings.length ? (concRatings.reduce((a, b) => a + b, 0) / concRatings.length).toFixed(1) : "—"}/5.`;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Insights"
         description="Deterministic observations from your own logs, each paired with its evidence and a clear caveat."
+        actions={
+          <Button asChild variant="outline" className="gap-1.5 rounded-control">
+            <Link href="/insights/weekly">
+              Your week report
+              <ArrowUpRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
+        }
       />
 
       <Tabs defaultValue="observations" className="space-y-6">
-        <TabsList className="h-auto w-fit rounded-control border border-border bg-surface p-1">
+        <TabsList className="h-auto w-fit flex-wrap rounded-control border border-border bg-surface p-1">
           <TabsTrigger value="observations">Observations & Charts</TabsTrigger>
           <TabsTrigger value="weekly">Weekly report</TabsTrigger>
+          <TabsTrigger value="dismissed">
+            Dismissed ({dismissedInsights.length + snoozedInsights.length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="observations" className="space-y-8">
@@ -119,6 +156,15 @@ export function InsightsWorkspace({
             <ChartCard
               title="Sleep vs target"
               description={`Target ${sleepTargetHours.toFixed(1)}h per night`}
+              summary={sleepSummary}
+              tableData={{
+                caption: "Sleep hours compared with target across the last 7 days",
+                columns: ["Day", "Sleep (hours)"],
+                rows: sleepSeries.map((row) => [
+                  row.day,
+                  row.hours === null ? "—" : row.hours.toFixed(1),
+                ]),
+              }}
               empty={sleepEmpty}
               emptyMessage="No nights logged in the last 7 days."
             >
@@ -128,6 +174,12 @@ export function InsightsWorkspace({
             <ChartCard
               title="Focus minutes"
               description="Minutes per day"
+              summary={focusSummary}
+              tableData={{
+                caption: "Daily focus minutes across the last 7 days",
+                columns: ["Day", "Minutes"],
+                rows: focusSeries.map((row) => [row.day, row.minutes]),
+              }}
               empty={focusEmpty}
               emptyMessage="No focus sessions logged in the last 7 days."
             >
@@ -137,6 +189,16 @@ export function InsightsWorkspace({
             <ChartCard
               title="Mood & concentration"
               description="Rated 1 to 5 on check-in days"
+              summary={moodSummary}
+              tableData={{
+                caption: "Mood and concentration ratings across the last 7 days",
+                columns: ["Day", "Mood", "Concentration"],
+                rows: moodSeries.map((row) => [
+                  row.day,
+                  row.mood === null ? "—" : `${row.mood}/5`,
+                  row.concentration === null ? "—" : `${row.concentration}/5`,
+                ]),
+              }}
               empty={moodEmpty}
               emptyMessage="No check-ins logged in the last 7 days."
             >
@@ -167,7 +229,12 @@ export function InsightsWorkspace({
                   </h2>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {group.items.map((insight) => (
-                      <InsightCard key={insight.id} insight={insight} />
+                      <InsightCard
+                        key={insight.id}
+                        insight={insight}
+                        onDismiss={onDismissInsight}
+                        onSnooze={onSnoozeInsight}
+                      />
                     ))}
                   </div>
                 </section>
@@ -181,7 +248,7 @@ export function InsightsWorkspace({
             <p className="font-mono text-caption text-muted-foreground tabular-nums">
               {weeklyReport.weekStart} → {weeklyReport.weekEnd}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -199,6 +266,12 @@ export function InsightsWorkspace({
                 className="rounded-control"
               >
                 Last week
+              </Button>
+              <Button asChild variant="outline" size="sm" className="gap-1 rounded-control">
+                <Link href="/insights/weekly">
+                  Full report &amp; export
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </Link>
               </Button>
             </div>
           </div>
@@ -263,7 +336,7 @@ export function InsightsWorkspace({
               <ul className="mt-3 space-y-2 text-body text-muted-foreground">
                 {weeklyReport.reflectionPrompts.map((prompt, i) => (
                   <li key={i} className="flex gap-2">
-                    <span aria-hidden className="text-violet">
+                    <span aria-hidden className="text-violet-text">
                       ?
                     </span>
                     <span>{prompt}</span>
@@ -272,6 +345,116 @@ export function InsightsWorkspace({
               </ul>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="dismissed" className="space-y-6">
+          {dismissedInsights.length === 0 && snoozedInsights.length === 0 ? (
+            <EmptyState
+              icon={<EyeOff />}
+              title="No dismissed or snoozed insights"
+              description="Insights you mark as not useful or snooze for 14 days appear here so you can restore them anytime."
+            />
+          ) : (
+            <div className="space-y-6">
+              {dismissedInsights.length > 0 ? (
+                <section aria-labelledby="dismissed-heading" className="space-y-3">
+                  <h2
+                    id="dismissed-heading"
+                    className="font-mono text-caption uppercase tracking-[0.16em] text-muted-foreground"
+                  >
+                    Dismissed insights
+                  </h2>
+                  <div className="space-y-3">
+                    {dismissedInsights.map((entry) => (
+                      <Card
+                        key={entry.insightId}
+                        className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4 shadow-none sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {entry.pillar ? (
+                              <span className="rounded-chip border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.1em] text-cyan">
+                                {PILLAR_LABELS[entry.pillar]}
+                              </span>
+                            ) : null}
+                            <span className="font-mono text-caption text-muted-foreground">
+                              {entry.insightId}
+                            </span>
+                          </div>
+                          <p className="text-section font-medium text-foreground">{entry.title}</p>
+                          {entry.liveInsight ? (
+                            <p className="text-caption text-muted-foreground">
+                              {entry.liveInsight.body}
+                            </p>
+                          ) : null}
+                        </div>
+                        {onRestoreInsight ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRestoreInsight(entry.insightId)}
+                            className="shrink-0 gap-1.5 rounded-control"
+                          >
+                            <RotateCcw className="size-3.5" aria-hidden />
+                            Restore
+                          </Button>
+                        ) : null}
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {snoozedInsights.length > 0 ? (
+                <section aria-labelledby="snoozed-heading" className="space-y-3">
+                  <h2
+                    id="snoozed-heading"
+                    className="font-mono text-caption uppercase tracking-[0.16em] text-muted-foreground"
+                  >
+                    Snoozed insights (14 days)
+                  </h2>
+                  <div className="space-y-3">
+                    {snoozedInsights.map((entry) => (
+                      <Card
+                        key={entry.insightId}
+                        className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4 shadow-none sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {entry.pillar ? (
+                              <span className="rounded-chip border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.1em] text-cyan">
+                                {PILLAR_LABELS[entry.pillar]}
+                              </span>
+                            ) : null}
+                            {entry.feedback.snoozeUntil ? (
+                              <span className="inline-flex items-center gap-1 font-mono text-caption text-muted-foreground">
+                                <Clock className="size-3" aria-hidden />
+                                Hidden until {entry.feedback.snoozeUntil}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-section font-medium text-foreground">{entry.title}</p>
+                        </div>
+                        {onRestoreInsight ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onRestoreInsight(entry.insightId)}
+                            className="shrink-0 gap-1.5 rounded-control"
+                          >
+                            <RotateCcw className="size-3.5" aria-hidden />
+                            Restore now
+                          </Button>
+                        ) : null}
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

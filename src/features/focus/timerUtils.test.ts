@@ -7,6 +7,7 @@ import {
   deserializeRunningSession,
   incrementDistractions,
   isSessionPaused,
+  parseFocusTabHash,
   pauseRunningSession,
   resumeRunningSession,
   serializeRunningSession,
@@ -74,5 +75,13 @@ describe("focus timer timestamp math", () => {
 
     expect(computeRemainingMs(session, t0 + 30 * 60_000)).toBe(0);
     expect(computeElapsedMs(session, t0 + 30 * 60_000)).toBe(30 * 60_000);
+  });
+
+  it("parses Focus Lab tab hashes safely", () => {
+    expect(parseFocusTabHash("#review")).toBe("review");
+    expect(parseFocusTabHash("#METHODS")).toBe("methods");
+    expect(parseFocusTabHash("#timer")).toBe("timer");
+    expect(parseFocusTabHash("")).toBe("timer");
+    expect(parseFocusTabHash("#unknown")).toBe("timer");
   });
 });
