@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { DailyCheckin, Experiment, FocusSession, InsightInput, ISODate, Rating } from '@/types/domain';
+import type {
+  DailyCheckin,
+  Experiment,
+  FocusSession,
+  InsightInput,
+  ISODate,
+  MicrotaskResult,
+  Rating,
+} from '@/types/domain';
 import { analyzeExperiment } from './experiments';
 
 let seq = 0;
@@ -138,5 +146,76 @@ describe('analyzeExperiment — series construction', () => {
     };
     freeze(data);
     expect(analyzeExperiment(experiment(), data)).toEqual(expected);
+  });
+
+  it('uses per-day medians for reactionTime and describes lower values neutrally as faster', () => {
+    const rtRun = (date: ISODate, medianMs: number): MicrotaskResult => ({
+      ...base(),
+      date,
+      task: 'reaction_time',
+      timeOfDay: 'morning',
+      inputType: 'keyboard',
+      metrics: {
+        trialsMs: [medianMs],
+        medianMs,
+        bestMs: medianMs,
+        falseStarts: 0,
+      },
+    });
+
+    // Day 1 has three runs [260, 320, 480] -> per-day median 320 (not mean 353.3)
+    const microtaskResults: MicrotaskResult[] = [
+      rtRun('2026-11-01', 260),
+      rtRun('2026-11-01', 320),
+      rtRun('2026-11-01', 480),
+      rtRun('2026-11-02', 320),
+      rtRun('2026-11-03', 310),
+      rtRun('2026-11-04', 330),
+      rtRun('2026-11-05', 320),
+      rtRun('2026-11-08', 260),
+      rtRun('2026-11-09', 250),
+      rtRun('2026-11-10', 270),
+      rtRun('2026-11-11', 260),
+      rtRun('2026-11-12', 260),
+    ];
+
+    const r = analyzeExperiment(experiment({ metric: 'reactionTime' }), input({ microtaskResults }));
+    expect(r.sufficientData).toBe(true);
+    expect(r.baseline).toEqual({ n: 5, mean: 320 });
+    expect(r.intervention).toEqual({ n: 5, mean: 260 });
+    expect(r.direction).toBe('lower');
+    expect(r.summary).toContain('faster reaction time');
+    expect(r.summary).not.toMatch(/\bgood\b|\bbad\b|\bbetter\b|\bworse\b|\bimprove|\bscore\b/i);
+    for (const pattern of REQUIRED_CAVEATS) {
+      expect(r.caveats.some((c) => pattern.test(c))).toBe(true);
+    }
+    expect(r.caveats.some((c) => /practice effect/i.test(c))).toBe(true);
+  });
+
+  it('uses per-day medians for memorySpan and formats neutral span changes', () => {
+    const spanRun = (date: ISODate, longestSpan: number): MicrotaskResult => ({
+      ...base(),
+      date,
+      task: 'memory_span',
+      timeOfDay: 'afternoon',
+      inputType: 'mouse',
+      metrics: {
+        longestSpan,
+        startingLength: 3,
+        totalRounds: 4,
+        failures: 2,
+      },
+    });
+
+    const microtaskResults: MicrotaskResult[] = [
+      ...days(1, 5).map((d) => spanRun(d, 4)),
+      ...days(8, 5).map((d) => spanRun(d, 6)),
+    ];
+
+    const r = analyzeExperiment(experiment({ metric: 'memorySpan' }), input({ microtaskResults }));
+    expect(r.sufficientData).toBe(true);
+    expect(r.direction).toBe('higher');
+    expect(r.summary).toContain('longer memory span');
+    expect(r.summary).not.toMatch(/\bgood\b|\bbad\b|\bbetter\b|\bworse\b|\bimprove|\bscore\b/i);
   });
 });

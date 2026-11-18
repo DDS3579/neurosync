@@ -440,4 +440,40 @@ export const LIBRARY_ENTRIES: LibraryEntry[] = [
     caveat: 'Educational perspective, not a promise of cognitive benefits. Associations here are general and simplified.',
     relatedRegions: ['hippocampus', 'prefrontal'],
   },
+  {
+    id: 'reaction-time-variability',
+    category: 'learning',
+    title: 'Reaction time and everyday variability',
+    summary: 'How quickly you respond to a sudden cue shifts across hours, devices, and rest — it is personal context, never a clinical evaluation.',
+    body: [
+      'Simple reaction time reflects the whole loop from noticing a change on screen, deciding to act, and pressing a key or tapping the glass. Even small shifts in lighting, posture, screen refresh timing, or whether you use a mouse, trackpad, touchscreen, or keyboard alter the numbers.',
+      'Your own baseline also moves across the day alongside sleepiness, caffeine, circadian timing, and distractions. Comparing two runs from different devices or noisy rooms can easily mislead you into seeing a trend that comes from hardware rather than attention.',
+      'Treated lightly, personal trends over days or weeks can help you notice patterns in your own routine. They do not measure intelligence, and a slower day is ordinary human variation rather than a clinical sign.',
+    ],
+    keyPoints: [
+      'Hardware, input method (mouse, touch, or keyboard), and sleep shift reaction time.',
+      'Useful only when compared against your own earlier runs in similar conditions.',
+      'Not a clinical assessment or measure of general ability.',
+    ],
+    caveat: 'Educational overview only, with no statistical claims. In-app reaction time tasks reflect device latency and momentary state rather than medical or clinical status.',
+    relatedRegions: ['occipital', 'prefrontal', 'cerebellum'],
+  },
+  {
+    id: 'practice-effects',
+    category: 'learning',
+    title: 'Practice effects on short focus tasks',
+    summary: 'Repeating a task naturally makes you faster or more accurate because your brain learns the task itself.',
+    body: [
+      'Whenever you repeat a timing drill, sequence grid, or go/no-go cue task, the second and tenth runs differ from the first even if your sleep, focus, and mood stayed identical. Your eyes know where to look, your fingers learn the rhythm, and surprises become familiar routines.',
+      'Researchers call this a practice effect. It means early changes on a new task often reflect task familiarity rather than a deeper shift in focus or memory capacity.',
+      'That is why tracking context alongside numbers — how rested you felt, time of day, and whether a practice round came first — keeps personal comparisons grounded. Look for broad patterns after several sessions rather than over-reading any single run.',
+    ],
+    keyPoints: [
+      'Familiarity with cues and controls commonly shifts early task results.',
+      'Changes across repeated runs do not automatically reflect broader mental changes.',
+      'Context notes (rested state, time of day, input device) help keep comparisons honest.',
+    ],
+    caveat: 'Educational perspective only. Practice effects vary from person to person and task to task, and no task here claims to train or measure overall brain capacity.',
+    relatedRegions: ['prefrontal', 'cerebellum', 'hippocampus'],
+  },
 ];

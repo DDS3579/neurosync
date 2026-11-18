@@ -10,6 +10,7 @@ export { habitLogRepository } from "./habitLogs";
 export { habitRepository } from "./habits";
 export { insightFeedbackRepository } from "./insightFeedback";
 export { journalRepository } from "./journal";
+export { microtaskRepository } from "./microtasks";
 export { mindfulnessRepository } from "./mindfulness";
 export { movementRepository } from "./movement";
 export { nutritionRepository } from "./nutrition";

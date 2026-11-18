@@ -11,6 +11,8 @@ export const EXPERIMENT_METRICS: ReadonlyArray<{
   { value: "energy", label: "Energy (check-in)" },
   { value: "stress", label: "Stress (check-in)" },
   { value: "focusRating", label: "Session focus (Focus Lab)" },
+  { value: "reactionTime", label: "Reaction time median (Microtasks)" },
+  { value: "memorySpan", label: "Memory span (Microtasks)" },
 ];
 
 export const EXPERIMENT_STATUS_LABEL: Record<Experiment["status"], string> = {
@@ -54,7 +56,15 @@ export const experimentFormSchema = z
       .trim()
       .min(3, "Describe the small change you are testing.")
       .max(400, "Keep under 400 characters."),
-    metric: z.enum(["concentration", "mood", "energy", "stress", "focusRating"]),
+    metric: z.enum([
+      "concentration",
+      "mood",
+      "energy",
+      "stress",
+      "focusRating",
+      "reactionTime",
+      "memorySpan",
+    ]),
     baselineStart: isoDateField,
     baselineEnd: isoDateField,
     interventionStart: isoDateField,

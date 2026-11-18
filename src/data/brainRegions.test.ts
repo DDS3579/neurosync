@@ -189,7 +189,7 @@ describe('content safety', () => {
 
   it('library has well-formed entries covering all regions, novelty, social connection, and hobbies', () => {
     expect(LIBRARY_ENTRIES.length).toBeGreaterThanOrEqual(16);
-    expect(LIBRARY_ENTRIES.length).toBeLessThanOrEqual(25);
+    expect(LIBRARY_ENTRIES.length).toBeLessThanOrEqual(26);
     expect(new Set(LIBRARY_ENTRIES.map((e) => e.id)).size).toBe(LIBRARY_ENTRIES.length);
     const regionEntries = LIBRARY_ENTRIES.filter((e) => e.category === 'region');
     expect(regionEntries).toHaveLength(7);

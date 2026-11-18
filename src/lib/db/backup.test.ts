@@ -13,6 +13,7 @@ import {
   habitRepository,
   insightFeedbackRepository,
   journalRepository,
+  microtaskRepository,
   mindfulnessRepository,
   reviewRepository,
   settingsRepository,
@@ -131,6 +132,20 @@ async function seed(): Promise<void> {
     title: "A few shorter nights this week",
     pillar: "sleep",
   });
+
+  await microtaskRepository.create({
+    date: DATE,
+    task: "reaction_time",
+    timeOfDay: "morning",
+    restedRating: 4,
+    inputType: "keyboard",
+    metrics: {
+      trialsMs: [280, 295, 310, 325, 340],
+      medianMs: 310,
+      bestMs: 280,
+      falseStarts: 0,
+    },
+  });
 }
 
 describe("backup round-trip", () => {
@@ -165,6 +180,7 @@ describe("backup round-trip", () => {
     expect(summary.imported.reviewItems).toBe(1);
     expect(summary.imported.dayPlans).toBe(1);
     expect(summary.imported.insightFeedback).toBe(1);
+    expect(summary.imported.microtaskResults).toBe(1);
   });
 
   it("imports a v0.1 backup (schemaVersion 1) and migrates settings to current schema", async () => {
@@ -339,6 +355,51 @@ describe("backup round-trip", () => {
     expect(settings?.highContrast).toBe(false);
     expect(settings?.textSize).toBe("md");
     expect(settings?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(summary.imported.microtaskResults).toBe(0);
+  });
+
+  it("imports a v8 backup cleanly with empty microtaskResults", async () => {
+    const v8Backup = {
+      schemaVersion: 8,
+      exportedAt: `${DATE}T12:00:00.000Z`,
+      tables: {
+        settings: [
+          {
+            id: "me",
+            createdAt: `${DATE}T08:00:00.000Z`,
+            updatedAt: `${DATE}T08:00:00.000Z`,
+            sleepTargetMin: 480,
+            focusDefaultMin: 25,
+            breakDefaultMin: 5,
+            onboarded: true,
+            highContrast: false,
+            textSize: "md",
+            schemaVersion: 8,
+          },
+        ],
+        sleepLogs: [],
+        checkins: [],
+        focusSessions: [],
+        movementLogs: [],
+        nutritionLogs: [],
+        habits: [],
+        habitLogs: [],
+        experiments: [],
+        mindfulnessSessions: [],
+        journalEntries: [],
+        gratitudeEntries: [],
+        activityLogs: [],
+        reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
+      },
+    };
+
+    const summary = await importAll(JSON.stringify(v8Backup), "replace");
+    expect(summary.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(summary.imported.microtaskResults).toBe(0);
+    expect((await getDb().settings.get("me"))?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(await getDb().microtaskResults.count()).toBe(0);
   });
 
   it("upgrades an existing Dexie v1 database to v3 preserving rows and migrating settings", async () => {
@@ -397,6 +458,7 @@ describe("backup round-trip", () => {
     expect(await upgradedDb.reviewItems.count()).toBe(0);
     expect(await upgradedDb.dayPlans.count()).toBe(0);
     expect(await upgradedDb.insightFeedback.count()).toBe(0);
+    expect(await upgradedDb.microtaskResults.count()).toBe(0);
     upgradedDb.close();
     await Dexie.delete(dbName);
   });

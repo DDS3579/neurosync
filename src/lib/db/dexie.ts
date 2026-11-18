@@ -12,6 +12,7 @@ import type {
   HabitLog,
   InsightFeedback,
   JournalEntry,
+  MicrotaskResult,
   MindfulnessSession,
   MovementLog,
   NutritionLog,
@@ -27,7 +28,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const DB_NAME = "neurosync";
 
@@ -51,6 +52,7 @@ export class NeuroSyncDatabase extends Dexie {
   reviewItems!: Table<ReviewItem, string>;
   dayPlans!: Table<DayPlan, string>;
   insightFeedback!: Table<InsightFeedback, string>;
+  microtaskResults!: Table<MicrotaskResult, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -244,7 +246,7 @@ export class NeuroSyncDatabase extends Dexie {
           });
       });
 
-    this.version(SCHEMA_VERSION)
+    this.version(8)
       .stores({
         settings: "id",
         sleepLogs: "id, date",
@@ -275,9 +277,38 @@ export class NeuroSyncDatabase extends Dexie {
             }) => {
               if (row.highContrast === undefined) row.highContrast = false;
               if (row.textSize === undefined) row.textSize = "md";
-              row.schemaVersion = SCHEMA_VERSION;
+              row.schemaVersion = 8;
             },
           );
+      });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+        dayPlans: "id, date",
+        insightFeedback: "id, insightId, status",
+        microtaskResults: "id, date, task",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify((row: { schemaVersion?: number }) => {
+            row.schemaVersion = SCHEMA_VERSION;
+          });
       });
   }
 }

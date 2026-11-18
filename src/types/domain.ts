@@ -175,7 +175,54 @@ export interface DayPlan extends Base {
   unscheduled: UnscheduledGoalItem[];
 }
 
-export type ExperimentMetric = 'concentration' | 'mood' | 'energy' | 'stress' | 'focusRating';
+export type MicrotaskKind = 'reaction_time' | 'memory_span' | 'go_no_go';
+export type MicrotaskTimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
+export type MicrotaskInputType = 'mouse' | 'touch' | 'keyboard';
+
+export interface ReactionTimeMetrics {
+  trialsMs: number[];
+  medianMs: number;
+  bestMs: number;
+  falseStarts: number;
+}
+
+export interface MemorySpanMetrics {
+  longestSpan: number;
+  startingLength: number;
+  totalRounds: number;
+  failures: number;
+}
+
+export interface GoNoGoMetrics {
+  totalTrials: number;
+  goTrials: number;
+  noGoTrials: number;
+  hits: number;
+  misses: number;
+  commissionErrors: number;
+  meanReactionMs: number | null;
+}
+
+export interface MicrotaskResultBase extends Base {
+  date: ISODate;
+  timeOfDay: MicrotaskTimeOfDay;
+  restedRating?: Rating;
+  inputType: MicrotaskInputType;
+}
+
+export type MicrotaskResult =
+  | (MicrotaskResultBase & { task: 'reaction_time'; metrics: ReactionTimeMetrics })
+  | (MicrotaskResultBase & { task: 'memory_span'; metrics: MemorySpanMetrics })
+  | (MicrotaskResultBase & { task: 'go_no_go'; metrics: GoNoGoMetrics });
+
+export type ExperimentMetric =
+  | 'concentration'
+  | 'mood'
+  | 'energy'
+  | 'stress'
+  | 'focusRating'
+  | 'reactionTime'
+  | 'memorySpan';
 export interface Experiment extends Base {
   title: string; hypothesis: string; changeDescription: string; metric: ExperimentMetric;
   baselineStart: ISODate; baselineEnd: ISODate; interventionStart: ISODate; interventionEnd: ISODate;
@@ -187,6 +234,7 @@ export interface InsightInput {
   movement: MovementLog[]; nutrition: NutritionLog[]; habits: Habit[]; habitLogs: HabitLog[];
   activities?: ActivityLog[]; mindfulness?: MindfulnessSession[];
   journal?: JournalEntry[]; gratitude?: GratitudeEntry[];
+  microtaskResults?: MicrotaskResult[];
 }
 export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
 export type DataConfidenceLevel = 'low' | 'moderate' | 'enough';

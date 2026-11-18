@@ -210,6 +210,7 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         reviewItems,
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     }),
     "merge",
