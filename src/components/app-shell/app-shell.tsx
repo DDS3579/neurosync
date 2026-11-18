@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
@@ -100,6 +100,18 @@ function AppShellInner({
   const open = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, () => true);
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const { isImmersive } = useImmersiveBrain();
+
+  // Keep focus alive if entering immersive mode while focus was inside hidden shell chrome.
+  useEffect(() => {
+    if (!isImmersive || typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest("[inert]")) {
+      const target =
+        document.querySelector<HTMLElement>('[data-brain-canvas-focus="true"]') ??
+        document.getElementById("main-content");
+      target?.focus({ preventScroll: true });
+    }
+  }, [isImmersive]);
 
   const handleOpenChange = useCallback((next: boolean) => {
     window.localStorage.setItem(COLLAPSED_KEY, next ? "0" : "1");

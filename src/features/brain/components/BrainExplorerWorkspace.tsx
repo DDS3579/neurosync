@@ -466,6 +466,32 @@ export function BrainExplorerWorkspace({
     [compareA, compareB],
   );
 
+  const [scrubberAnnouncement, setScrubberAnnouncement] = useState("");
+  const scrubberInteractRef = useRef(false);
+
+  useEffect(() => {
+    if (!scrubberInteractRef.current || !activeDay) return;
+    const timer = window.setTimeout(() => {
+      setScrubberAnnouncement(
+        `Timeline ${activeDay.shortLabel} (${cumulative ? "cumulative" : "that day"}): ${activeSnapshot.totalMinutes} minutes logged.`,
+      );
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [activeDay, activeSnapshot.totalMinutes, cumulative]);
+
+  const relatedLoggedCount = useMemo(() => {
+    if (!regionInfo) return activeSnapshot.items.length;
+    const relatedSet = new Set(regionInfo.relatedActivities);
+    return activeSnapshot.items.filter((item) => relatedSet.has(item.kind)).length;
+  }, [activeSnapshot.items, regionInfo]);
+
+  const srContextNote = useMemo(() => {
+    if (regionInfo) {
+      return `${relatedLoggedCount} related ${relatedLoggedCount === 1 ? "activity" : "activities"} logged in this window.`;
+    }
+    return `${activeSnapshot.items.length} ${activeSnapshot.items.length === 1 ? "activity" : "activities"} logged in this window.`;
+  }, [activeSnapshot.items.length, regionInfo, relatedLoggedCount]);
+
   const showDisclaimer = mode === "activity" || mode === "compare";
 
   const modeToggle = (
@@ -1100,7 +1126,10 @@ export function BrainExplorerWorkspace({
             : activeDay.dayOnly.regionIntensity;
         }
       }}
-      onSelectDay={handleSelectDay}
+      onSelectDay={(idx) => {
+        scrubberInteractRef.current = true;
+        handleSelectDay(idx);
+      }}
       reducedMotion={reducedMotion}
     />
   );
@@ -1135,12 +1164,16 @@ export function BrainExplorerWorkspace({
 
   return (
     <div
+      ref={stageContainerRef}
       className={
         isImmersive
           ? "fixed inset-0 z-30 h-dvh w-screen overflow-hidden bg-[#060913] transition-opacity duration-200 motion-reduce:transition-none"
           : "space-y-6 transition-opacity duration-200 motion-reduce:transition-none"
       }
     >
+      <p className="sr-only" aria-live="polite">
+        {scrubberAnnouncement}
+      </p>
       {isImmersive ? (
         <h1 className="sr-only">Brain Explorer</h1>
       ) : (
@@ -1178,10 +1211,7 @@ export function BrainExplorerWorkspace({
 
       <div className={isImmersive ? "relative h-full w-full" : "grid gap-6 lg:grid-cols-12"}>
         <div className={isImmersive ? "h-full w-full" : "space-y-3 lg:col-span-7"}>
-          <div
-            ref={stageContainerRef}
-            className={isImmersive ? "relative h-full w-full" : "relative"}
-          >
+          <div className={isImmersive ? "relative h-full w-full" : "relative"}>
             <DynamicBrainExplorer
               mode={mode}
               selectedRegion={selectedRegion}
@@ -1197,6 +1227,7 @@ export function BrainExplorerWorkspace({
               onGlbStatusChange={setHasGlb}
               brainSize={brainSize}
               cameraAction={cameraAction}
+              srContextNote={srContextNote}
               className={isImmersive ? "h-full w-full rounded-none border-0 sm:h-full" : undefined}
             />
 

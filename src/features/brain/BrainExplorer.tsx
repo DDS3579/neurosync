@@ -40,6 +40,7 @@ export interface BrainExplorerProps {
   onGlbStatusChange?: (hasGlb: boolean) => void;
   brainSize?: number;
   cameraAction?: BrainCameraAction | null;
+  srContextNote?: string;
 }
 
 const BrainExplorerCanvas = dynamic(
@@ -71,6 +72,7 @@ export function BrainExplorer({
   onGlbStatusChange,
   brainSize = 1,
   cameraAction = null,
+  srContextNote,
 }: BrainExplorerProps) {
   const qualityState = useBrainQuality(quality);
   const reducedMotion = usePrefersReducedMotion();
@@ -141,8 +143,12 @@ export function BrainExplorer({
       );
     }
 
+    if (srContextNote) {
+      parts.push(srContextNote);
+    }
+
     return parts.join(" ");
-  }, [activity, compare, crossSection, isolated, mode, selectedInfo]);
+  }, [activity, compare, crossSection, isolated, mode, selectedInfo, srContextNote]);
 
   const liveAnnouncement = selectedInfo
     ? isolated
