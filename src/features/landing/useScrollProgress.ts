@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-gsap.registerPlugin(ScrollTrigger);
+import { useSmoothScroll } from "./SmoothScroll";
+import { loadGsapScrollTrigger } from "./scrollEngine";
 
 const PROGRESS_EPSILON = 0.003;
 
@@ -19,6 +18,7 @@ export interface UseScrollProgressOptions {
 /**
  * Tracks a ScrollTrigger's 0..1 progress in a ref and flushes into React state
  * via requestAnimationFrame only when it has changed by more than 0.003.
+ * Defers loading GSAP ScrollTrigger until SmoothScroll activates.
  */
 export function useScrollProgress(
   trigger: RefObject<HTMLElement | null>,
@@ -29,6 +29,7 @@ export function useScrollProgress(
     refreshKey,
   }: UseScrollProgressOptions = {},
 ): number {
+  const { scrollReady } = useSmoothScroll();
   const [progress, setProgress] = useState(0);
   const latestRef = useRef(0);
   const committedRef = useRef(0);
@@ -55,8 +56,13 @@ export function useScrollProgress(
       return cancelPending;
     }
 
+    if (!scrollReady) return cancelPending;
+
     const el = trigger.current;
     if (!el) return;
+
+    let cancelled = false;
+    let killTrigger: (() => void) | undefined;
 
     const flush = () => {
       rafRef.current = null;
@@ -76,31 +82,38 @@ export function useScrollProgress(
       }
     };
 
-    const st = ScrollTrigger.create({
-      trigger: el,
-      start,
-      end,
-      invalidateOnRefresh: true,
-      onUpdate: (self) => {
-        latestRef.current = self.progress;
-        scheduleFlush();
-      },
-      onRefresh: (self) => {
-        latestRef.current = self.progress;
-        scheduleFlush();
-      },
+    void loadGsapScrollTrigger().then(({ ScrollTrigger }) => {
+      if (cancelled) return;
+
+      const st = ScrollTrigger.create({
+        trigger: el,
+        start,
+        end,
+        invalidateOnRefresh: true,
+        onUpdate: (self) => {
+          latestRef.current = self.progress;
+          scheduleFlush();
+        },
+        onRefresh: (self) => {
+          latestRef.current = self.progress;
+          scheduleFlush();
+        },
+      });
+
+      ScrollTrigger.refresh();
+      latestRef.current = st.progress;
+      scheduleFlush();
+      killTrigger = () => st.kill();
     });
 
-    latestRef.current = st.progress;
-    scheduleFlush();
-
     return () => {
+      cancelled = true;
       cancelPending();
-      st.kill();
+      killTrigger?.();
     };
     // `start`/`end` may be inline functions or primitives; `refreshKey` controls intentional rebinds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trigger, disabled, refreshKey]);
+  }, [trigger, disabled, refreshKey, scrollReady]);
 
   return progress;
 }

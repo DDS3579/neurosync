@@ -13,6 +13,7 @@ import {
   useFocusSessions,
   useHabitLogs,
   useHabits,
+  useMicrotaskResults,
   useMovementLogs,
   useNutritionLogs,
   useSettings,
@@ -31,6 +32,7 @@ export default function ExperimentsPage() {
   const nutrition = useNutritionLogs();
   const habits = useHabits();
   const habitLogs = useHabitLogs();
+  const microtasks = useMicrotaskResults();
 
   const onCreateExperiment = useCallback(
     async (values: Omit<Experiment, "id" | "createdAt" | "updatedAt">) => {
@@ -60,7 +62,8 @@ export default function ExperimentsPage() {
     movement.isLoading ||
     nutrition.isLoading ||
     habits.isLoading ||
-    habitLogs.isLoading;
+    habitLogs.isLoading ||
+    microtasks.isLoading;
 
   const insightInput = useMemo(() => {
     if (
@@ -72,7 +75,8 @@ export default function ExperimentsPage() {
       !movement.data ||
       !nutrition.data ||
       !habits.data ||
-      !habitLogs.data
+      !habitLogs.data ||
+      !microtasks.data
     ) {
       return null;
     }
@@ -85,6 +89,7 @@ export default function ExperimentsPage() {
       nutrition: nutrition.data,
       habits: habits.data,
       habitLogs: habitLogs.data,
+      microtaskResults: microtasks.data,
     };
   }, [
     isLoading,
@@ -96,6 +101,7 @@ export default function ExperimentsPage() {
     nutrition.data,
     habits.data,
     habitLogs.data,
+    microtasks.data,
   ]);
 
   if (!insightInput || !experiments.data) {

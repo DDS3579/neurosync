@@ -33,28 +33,30 @@ src/
 │   ├── (app)/              # Local-first workspace routes (error boundary + skeleton fallbacks)
 │   │   ├── overview/       # Today status, 7-day charts (with tables), top per-pillar insights, brain preview
 │   │   ├── habits/         # Check-in, Sleep, Movement, Nutrition, Mind, Activities, and Custom Habits
-│   │   ├── focus/          # Timestamp-driven focus timer, method stats, and spaced-repetition review queue
+│   │   ├── focus/          # Timestamp-driven focus timer, method stats, spaced-repetition review queue, and Microtasks (`#microtasks`)
 │   │   ├── planner/        # Deterministic rule-based daily schedule & recovery-window planner
 │   │   ├── insights/       # Confidence-rated observations, Dismiss/Snooze, plus `/insights/weekly` report
-│   │   ├── experiments/    # Personal baseline vs. intervention N-of-1 experiments
-│   │   ├── brain/          # Full 3D Brain Explorer (explore, activity, isolation, compare, cross-section)
+│   │   ├── experiments/    # Personal baseline vs. intervention N-of-1 experiments (ratings, focus, reaction time, memory span)
+│   │   ├── brain/          # Full-screen immersive 3D Brain Explorer (floating panels, impact ranking, 7d/30d scrubber, quick log)
+│   │   ├── constellation/  # Same-day habit/activity co-occurrence starfield map & accessible table (`>= 10` active days gate)
 │   │   ├── library/        # Searchable educational reading list with conservative caveats
-│   │   └── settings/       # Accessibility (S/M/L, high contrast, reduced motion), opt-in reminders + .ics, JSON backup
+│   │   └── settings/       # Accessibility (S/M/L, HC, reduced motion), Brain Explorer prefs/resets, reminders + .ics, JSON backup
 │   └── manifest.ts         # Native Next.js App Router PWA manifest
 ├── components/
 │   ├── app-shell/          # Skip link, sidebar, topbar, mobile nav, command palette, onboarding, reminders, SW registrar
+│   ├── floating/           # Draggable/collapsible glass FloatingPanel system (Zustand + Pointer Events + mobile bottom sheet)
 │   ├── nx/                 # Core design primitives (ChartCard w/ table toggle, RatingInput, DurationInput, InsightCard, etc.)
 │   └── ui/                 # shadcn/ui primitives
 ├── data/                   # Static educational atlas (brainRegions.ts) & library entries (library.ts)
 ├── features/               # Feature-scoped UI workspaces, pure utilities, and WebGL scenes
 └── lib/
-    ├── db/                 # Dexie v8 schema & migrations, live hooks, repositories, JSON backup/restore
+    ├── db/                 # Dexie v9 schema & migrations, live hooks, repositories, JSON backup/restore
     └── insights/           # Deterministic rule engine, confidence/dedupe/feedback, weekly report, demo data
 ```
 
-**Data flow pattern**: Route pages under `src/app/(app)/*/page.tsx` stay thin — they subscribe to live Dexie queries via `src/lib/db/hooks.ts`, render route skeletons while loading, and pass plain props and callbacks down to presentational workspace components in `src/features/*/components/`.
+**Data flow pattern**: Route pages under `src/app/(app)/*/page.tsx` stay thin — they subscribe to live Dexie queries via `src/lib/db/hooks.ts`, render route skeletons while loading, and pass plain props and callbacks down to presentational workspace components in `src/features/*/components/`. UI-only preferences (`immersive`, `brainSize`, floating panel layout) live in `localStorage` under `ns:ui:v1:...` keys rather than Dexie.
 
-**Offline PWA**: Uses Next.js's native `src/app/manifest.ts` and a zero-dependency service worker (`public/sw.js`) that pre-caches app shell routes (including `/planner` and `/insights/weekly`) and serves immutable `/_next/static/` assets cache-first for offline resilience after the first visit.
+**Offline PWA**: Uses Next.js's native `src/app/manifest.ts` and a zero-dependency service worker (`public/sw.js`, `neurosync-shell-v3`) that pre-caches app shell routes (including `/planner`, `/insights/weekly`, and `/constellation`) and serves immutable `/_next/static/` assets cache-first for offline resilience after the first visit.
 
 ---
 
@@ -79,8 +81,8 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 
 - UI components and pages **never** import `dexie` directly; they read via `lib/db/hooks.ts` and mutate via repositories.
 - Every record implements `Base` (`id`, `createdAt`, `updatedAt`) with local `YYYY-MM-DD` day keys.
-- `SCHEMA_VERSION = 8` covers all 16 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`).
-- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v7` backups.
+- `SCHEMA_VERSION = 9` covers all 17 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`, `microtaskResults`).
+- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v8` backups.
 
 ---
 

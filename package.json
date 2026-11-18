@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "generate:intro-silhouette": "node scripts/run-ts.mjs scripts/generate-intro-silhouette.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

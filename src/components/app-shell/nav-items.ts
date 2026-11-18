@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Library,
   ListChecks,
+  Orbit,
   Settings,
   Sparkles,
   Timer,
@@ -36,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Explore",
     items: [
       { href: "/brain", label: "Brain Explorer", icon: Brain },
+      { href: "/constellation", label: "Constellation", icon: Orbit },
       { href: "/insights", label: "Insights", icon: Sparkles },
       { href: "/experiments", label: "Experiments", icon: FlaskConical },
       { href: "/library", label: "Library", icon: Library },

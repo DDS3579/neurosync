@@ -14,6 +14,7 @@ import {
   resolveReducedMotion,
 } from "@/features/brain/useBrainQuality";
 import { useSettings } from "@/lib/db/hooks";
+import { writeUiA11yPrefs } from "@/lib/ui/a11yPrefs";
 
 const RM_QUERY = "(prefers-reduced-motion: reduce)";
 const HC_QUERY = "(prefers-contrast: more)";
@@ -38,6 +39,11 @@ export function ReducedMotionProvider({ children }: { children: ReactNode }) {
     const fcMq = window.matchMedia(FC_QUERY);
 
     const apply = () => {
+      writeUiA11yPrefs({
+        reducedMotion: settingReduced,
+        highContrast: settingHighContrast,
+        textSize,
+      });
       const effectiveRM = resolveReducedMotion(rmMq.matches, settingReduced);
       const effectiveHC = resolveHighContrast(hcMq.matches, fcMq.matches, settingHighContrast);
       const root = document.documentElement;

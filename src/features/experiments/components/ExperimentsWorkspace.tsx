@@ -54,6 +54,13 @@ export interface ExperimentsWorkspaceProps {
   onDeleteExperiment: (id: string) => Promise<void>;
 }
 
+function formatExperimentMean(metric: Experiment["metric"], mean: number | null): string {
+  if (mean === null) return "—";
+  if (metric === "reactionTime") return `${Math.round(mean)} ms`;
+  if (metric === "memorySpan") return `${mean} items`;
+  return `${mean}/5`;
+}
+
 function defaultFormValues(): ExperimentFormValues {
   const today = startOfDay(new Date());
   return {
@@ -243,7 +250,7 @@ export function ExperimentsWorkspace({
                       </span>
                     </div>
                     <p className="mt-2 font-mono text-title font-medium text-foreground tabular-nums">
-                      {result.baseline.mean !== null ? `${result.baseline.mean}/5` : "—"}
+                      {formatExperimentMean(exp.metric, result.baseline.mean)}
                     </p>
                     <p className="text-caption text-muted-foreground tabular-nums">
                       Sample size: {result.baseline.n}{" "}
@@ -261,7 +268,7 @@ export function ExperimentsWorkspace({
                       </span>
                     </div>
                     <p className="mt-2 font-mono text-title font-medium text-foreground tabular-nums">
-                      {result.intervention.mean !== null ? `${result.intervention.mean}/5` : "—"}
+                      {formatExperimentMean(exp.metric, result.intervention.mean)}
                     </p>
                     <p className="text-caption text-muted-foreground tabular-nums">
                       Sample size: {result.intervention.n}{" "}

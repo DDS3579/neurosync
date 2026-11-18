@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  computeCappedDpr,
   normalizeTextSize,
   resolveHighContrast,
   resolveReducedMotion,
+  shouldDowngradeFps,
 } from "./useBrainQuality";
 
 describe("resolveReducedMotion", () => {
@@ -40,5 +42,21 @@ describe("resolveHighContrast & normalizeTextSize", () => {
     expect(normalizeTextSize("lg")).toBe("lg");
     expect(normalizeTextSize("unknown")).toBe("md");
     expect(normalizeTextSize(undefined)).toBe("md");
+  });
+});
+
+describe("computeCappedDpr & shouldDowngradeFps", () => {
+  it("caps DPR per quality tier and handles invalid inputs safely", () => {
+    expect(computeCappedDpr(3, "high")).toBe(1.5);
+    expect(computeCappedDpr(1.25, "high")).toBe(1.25);
+    expect(computeCappedDpr(2, "low")).toBe(1);
+    expect(computeCappedDpr(Number.NaN, "high")).toBe(1);
+  });
+
+  it("steps down only in auto mode from high tier when average FPS drops below 45", () => {
+    expect(shouldDowngradeFps(38, "auto", "high")).toBe(true);
+    expect(shouldDowngradeFps(45, "auto", "high")).toBe(false);
+    expect(shouldDowngradeFps(30, "high", "high")).toBe(false);
+    expect(shouldDowngradeFps(20, "auto", "low")).toBe(false);
   });
 });

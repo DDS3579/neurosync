@@ -38,6 +38,19 @@ function detectTier(): QualityTier {
   return "high";
 }
 
+export function computeCappedDpr(deviceDpr: number, tier: QualityTier): number {
+  const safeDpr = Number.isFinite(deviceDpr) && deviceDpr > 0 ? deviceDpr : 1;
+  return Math.min(safeDpr, QUALITY_PRESETS[tier].dprCap);
+}
+
+export function shouldDowngradeFps(
+  avgFps: number,
+  qualityPref: QualityPref,
+  tier: QualityTier,
+): boolean {
+  return qualityPref === "auto" && tier === "high" && avgFps < FPS_GOVERNOR.minFps;
+}
+
 export function useBrainQuality(pref: QualityPref): BrainQuality {
   const [autoTier, setAutoTier] = useState<QualityTier>(detectTier);
   const tier: QualityTier = pref === "auto" ? autoTier : pref;
@@ -46,7 +59,7 @@ export function useBrainQuality(pref: QualityPref): BrainQuality {
   const downgrade = useCallback(() => setAutoTier("low"), []);
   return {
     tier,
-    dpr: Math.min(deviceDpr, preset.dprCap),
+    dpr: computeCappedDpr(deviceDpr, tier),
     pointCount: preset.points,
     postprocessing: preset.postprocessing,
     downgrade,
@@ -182,7 +195,7 @@ export function useTextSize(): TextSizePref {
 
 /* ---- WebGL support ----------------------------------------------------- */
 let webglSupport: boolean | undefined;
-function detectWebGL(): boolean {
+export function detectWebGL(): boolean {
   if (webglSupport !== undefined) return webglSupport;
   try {
     const canvas = document.createElement("canvas");
@@ -213,19 +226,40 @@ export function useBrainStage<T extends HTMLElement>() {
   const webgl = useSyncExternalStore<boolean | null>(noopSubscribe, detectWebGL, () => null);
   const tabVisible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState !== "hidden", () => true);
   const [onScreen, setOnScreen] = useState(true);
+  const [hasSize, setHasSize] = useState(true);
   const [lost, setLost] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([entry]) => setOnScreen(entry ? entry.isIntersecting : true), {
-      rootMargin: "120px",
-    });
-    io.observe(el);
-    return () => io.disconnect();
+    if (!el) return;
+
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        ([entry]) => setOnScreen(entry ? entry.isIntersecting : true),
+        { rootMargin: "120px" },
+      );
+      io.observe(el);
+    }
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver((entries) => {
+        const rect = entries[0]?.contentRect;
+        if (rect) {
+          setHasSize(rect.width > 0 && rect.height > 0);
+        }
+      });
+      ro.observe(el);
+    }
+
+    return () => {
+      io?.disconnect();
+      ro?.disconnect();
+    };
   }, []);
 
   const markLost = useCallback(() => setLost(true), []);
   const retry = useCallback(() => setLost(false), []);
-  return { ref, webgl, active: tabVisible && onScreen, lost, markLost, retry };
+  return { ref, webgl, active: tabVisible && onScreen && hasSize, lost, markLost, retry };
 }

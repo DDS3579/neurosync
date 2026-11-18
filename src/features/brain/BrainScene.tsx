@@ -14,6 +14,7 @@ import {
   useState,
   type ComponentRef,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
@@ -24,8 +25,18 @@ type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 
 import { BRAIN_REGIONS } from "@/data/brainRegions";
 import type { ActivityKind, RegionId } from "@/types/domain";
+import {
+  clampBrainSize,
+  computeFitCameraDistance,
+} from "./brainControls";
+import type { BrainReadinessProgress } from "./BrainHero";
 import { compareToSlotWeights } from "./brainCompare";
-import { generateBrainPoints, sampleBrainFromObject, type BrainPointData } from "./brainGeometry";
+import {
+  generateBrainPoints,
+  generateBrainPointsNonBlocking,
+  sampleBrainFromObject,
+  type BrainPointData,
+} from "./brainGeometry";
 import { buildConnectionGeometries } from "./connections";
 import {
   CUT_AXIS_DEFAULTS,
@@ -47,7 +58,7 @@ import {
   connectionPulseFragment,
   connectionVertex,
 } from "./shaders/brainPoints";
-import { FPS_GOVERNOR, type BrainQuality, type QualityPref } from "./useBrainQuality";
+import { FPS_GOVERNOR, shouldDowngradeFps, type BrainQuality, type QualityPref } from "./useBrainQuality";
 
 /* ------------------------------------------------------------------ */
 /* TUNABLES                                                            */
@@ -90,13 +101,20 @@ const PALETTE = {
 const CAMERA = {
   fov: 42,
   explorerStart: [1.9, 0.55, 2.35] as [number, number, number],
-  minDistance: 1.45,
-  maxDistance: 4.8,
+  minDistance: 1.35,
+  maxDistance: 6.5,
   idleResumeSec: 4.0,
   idleSpeed: 0.12, // rad/sec
   dampLambda: 7.5,
   cameraDamp: 4.5,
 } as const;
+
+export interface BrainCameraAction {
+  type: "fit" | "reset" | "zoomIn" | "zoomOut" | "rotate";
+  nonce: number;
+  dx?: number;
+  dy?: number;
+}
 
 const POINTS_SIZE = { explorer: 14.5, hero: 15.5, pulse: 22 } as const;
 
@@ -193,6 +211,76 @@ function useBrainPointData(pointCount: number) {
   }, []);
   const hasGlb = Boolean(glbState && glbState.data.count === pointCount);
   const data = hasGlb && glbState ? glbState.data : procedural;
+  return {
+    data,
+    hasGlb,
+    glbGroup: hasGlb && glbState ? glbState.clippedGroup : null,
+    onSampled,
+  };
+}
+
+function useBrainPointDataAsync(
+  pointCount: number,
+  onProgress?: (info: BrainReadinessProgress) => void,
+) {
+  const [proceduralState, setProceduralState] = useState<{
+    count: number;
+    data: BrainPointData;
+  } | null>(null);
+  const [glbState, setGlbState] = useState<{
+    data: BrainPointData;
+    clippedGroup: THREE.Group;
+  } | null>(null);
+  const onProgressRef = useRef(onProgress);
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    onProgressRef.current?.({
+      stage: "geometry",
+      value: 0.05,
+      pointsPlaced: 0,
+      pointsTotal: pointCount,
+    });
+    void generateBrainPointsNonBlocking(pointCount, {
+      signal,
+      onProgress: (placed, total) => {
+        if (!signal.cancelled) {
+          onProgressRef.current?.({
+            stage: "geometry",
+            value: total > 0 ? placed / total : 1,
+            pointsPlaced: placed,
+            pointsTotal: total,
+          });
+        }
+      },
+    }).then((data) => {
+      if (!signal.cancelled) {
+        onProgressRef.current?.({
+          stage: "geometry",
+          value: 1,
+          pointsPlaced: data.count,
+          pointsTotal: data.count,
+        });
+        setProceduralState({ count: pointCount, data });
+      }
+    });
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [pointCount]);
+
+  const onSampled = useCallback((d: BrainPointData, clippedGroup: THREE.Group) => {
+    setGlbState({ data: d, clippedGroup });
+  }, []);
+
+  const hasGlb = Boolean(glbState && glbState.data.count === pointCount);
+  const procedural =
+    proceduralState && proceduralState.count === pointCount ? proceduralState.data : null;
+  const data = hasGlb && glbState ? glbState.data : procedural;
+
   return {
     data,
     hasGlb,
@@ -341,7 +429,7 @@ function FpsGovernor({
     s.windowSec += clamped;
     if (s.windowSec >= FPS_GOVERNOR.windowSec) {
       const fps = s.frames / s.windowSec;
-      if (fps < FPS_GOVERNOR.minFps) {
+      if (shouldDowngradeFps(fps, qualityPref, tier)) {
         s.tripped = true;
         downgrade();
       }
@@ -353,6 +441,23 @@ function FpsGovernor({
   return null;
 }
 
+/** Attaches and cleans up the `webglcontextlost` listener on the R3F canvas element. */
+function WebGLContextLossGuard({ onContextLost }: { onContextLost: () => void }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleLoss = (event: Event) => {
+      event.preventDefault();
+      onContextLost();
+    };
+    canvas.addEventListener("webglcontextlost", handleLoss);
+    return () => {
+      canvas.removeEventListener("webglcontextlost", handleLoss);
+    };
+  }, [gl, onContextLost]);
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* EXPLORER CONTENT                                                    */
 /* ------------------------------------------------------------------ */
@@ -360,6 +465,7 @@ interface ExplorerSceneProps {
   mode: BrainMode;
   selectedRegion: RegionId | null;
   activity: Partial<Record<RegionId, number>>;
+  activityRef?: RefObject<Partial<Record<RegionId, number>> | null>;
   onSelectRegion: (id: RegionId | null) => void;
   onHoverRegion?: (id: RegionId | null) => void;
   quality: BrainQuality;
@@ -371,6 +477,8 @@ interface ExplorerSceneProps {
   crossSection?: CrossSectionConfig | null;
   focusRequestKey?: number;
   onGlbStatusChange?: (hasGlb: boolean) => void;
+  brainSize?: number;
+  cameraAction?: BrainCameraAction | null;
 }
 
 const CUT_RING_ROTATION: Record<"x" | "y" | "z", [number, number, number]> = {
@@ -383,6 +491,7 @@ function ExplorerCore({
   mode,
   selectedRegion,
   activity,
+  activityRef,
   onSelectRegion,
   onHoverRegion,
   quality,
@@ -394,10 +503,13 @@ function ExplorerCore({
   crossSection = null,
   focusRequestKey = 0,
   onGlbStatusChange,
+  brainSize = 1,
+  cameraAction = null,
 }: ExplorerSceneProps) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const groupRef = useRef<THREE.Group>(null);
+  const brainScaleRef = useRef(clampBrainSize(brainSize));
   const [hovered, setHovered] = useState<RegionId | null>(null);
   const hoveredRef = useRef<RegionId | null>(null);
   const lastInteractRef = useRef(-10);
@@ -449,6 +561,18 @@ function ExplorerCore({
 
   const pointsMatRef = useRef<THREE.ShaderMaterial>(null);
 
+  const proxyGeo = useMemo(() => new THREE.IcosahedronGeometry(1, 1), []);
+  const proxyMat = useMemo(
+    () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    [],
+  );
+  useEffect(() => {
+    return () => {
+      proxyGeo.dispose();
+      proxyMat.dispose();
+    };
+  }, [proxyGeo, proxyMat]);
+
   const shaderArgs = useMemo(() => {
     const uniforms = createBrainUniforms(quality.dpr, quality.tier, POINTS_SIZE.explorer, 1);
     const base = { uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
@@ -480,13 +604,85 @@ function ExplorerCore({
       .applyQuaternion(groupQuat);
 
     const isIsolatedView = isolated;
-    const targetScale = isIsolatedView ? 0.58 : 0.36;
-    const viewDistance = isIsolatedView ? Math.max(1.32, view.distance * 0.72) : view.distance;
+    const scaleFactor = brainScaleRef.current;
+    const targetScale = (isIsolatedView ? 0.58 : 0.36) * scaleFactor;
+    const baseDist = isIsolatedView ? Math.max(1.32, view.distance * 0.72) : view.distance;
+    const viewDistance = Math.min(
+      CAMERA.maxDistance,
+      Math.max(CAMERA.minDistance, baseDist * Math.max(0.75, scaleFactor * 0.92)),
+    );
 
     camGoalRef.current.target.copy(focus).multiplyScalar(targetScale);
     camGoalRef.current.pos.copy(camGoalRef.current.target).addScaledVector(dir, viewDistance);
     camGoalRef.current.active = true;
   }, [selectedRegion, isolated, focusRequestKey, camera]);
+
+  // Handle explicit camera controls (Fit to screen, Reset view, +/- zoom, arrow rotate)
+  useEffect(() => {
+    if (!cameraAction) return;
+    const controls = controlsRef.current;
+    const currentTarget = controls?.target ?? new THREE.Vector3(0, 0, 0);
+
+    if (cameraAction.type === "reset") {
+      if (groupRef.current) {
+        groupRef.current.rotation.set(0, 0, 0);
+      }
+      camGoalRef.current.target.set(0, 0, 0);
+      camGoalRef.current.pos.set(...CAMERA.explorerStart);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "fit") {
+      const aspect = size.width / Math.max(1, size.height);
+      const fitDist = computeFitCameraDistance(brainSize, aspect, CAMERA.fov);
+      const dir = camera.position.clone().sub(currentTarget);
+      if (dir.lengthSq() < 0.0001) {
+        dir.set(...CAMERA.explorerStart);
+      }
+      dir.normalize();
+      camGoalRef.current.target.set(0, 0, 0);
+      camGoalRef.current.pos.copy(dir).multiplyScalar(fitDist);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "zoomIn" || cameraAction.type === "zoomOut") {
+      const offset = (camGoalRef.current.active ? camGoalRef.current.pos : camera.position)
+        .clone()
+        .sub(currentTarget);
+      const currentDist = Math.max(0.2, offset.length());
+      const factor = cameraAction.type === "zoomIn" ? 0.84 : 1 / 0.84;
+      const minD = isolated && selectedRegion ? 1.1 : CAMERA.minDistance;
+      const nextDist = THREE.MathUtils.clamp(currentDist * factor, minD, CAMERA.maxDistance);
+      offset.normalize().multiplyScalar(nextDist);
+      camGoalRef.current.target.copy(currentTarget);
+      camGoalRef.current.pos.copy(currentTarget).add(offset);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+      return;
+    }
+
+    if (cameraAction.type === "rotate") {
+      const offset = (camGoalRef.current.active ? camGoalRef.current.pos : camera.position)
+        .clone()
+        .sub(currentTarget);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta += cameraAction.dx ?? 0;
+      spherical.phi = THREE.MathUtils.clamp(
+        spherical.phi + (cameraAction.dy ?? 0),
+        0.18,
+        Math.PI - 0.18,
+      );
+      offset.setFromSpherical(spherical);
+      camGoalRef.current.target.copy(currentTarget);
+      camGoalRef.current.pos.copy(currentTarget).add(offset);
+      camGoalRef.current.active = true;
+      lastInteractRef.current = -1;
+    }
+  }, [cameraAction, brainSize, camera, isolated, selectedRegion, size.width, size.height]);
 
   // Cursor management
   useEffect(() => {
@@ -566,11 +762,12 @@ function ExplorerCore({
       dt,
     );
 
+    const activeMap = activityRef?.current ?? activity;
     for (let i = 0; i < REGION_SLOTS; i++) {
       uniforms.uSelectW.value[i] = dampValue(uniforms.uSelectW.value[i], i === selIdx ? 1 : 0, CAMERA.dampLambda, dt);
       uniforms.uHoverW.value[i] = dampValue(uniforms.uHoverW.value[i], i === hovIdx ? 1 : 0, CAMERA.dampLambda * 1.4, dt);
       const id = REGION_IDS[i];
-      const actTarget = id ? THREE.MathUtils.clamp(activity[id] ?? 0, 0, 1) : 0;
+      const actTarget = id ? THREE.MathUtils.clamp(activeMap[id] ?? 0, 0, 1) : 0;
       uniforms.uActivity.value[i] = dampValue(uniforms.uActivity.value[i], actTarget, CAMERA.dampLambda, dt);
       uniforms.uCompareA.value[i] = dampValue(uniforms.uCompareA.value[i], compareTargets.weightsA[i] ?? 0, CAMERA.dampLambda, dt);
       uniforms.uCompareB.value[i] = dampValue(uniforms.uCompareB.value[i], compareTargets.weightsB[i] ?? 0, CAMERA.dampLambda, dt);
@@ -643,15 +840,21 @@ function ExplorerCore({
     uniforms.uPointer.value.lerp(state.pointer, 1 - Math.exp(-8 * dt));
     uniforms.uPointerAmt.value = dampValue(uniforms.uPointerAmt.value, hoveredRef.current ? 0.55 : 0.2, 6, dt);
 
-    // 5. Idle rotation (stops on interaction, resumes after 4s; off for reduced motion or active selection)
-    if (
-      groupRef.current &&
-      !reducedMotion &&
-      !draggingRef.current &&
-      !selectedRegion &&
-      t - lastInteractRef.current > CAMERA.idleResumeSec
-    ) {
-      groupRef.current.rotation.y += CAMERA.idleSpeed * dt;
+    // 5. Damped brain scale (Ctrl+wheel / slider 0.5x..2.0x) & idle rotation
+    const targetBrainScale = clampBrainSize(brainSize);
+    brainScaleRef.current = reducedMotion
+      ? targetBrainScale
+      : dampValue(brainScaleRef.current, targetBrainScale, CAMERA.dampLambda, dt);
+    if (groupRef.current) {
+      groupRef.current.scale.setScalar(brainScaleRef.current);
+      if (
+        !reducedMotion &&
+        !draggingRef.current &&
+        !selectedRegion &&
+        t - lastInteractRef.current > CAMERA.idleResumeSec
+      ) {
+        groupRef.current.rotation.y += CAMERA.idleSpeed * dt;
+      }
     }
 
     // 6. Camera easing on selection / deselection
@@ -697,6 +900,10 @@ function ExplorerCore({
         maxDistance={CAMERA.maxDistance}
         rotateSpeed={0.65}
         zoomSpeed={0.85}
+        touches={{
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
         onStart={() => {
           draggingRef.current = true;
           camGoalRef.current.active = false;
@@ -756,26 +963,31 @@ function ExplorerCore({
           </mesh>
         ) : null}
 
-        {/* Hidden low-poly region proxies for fast, accurate hover & click raycasting */}
+        {/* Hidden low-poly region proxies sharing one memoized geometry & material */}
         {REGION_PROXIES.map((proxy, idx) => {
           const disabledInIso = isolated && selectedRegion !== null && proxy.region !== selectedRegion;
           return (
             <mesh
               key={`${proxy.region}-${idx}`}
+              geometry={proxyGeo}
+              material={proxyMat}
               position={proxy.center}
               scale={proxy.radii}
               onPointerOver={disabledInIso ? undefined : handleProxyOver(proxy.region)}
               onPointerOut={disabledInIso ? undefined : handleProxyOut(proxy.region)}
               onClick={disabledInIso ? undefined : handleProxyClick(proxy.region)}
-            >
-              <icosahedronGeometry args={[1, 1]} />
-              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-            </mesh>
+            />
           );
         })}
 
         {labelRegion && labelPos ? (
-          <Html position={labelPos} center distanceFactor={6} style={{ pointerEvents: "none" }}>
+          <Html
+            position={labelPos}
+            center
+            distanceFactor={6}
+            zIndexRange={[10, 10]}
+            style={{ pointerEvents: "none" }}
+          >
             <div
               className={
                 highContrast
@@ -832,15 +1044,10 @@ export function BrainExplorerCanvas(
       camera={{ position: CAMERA.explorerStart, fov: CAMERA.fov, near: 0.05, far: 30 }}
       gl={{ antialias: false, powerPreference: "high-performance", alpha: true, localClippingEnabled: true }}
       onPointerMissed={() => onSelectRegion(null)}
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          onContextLost();
-        });
-      }}
       className="h-full w-full"
     >
       <color attach="background" args={["#060913"]} />
+      <WebGLContextLossGuard onContextLost={onContextLost} />
       <ExplorerCore
         {...rest}
         onSelectRegion={onSelectRegion}
@@ -859,6 +1066,8 @@ interface HeroSceneProps {
   quality: BrainQuality;
   reducedMotion: boolean;
   highContrast?: boolean;
+  onProgress?: (info: BrainReadinessProgress) => void;
+  onReady?: () => void;
 }
 
 const HERO_KEYFRAMES = {
@@ -875,16 +1084,30 @@ function HeroCore({
   quality,
   reducedMotion,
   highContrast = false,
+  onProgress,
+  onReady,
 }: HeroSceneProps) {
-  const { camera } = useThree();
+  const { camera, gl, scene } = useThree();
   const groupRef = useRef<THREE.Group>(null);
   const dampedProgRef = useRef(progress);
   const camPosScratch = useRef(new THREE.Vector3());
   const lookAtScratch = useRef(new THREE.Vector3());
+  const shadersCompiledRef = useRef(false);
+  const firstFrameQueuedRef = useRef(false);
+  const readyEmittedRef = useRef(false);
+  const onProgressRef = useRef(onProgress);
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+    onReadyRef.current = onReady;
+  }, [onProgress, onReady]);
 
-  const { data: pointData, onSampled } = useBrainPointData(quality.pointCount);
-  const pointsGeo = useMemo(() => buildPointsGeometry(pointData), [pointData]);
-  useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
+  const { data: pointData, onSampled } = useBrainPointDataAsync(quality.pointCount, onProgress);
+  const pointsGeo = useMemo(
+    () => (pointData ? buildPointsGeometry(pointData) : null),
+    [pointData],
+  );
+  useEffect(() => () => pointsGeo?.dispose(), [pointsGeo]);
 
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const shaderArgs = useMemo(
@@ -900,7 +1123,35 @@ function HeroCore({
     [],
   );
 
+  // Asynchronous shader compilation once points geometry is mounted.
+  useEffect(() => {
+    if (!pointsGeo || shadersCompiledRef.current) return;
+    let cancelled = false;
+    onProgressRef.current?.({ stage: "shaders", value: 0.2 });
+
+    const finishCompile = () => {
+      if (cancelled) return;
+      shadersCompiledRef.current = true;
+      onProgressRef.current?.({ stage: "shaders", value: 1 });
+    };
+
+    const rendererWithAsync = gl as THREE.WebGLRenderer & {
+      compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>;
+    };
+    if (typeof rendererWithAsync.compileAsync === "function") {
+      void rendererWithAsync.compileAsync(scene, camera).then(finishCompile, finishCompile);
+    } else {
+      gl.compile(scene, camera);
+      finishCompile();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pointsGeo, gl, scene, camera]);
+
   useFrame((state, delta) => {
+    if (!pointsGeo) return;
     const uniforms = matRef.current?.uniforms as BrainUniforms | undefined;
     if (!uniforms) return;
     const dt = Math.min(delta, 0.1);
@@ -956,17 +1207,40 @@ function HeroCore({
     if (groupRef.current && !reducedMotion) {
       groupRef.current.rotation.y = Math.sin(t * 0.14) * 0.18 * (1 - dive * 0.7);
     }
+
+    // Fire firstFrame + onReady only after shader compilation, 2 presented rAFs, and document.fonts.ready.
+    if (shadersCompiledRef.current && !firstFrameQueuedRef.current) {
+      firstFrameQueuedRef.current = true;
+      onProgressRef.current?.({ stage: "firstFrame", value: 0.4 });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const fontsReady =
+            typeof document !== "undefined" && document.fonts?.ready
+              ? document.fonts.ready
+              : Promise.resolve();
+          void fontsReady.then(() => {
+            if (!readyEmittedRef.current) {
+              readyEmittedRef.current = true;
+              onProgressRef.current?.({ stage: "firstFrame", value: 1 });
+              onReadyRef.current?.();
+            }
+          });
+        });
+      });
+    }
   });
 
   return (
     <>
       <OptionalGlbLoader pointCount={quality.pointCount} onSampled={onSampled} />
       <FpsGovernor qualityPref="auto" tier={quality.tier} downgrade={quality.downgrade} />
-      <group ref={groupRef}>
-        <points geometry={pointsGeo} frustumCulled={false}>
-          <shaderMaterial ref={matRef} args={[shaderArgs]} />
-        </points>
-      </group>
+      {pointsGeo ? (
+        <group ref={groupRef}>
+          <points geometry={pointsGeo} frustumCulled={false}>
+            <shaderMaterial ref={matRef} args={[shaderArgs]} />
+          </points>
+        </group>
+      ) : null}
       {quality.postprocessing ? (
         <EffectComposer multisampling={0}>
           <Bloom intensity={0.6} luminanceThreshold={0.9} luminanceSmoothing={0.25} mipmapBlur />
@@ -988,15 +1262,10 @@ export function BrainHeroCanvas(
       frameloop={active ? "always" : "demand"}
       camera={{ position: [0, 0.75, 5.2], fov: CAMERA.fov, near: 0.04, far: 30 }}
       gl={{ antialias: false, powerPreference: "high-performance", alpha: true }}
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          onContextLost();
-        });
-      }}
       className="h-full w-full"
     >
       <color attach="background" args={["#060913"]} />
+      <WebGLContextLossGuard onContextLost={onContextLost} />
       <HeroCore {...rest} quality={quality} />
     </Canvas>
   );

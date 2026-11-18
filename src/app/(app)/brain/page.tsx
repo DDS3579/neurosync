@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 
-import { deriveWeeklyBrainActivity } from "@/features/brain/brainActivity";
+import {
+  deriveBrainTimeline,
+  deriveWeeklyBrainActivity,
+  hasAnyBrainActivityData,
+} from "@/features/brain/brainActivity";
 import {
   BrainExplorerSkeleton,
   BrainExplorerWorkspace,
 } from "@/features/brain/components/BrainExplorerWorkspace";
+import { upsertCheckin } from "@/features/checkin/checkinUtils";
+import { loadDemoDataToDb } from "@/features/overview/demoData";
 import {
   useActivityLogs,
   useFocusSessions,
@@ -16,6 +23,12 @@ import {
   useMovementLogs,
   useSleepLogs,
 } from "@/lib/db/hooks";
+import {
+  activityRepository,
+  focusRepository,
+  getCheckinByDate,
+} from "@/lib/db/repositories";
+import type { PersonalActivityType, Rating } from "@/types/domain";
 
 export default function BrainPage() {
   const focus = useFocusSessions();
@@ -49,7 +62,7 @@ export default function BrainPage() {
       return null;
     }
 
-    return deriveWeeklyBrainActivity({
+    const sources = {
       focus: focus.data,
       movement: movement.data,
       sleep: sleep.data,
@@ -57,7 +70,14 @@ export default function BrainPage() {
       habitLogs: habitLogs.data,
       mindfulness: mindfulness.data,
       activities: activities.data,
-    });
+    };
+
+    const weekly = deriveWeeklyBrainActivity(sources);
+    const timeline7 = deriveBrainTimeline({ ...sources, windowDays: 7 });
+    const timeline30 = deriveBrainTimeline({ ...sources, windowDays: 30 });
+    const hasAnyData = hasAnyBrainActivityData(sources);
+
+    return { weekly, timeline7, timeline30, hasAnyData };
   }, [
     isLoading,
     focus.data,
@@ -69,16 +89,77 @@ export default function BrainPage() {
     activities.data,
   ]);
 
+  const handleLoadDemo = useCallback(async () => {
+    await loadDemoDataToDb();
+    toast.success("Loaded demo data into your browser.");
+  }, []);
+
+  const handleCreateActivity = useCallback(
+    async (input: {
+      date: string;
+      type: PersonalActivityType;
+      durationMin: number;
+      enjoyment: Rating;
+    }) => {
+      await activityRepository.create({
+        date: input.date,
+        type: input.type,
+        durationMin: input.durationMin,
+        enjoyment: input.enjoyment,
+      });
+    },
+    [],
+  );
+
+  const handleQuickMoodCheckin = useCallback(async (mood: Rating, date: string) => {
+    const existing = await getCheckinByDate(date);
+    const res = await upsertCheckin({
+      date,
+      mood,
+      stress: existing?.stress ?? 3,
+      energy: existing?.energy ?? 3,
+      concentration: existing?.concentration ?? 3,
+      motivation: existing?.motivation ?? 3,
+      outdoorMin: existing?.outdoorMin,
+      note: existing?.note,
+    });
+    return res.mode;
+  }, []);
+
+  const handleQuickFocusLog = useCallback(
+    async (input: { date: string; subject: string; durationMin: number }) => {
+      await focusRepository.create({
+        date: input.date,
+        startedAt: new Date().toISOString(),
+        durationMin: input.durationMin,
+        plannedMin: input.durationMin,
+        subject: input.subject,
+        method: "active_recall",
+        focusRating: 4,
+        difficulty: 3,
+        distractions: 0,
+      });
+    },
+    [],
+  );
+
   if (!derived) {
     return <BrainExplorerSkeleton />;
   }
 
   return (
     <BrainExplorerWorkspace
-      activity={derived.activity}
-      loggedItems={derived.items}
-      windowStart={derived.windowStart}
-      windowEnd={derived.windowEnd}
+      activity={derived.weekly.activity}
+      loggedItems={derived.weekly.items}
+      windowStart={derived.weekly.windowStart}
+      windowEnd={derived.weekly.windowEnd}
+      timeline7={derived.timeline7}
+      timeline30={derived.timeline30}
+      hasAnyData={derived.hasAnyData}
+      onLoadDemo={handleLoadDemo}
+      onCreateActivity={handleCreateActivity}
+      onQuickMoodCheckin={handleQuickMoodCheckin}
+      onQuickFocusLog={handleQuickFocusLog}
     />
   );
 }

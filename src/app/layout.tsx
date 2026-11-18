@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 
-import { ReducedMotionProvider } from "@/components/app-shell/reduced-motion-sync";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { A11yPrefsSync } from "@/components/app-shell/a11y-prefs-sync";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,16 +12,22 @@ export const metadata: Metadata = {
     "A privacy-first, neuroscience-informed tracker: educational brain atlas, honest daily logs, and small personal experiments.",
 };
 
+const INTRO_SEEN_HEAD_SCRIPT =
+  "try{if(sessionStorage.getItem('ns:intro:v1')==='1')document.documentElement.dataset.intro='seen'}catch(e){}";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`dark ${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: INTRO_SEEN_HEAD_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col">
-        <ReducedMotionProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </ReducedMotionProvider>
+        <A11yPrefsSync />
+        {children}
       </body>
     </html>
   );

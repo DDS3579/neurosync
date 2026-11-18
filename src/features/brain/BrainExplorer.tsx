@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, type RefObject } from "react";
 
 import { ACTIVITY_META, BRAIN_REGIONS } from "@/data/brainRegions";
 import { cn } from "@/lib/utils";
 import type { ActivityKind, RegionId } from "@/types/domain";
 import { BrainFallback } from "./BrainFallback";
+import type { BrainCameraAction } from "./BrainScene";
 import { CUT_AXIS_DEFAULTS, type BrainMode, type CrossSectionConfig } from "./regionZones";
 import {
   useBrainQuality,
@@ -26,6 +27,7 @@ export interface BrainExplorerProps {
   mode: BrainMode;
   selectedRegion: RegionId | null;
   activity: Partial<Record<RegionId, number>>; // 0..1, drives 'activity' mode
+  activityRef?: RefObject<Partial<Record<RegionId, number>> | null>;
   onSelectRegion: (id: RegionId | null) => void;
   onHoverRegion?: (id: RegionId | null) => void;
   quality?: QualityPref;
@@ -36,6 +38,9 @@ export interface BrainExplorerProps {
   crossSection?: CrossSectionConfig | null;
   focusRequestKey?: number;
   onGlbStatusChange?: (hasGlb: boolean) => void;
+  brainSize?: number;
+  cameraAction?: BrainCameraAction | null;
+  srContextNote?: string;
 }
 
 const BrainExplorerCanvas = dynamic(
@@ -54,6 +59,7 @@ export function BrainExplorer({
   mode,
   selectedRegion,
   activity,
+  activityRef,
   onSelectRegion,
   onHoverRegion,
   quality = "auto",
@@ -64,6 +70,9 @@ export function BrainExplorer({
   crossSection = null,
   focusRequestKey = 0,
   onGlbStatusChange,
+  brainSize = 1,
+  cameraAction = null,
+  srContextNote,
 }: BrainExplorerProps) {
   const qualityState = useBrainQuality(quality);
   const reducedMotion = usePrefersReducedMotion();
@@ -134,8 +143,12 @@ export function BrainExplorer({
       );
     }
 
+    if (srContextNote) {
+      parts.push(srContextNote);
+    }
+
     return parts.join(" ");
-  }, [activity, compare, crossSection, isolated, mode, selectedInfo]);
+  }, [activity, compare, crossSection, isolated, mode, selectedInfo, srContextNote]);
 
   const liveAnnouncement = selectedInfo
     ? isolated
@@ -149,13 +162,15 @@ export function BrainExplorer({
     <div
       ref={ref}
       role="region"
+      tabIndex={-1}
       aria-label="Interactive 3D brain atlas"
       aria-describedby={descriptionId}
+      data-brain-canvas-focus="true"
       data-quality={qualityState.tier}
       data-high-contrast={highContrast ? "true" : "false"}
       data-text-size={textSize}
       className={cn(
-        "relative h-[460px] w-full overflow-hidden rounded-xl border bg-[#060913] sm:h-[520px]",
+        "relative h-[460px] w-full overflow-hidden rounded-xl border bg-[#060913] outline-none sm:h-[520px]",
         highContrast ? "border-border-strong" : "border-white/[0.08]",
         className,
       )}
@@ -206,6 +221,7 @@ export function BrainExplorer({
           mode={mode}
           selectedRegion={selectedRegion}
           activity={activity}
+          activityRef={activityRef}
           onSelectRegion={onSelectRegion}
           onHoverRegion={onHoverRegion}
           quality={qualityState}
@@ -219,6 +235,8 @@ export function BrainExplorer({
           crossSection={crossSection}
           focusRequestKey={focusRequestKey}
           onGlbStatusChange={onGlbStatusChange}
+          brainSize={brainSize}
+          cameraAction={cameraAction}
         />
       ) : (
         <div className="h-full w-full bg-[#060913]" />
@@ -227,7 +245,7 @@ export function BrainExplorer({
       {mode === "activity" || mode === "compare" ? (
         <p
           className={cn(
-            "pointer-events-none absolute inset-x-3 bottom-3 text-center text-caption",
+            "pointer-events-none absolute inset-x-3 bottom-16 text-center text-caption md:bottom-3",
             highContrast ? "text-foreground" : "text-muted-foreground",
           )}
         >

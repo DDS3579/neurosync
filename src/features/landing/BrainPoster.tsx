@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 interface PosterDot {
   cx: number;
   cy: number;
@@ -53,13 +51,13 @@ const POSTER_DOTS = buildPosterDots();
  * and when `prefers-reduced-motion` is enabled.
  */
 export function BrainPoster({ className }: { className?: string }) {
+  const hasPosition = /\b(absolute|fixed|sticky|static|relative)\b/.test(className ?? "");
   return (
     <div
       aria-hidden="true"
-      className={cn(
-        "relative flex h-full w-full items-center justify-center overflow-hidden bg-[#060913]",
-        className,
-      )}
+      className={`${hasPosition ? "" : "relative "}flex h-full w-full items-center justify-center overflow-hidden bg-[#060913]${
+        className ? ` ${className}` : ""
+      }`}
     >
       {/* Subtle radial dot matrix masked into a soft circular field */}
       <div

@@ -1,0 +1,118 @@
+/* Instant first-paint styles for the First Light intro overlay.
+   Imported synchronously on the landing page so initial SSR HTML paints cleanly without JS. */
+
+@keyframes nx-heartbeat-pulse {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.36);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+    box-shadow: 0 0 24px 6px rgba(34, 211, 238, 0.22);
+  }
+}
+
+@keyframes nx-caption-fade {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.nx-intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background-color: #060913;
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: max(1.25rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1.25rem, env(safe-area-inset-left));
+}
+
+html:not([data-intro="seen"]):has(
+    .nx-intro-overlay[data-phase="idle"],
+    .nx-intro-overlay[data-phase="loading"],
+    .nx-intro-overlay[data-phase="ready"]
+  ),
+html:not([data-intro="seen"]):has(
+    .nx-intro-overlay[data-phase="idle"],
+    .nx-intro-overlay[data-phase="loading"],
+    .nx-intro-overlay[data-phase="ready"]
+  )
+  body {
+  overflow: hidden !important;
+  height: 100dvh !important;
+  overscroll-behavior: none !important;
+}
+
+.nx-intro-overlay--minimal {
+  background-color: transparent;
+  pointer-events: none;
+}
+
+.nx-intro-core-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: #22d3ee;
+  animation: nx-heartbeat-pulse 2.2s ease-in-out infinite;
+}
+
+.nx-intro-caption-enter {
+  animation: nx-caption-fade 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Before React hydrates on repeat session visits, prevent any full-screen overlay flash. */
+html[data-intro="seen"] .nx-intro-overlay:not(.nx-intro-overlay--minimal) {
+  background-color: transparent;
+  pointer-events: none;
+}
+
+html[data-intro="seen"] .nx-intro-overlay:not(.nx-intro-overlay--minimal) .nx-intro-full-stage {
+  display: none;
+}
+
+html[data-intro="seen"] .nx-intro-minimal-bar {
+  display: block;
+}
+
+/* Short landscape phones: hide footer line cleanly and use horizontal caption layout. */
+@media (max-height: 479px) {
+  .nx-intro-disclaimer {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-intro-core-dot {
+    animation: none;
+    opacity: 0.9;
+    transform: none;
+  }
+
+  .nx-intro-caption-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+[data-reduced-motion="true"] .nx-intro-core-dot,
+[data-reduced-motion="true"] .nx-intro-caption-enter {
+  animation: none !important;
+  opacity: 0.9;
+  transform: none !important;
+}

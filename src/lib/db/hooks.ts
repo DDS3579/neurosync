@@ -16,6 +16,7 @@ import {
   habitRepository,
   insightFeedbackRepository,
   journalRepository,
+  microtaskRepository,
   mindfulnessRepository,
   movementRepository,
   nutritionRepository,
@@ -35,6 +36,7 @@ import type {
   HabitLog,
   InsightFeedback,
   JournalEntry,
+  MicrotaskResult,
   MindfulnessSession,
   MovementLog,
   NutritionLog,
@@ -120,6 +122,10 @@ export function useDayPlans(range: DateRange = ALL_TIME): LiveResult<DayPlan> {
 
 export function useInsightFeedback(): LiveResult<InsightFeedback> {
   return useRows(() => insightFeedbackRepository.listAll(), ["insightFeedback"]);
+}
+
+export function useMicrotaskResults(range: DateRange = ALL_TIME): LiveResult<MicrotaskResult> {
+  return useRows(() => microtaskRepository.listByDateRange(range), rangeDeps(range));
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {

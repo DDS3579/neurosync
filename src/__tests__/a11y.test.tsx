@@ -27,17 +27,24 @@ vi.hoisted(() => {
     });
   }
 });
+import { AppShell } from "@/components/app-shell/app-shell";
 import { ChartCard } from "@/components/nx";
+import { usePanelLayout } from "@/components/floating";
 import { BrainExplorer } from "@/features/brain/BrainExplorer";
 import { BrainExplorerWorkspace } from "@/features/brain/components/BrainExplorerWorkspace";
 import { deriveWeeklyBrainActivity } from "@/features/brain/brainActivity";
+import { ConstellationWorkspace } from "@/features/constellation/components/ConstellationWorkspace";
+import { deriveConstellation } from "@/features/constellation/constellation";
 import { ExperimentsWorkspace } from "@/features/experiments/components/ExperimentsWorkspace";
 import { FocusWorkspace } from "@/features/focus/components/FocusWorkspace";
+import { MicrotasksTab } from "@/features/focus/components/microtasks/MicrotasksTab";
 import { HabitsWorkspace } from "@/features/habits/components/HabitsWorkspace";
 import { InsightsWorkspace } from "@/features/insights/components/InsightsWorkspace";
 import { WeeklyReportWorkspace } from "@/features/insights/components/WeeklyReportWorkspace";
 import { LibraryWorkspace } from "@/features/library/components/LibraryWorkspace";
 import { LandingPage } from "@/features/landing/LandingPage";
+import { IntroLoader } from "@/features/landing/intro/IntroLoader";
+import { createIntroState } from "@/features/landing/intro/introMachine";
 import { OverviewView } from "@/features/overview/OverviewView";
 import { buildOverviewViewData } from "@/features/overview/demoData";
 import AppSegmentError from "@/app/(app)/error";
@@ -46,9 +53,11 @@ import { SettingsWorkspace } from "@/features/settings/components/SettingsWorksp
 import { LIBRARY_ENTRIES } from "@/data/library";
 import { buildWeeklyReport, computeInsights, generateDemoData } from "@/lib/insights";
 
+let mockPathname = "/overview";
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
-  usePathname: () => "/overview",
+  usePathname: () => mockPathname,
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -393,7 +402,40 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     await runAxeCheck(settingsNode);
   });
 
-  it("Landing page landmarks, skip link, and heading structure pass axe-core", async () => {
+  it("IntroLoader overlay and post-exit Landing page pass axe-core and AA contrast", async () => {
+    const activeState = {
+      ...createIntroState({ mountedAtMs: 0, webglSupported: true, fontsReady: true }),
+      phase: "loading" as const,
+      loadingShownAtMs: 410,
+      progress: 0.45,
+      stage: "geometry" as const,
+      stageLabel: "PLACING PARTICLES",
+      pointsPlaced: 24000,
+      pointsTotal: 40000,
+      ignitedCount: 3,
+      activeRegionIndex: 2,
+      canSkip: true,
+    };
+
+    const overlayNode = await renderIntoMain(
+      <IntroLoader state={activeState} onSkip={vi.fn()} />,
+      false,
+    );
+    expect(overlayNode.querySelector('[role="status"]')).not.toBeNull();
+    expect(overlayNode.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(overlayNode.textContent).toContain("Skip");
+    expect(overlayNode.textContent).toContain("Educational associations, not measurements.");
+    expect(contrastRatio("#e6eaf5", "#060913")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#cbd5e1", "#060913")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#94a3b8", "#060913")).toBeGreaterThanOrEqual(4.5);
+    await runAxeCheck(overlayNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    overlayNode.remove();
+
     const node = await renderIntoMain(<LandingPage />, false);
     const skipLink = node.querySelector('a[href="#main-content"]');
     expect(skipLink?.textContent).toContain("Skip to content");
@@ -484,5 +526,112 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     );
     expect(errNode.querySelector('[role="alert"]')).not.toBeNull();
     await runAxeCheck(errNode);
+  });
+
+  it("Immersive /brain, /constellation, and Microtasks pass axe-core", async () => {
+    const derived = deriveWeeklyBrainActivity({
+      focus: demo.focus,
+      movement: demo.movement,
+      sleep: demo.sleep,
+      habits: demo.habits,
+      habitLogs: demo.habitLogs,
+      mindfulness: [],
+      activities: [],
+      today: TODAY_DATE,
+    });
+
+    // 1. Immersive /brain with floating panels
+    mockPathname = "/brain";
+    const brainNode = await renderIntoMain(
+      <AppShell>
+        <BrainExplorerWorkspace
+          activity={derived.activity}
+          loggedItems={derived.items}
+          windowStart={derived.windowStart}
+          windowEnd={derived.windowEnd}
+          hasAnyData
+          onCreateActivity={vi.fn(async () => {})}
+          onQuickMoodCheckin={vi.fn(async () => "created" as const)}
+          onQuickFocusLog={vi.fn(async () => {})}
+        />
+      </AppShell>,
+      false,
+    );
+    await runAxeCheck(brainNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    brainNode.remove();
+    usePanelLayout.setState({
+      hydrated: false,
+      topZ: 1,
+      panels: {},
+      defaults: {},
+      measuredSizes: {},
+      activeMobilePanelId: null,
+    });
+
+    // 2. /constellation workspace (Starfield map + Table view)
+    mockPathname = "/constellation";
+    const constellationData = deriveConstellation({
+      habits: demo.habits,
+      habitLogs: demo.habitLogs,
+      activities: [],
+      focus: demo.focus,
+      movement: demo.movement,
+      mindfulness: [],
+      windowDays: 30,
+      today: TODAY_DATE,
+    });
+    const constNode = await renderIntoMain(
+      <ConstellationWorkspace
+        data={constellationData}
+        windowDays={30}
+        onChangeWindowDays={vi.fn()}
+        reducedMotion
+      />,
+    );
+    await runAxeCheck(constNode);
+
+    const tableBtn = constNode.querySelector('button[aria-label="Table view"]') as HTMLButtonElement;
+    await act(async () => {
+      tableBtn.click();
+    });
+    await runAxeCheck(constNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    constNode.remove();
+
+    // 3. Microtasks tab & trends
+    mockPathname = "/focus";
+    const microNode = await renderIntoMain(
+      <MicrotasksTab
+        results={[
+          {
+            id: "a11y-mt-1",
+            date: "2026-11-16",
+            createdAt: "2026-11-16T08:00:00.000Z",
+            updatedAt: "2026-11-16T08:00:00.000Z",
+            task: "reaction_time",
+            timeOfDay: "morning",
+            restedRating: 4,
+            inputType: "keyboard",
+            metrics: { trialsMs: [280, 290, 300], medianMs: 290, bestMs: 280, falseStarts: 0 },
+          },
+        ]}
+        reducedMotion
+        onCreateResult={vi.fn(async () => {})}
+        onDeleteResult={vi.fn(async () => {})}
+      />,
+    );
+    await runAxeCheck(microNode);
+
+    mockPathname = "/overview";
+    window.localStorage.clear();
   });
 });

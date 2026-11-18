@@ -15,6 +15,7 @@ import type {
   InsightFeedback,
   ISODateTime,
   JournalEntry,
+  MicrotaskResult,
   MindfulnessSession,
   MovementLog,
   NutritionLog,
@@ -160,7 +161,15 @@ const experimentSchema = z.object({
   title: z.string().min(1),
   hypothesis: z.string(),
   changeDescription: z.string(),
-  metric: z.enum(["concentration", "mood", "energy", "stress", "focusRating"]),
+  metric: z.enum([
+    "concentration",
+    "mood",
+    "energy",
+    "stress",
+    "focusRating",
+    "reactionTime",
+    "memorySpan",
+  ]),
   baselineStart: isoDate,
   baselineEnd: isoDate,
   interventionStart: isoDate,
@@ -275,6 +284,50 @@ const insightFeedbackSchema = z.object({
   pillar: z.enum(["sleep", "focus", "movement", "nutrition", "wellbeing", "learning"]).optional(),
 });
 
+const microtaskCommonFields = {
+  ...baseFields,
+  date: isoDate,
+  timeOfDay: z.enum(["morning", "afternoon", "evening", "night"]),
+  restedRating: rating.optional(),
+  inputType: z.enum(["mouse", "touch", "keyboard"]),
+};
+
+const microtaskResultSchema = z.discriminatedUnion("task", [
+  z.object({
+    ...microtaskCommonFields,
+    task: z.literal("reaction_time"),
+    metrics: z.object({
+      trialsMs: z.array(z.number().nonnegative()).min(1),
+      medianMs: z.number().nonnegative(),
+      bestMs: z.number().nonnegative(),
+      falseStarts: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    ...microtaskCommonFields,
+    task: z.literal("memory_span"),
+    metrics: z.object({
+      longestSpan: z.number().int().nonnegative(),
+      startingLength: z.number().int().positive(),
+      totalRounds: z.number().int().positive(),
+      failures: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
+    ...microtaskCommonFields,
+    task: z.literal("go_no_go"),
+    metrics: z.object({
+      totalTrials: z.number().int().positive(),
+      goTrials: z.number().int().nonnegative(),
+      noGoTrials: z.number().int().nonnegative(),
+      hits: z.number().int().nonnegative(),
+      misses: z.number().int().nonnegative(),
+      commissionErrors: z.number().int().nonnegative(),
+      meanReactionMs: z.number().nonnegative().nullable(),
+    }),
+  }),
+]);
+
 const v1TablesShape = {
   settings: z.array(settingsSchema),
   sleepLogs: z.array(sleepSchema),
@@ -358,10 +411,23 @@ const v7BackupFileSchema = z.object({
   tables: z.object(v7TablesShape),
 });
 
+const v8TablesShape = v7TablesShape;
+
+const v8BackupFileSchema = z.object({
+  schemaVersion: z.literal(8),
+  exportedAt: isoDateTime,
+  tables: z.object(v8TablesShape),
+});
+
+const v9TablesShape = {
+  ...v8TablesShape,
+  microtaskResults: z.array(microtaskResultSchema),
+};
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
-  tables: z.object(v7TablesShape),
+  tables: z.object(v9TablesShape),
 });
 
 export interface BackupTables {
@@ -381,6 +447,7 @@ export interface BackupTables {
   reviewItems: ReviewItem[];
   dayPlans: DayPlan[];
   insightFeedback: InsightFeedback[];
+  microtaskResults: MicrotaskResult[];
 }
 
 export interface BackupFile {
@@ -421,6 +488,7 @@ const TABLE_NAMES = [
   "reviewItems",
   "dayPlans",
   "insightFeedback",
+  "microtaskResults",
 ] as const satisfies readonly (keyof BackupTables)[];
 
 /** Reads every table into one plain object. */
@@ -444,6 +512,7 @@ export async function buildBackup(): Promise<BackupFile> {
     reviewItems: await db.reviewItems.toArray(),
     dayPlans: await db.dayPlans.toArray(),
     insightFeedback: await db.insightFeedback.toArray(),
+    microtaskResults: await db.microtaskResults.toArray(),
   };
 
   return {
@@ -528,6 +597,7 @@ function parseBackup(text: string): BackupFile {
         reviewItems: [],
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -545,6 +615,7 @@ function parseBackup(text: string): BackupFile {
         reviewItems: [],
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -561,6 +632,7 @@ function parseBackup(text: string): BackupFile {
         reviewItems: [],
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -576,6 +648,7 @@ function parseBackup(text: string): BackupFile {
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -591,6 +664,7 @@ function parseBackup(text: string): BackupFile {
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         dayPlans: [],
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -605,6 +679,7 @@ function parseBackup(text: string): BackupFile {
         settings: normalizeSettingsRows(data.tables.settings),
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
         insightFeedback: [],
+        microtaskResults: [],
       },
     };
   }
@@ -618,6 +693,21 @@ function parseBackup(text: string): BackupFile {
         ...data.tables,
         settings: normalizeSettingsRows(data.tables.settings),
         focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+        microtaskResults: [],
+      },
+    };
+  }
+
+  if (version === 8) {
+    const data = validateWithSchema(v8BackupFileSchema, raw);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: data.exportedAt,
+      tables: {
+        ...data.tables,
+        settings: normalizeSettingsRows(data.tables.settings),
+        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
+        microtaskResults: [],
       },
     };
   }

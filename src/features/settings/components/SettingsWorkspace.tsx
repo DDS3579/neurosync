@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Bell, CalendarPlus, Download, ShieldAlert, Trash2, Upload } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { DurationInput, PageHeader } from "@/components/nx";
+import { resetPanelLayout } from "@/components/floating";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -29,6 +30,17 @@ import {
   normalizeReminderSettings,
 } from "@/features/reminders/reminderUtils";
 import type { BackupMode, ImportSummary } from "@/lib/db/backup";
+import {
+  BRAIN_UI_PREFS_EVENT,
+  DEFAULT_BRAIN_IMMERSIVE,
+  DEFAULT_BRAIN_SIZE,
+  UI_BRAIN_IMMERSIVE_KEY,
+  UI_BRAIN_SIZE_KEY,
+  readBrainImmersivePref,
+  readBrainSizePref,
+  writeBrainImmersivePref,
+  writeBrainSizePref,
+} from "@/lib/ui/brainUiPrefs";
 import type { ReminderSettings, TextSizePref, UserSettings } from "@/types/domain";
 
 const hhmmSchema = z
@@ -90,6 +102,34 @@ export interface SettingsWorkspaceProps {
   onDeleteAllData: () => Promise<void>;
 }
 
+function subscribeImmersiveBrainSetting(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === UI_BRAIN_IMMERSIVE_KEY) {
+      callback();
+    }
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  };
+}
+
+function subscribeBrainSizeSetting(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === UI_BRAIN_SIZE_KEY) {
+      callback();
+    }
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(BRAIN_UI_PREFS_EVENT, callback);
+  };
+}
+
 function readNotificationPermission(): NotificationPermission | "unsupported" {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   return Notification.permission;
@@ -115,6 +155,16 @@ export function SettingsWorkspace({
   const [deleting, setDeleting] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     () => readNotificationPermission(),
+  );
+  const immersiveBrain = useSyncExternalStore(
+    subscribeImmersiveBrainSetting,
+    readBrainImmersivePref,
+    () => DEFAULT_BRAIN_IMMERSIVE,
+  );
+  const brainSize = useSyncExternalStore(
+    subscribeBrainSizeSetting,
+    readBrainSizePref,
+    () => DEFAULT_BRAIN_SIZE,
   );
 
   const form = useForm<SettingsFormValues>({
@@ -411,6 +461,76 @@ export function SettingsWorkspace({
                     </ToggleGroup>
                   )}
                 />
+              </div>
+            </div>
+
+            {/* Brain Explorer */}
+            <div className="space-y-3 border-t border-border pt-6">
+              <h2 className="text-section font-medium text-foreground">
+                Brain Explorer
+              </h2>
+
+              <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="settings-immersive-brain" className="text-body font-medium">
+                    Open the Brain Explorer in full-screen mode
+                  </Label>
+                  <p className="text-caption text-muted-foreground">
+                    Launch /brain with a full-viewport 3D canvas (stored in this browser; press Esc or Exit to switch back anytime).
+                  </p>
+                </div>
+                <Switch
+                  id="settings-immersive-brain"
+                  aria-label="Open the Brain Explorer in full-screen mode"
+                  checked={immersiveBrain}
+                  onCheckedChange={(next) => writeBrainImmersivePref(next)}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <p className="text-body font-medium text-foreground">
+                    Brain Explorer panel layout
+                  </p>
+                  <p className="text-caption text-muted-foreground">
+                    Restore the floating dock, mode, timeline, quick log, region, and impact panels to their default positions.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    resetPanelLayout();
+                    toast.success("Brain Explorer panel layout reset to defaults.");
+                  }}
+                  className="rounded-control"
+                >
+                  Reset layout
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-2 px-4 py-3">
+                <div className="space-y-0.5">
+                  <p className="text-body font-medium text-foreground">
+                    Brain Explorer size
+                  </p>
+                  <p className="text-caption text-muted-foreground tabular-nums">
+                    Current display scale is {brainSize.toFixed(1)}× (default 1.0×).
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    writeBrainSizePref(DEFAULT_BRAIN_SIZE);
+                    toast.success("Brain Explorer size reset to 1.0×.");
+                  }}
+                  className="rounded-control"
+                >
+                  Reset size
+                </Button>
               </div>
             </div>
 

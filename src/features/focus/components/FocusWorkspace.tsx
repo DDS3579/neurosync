@@ -66,10 +66,16 @@ import {
   type RunningFocusSession,
 } from "@/features/focus/timerUtils";
 import { toLocalISODate } from "@/features/sleep/sleepUtils";
-import type { FocusSession, ReviewDifficulty, ReviewItem } from "@/types/domain";
+import type {
+  FocusSession,
+  MicrotaskResult,
+  ReviewDifficulty,
+  ReviewItem,
+} from "@/types/domain";
 
 import { MethodStatsCard } from "./MethodStatsCard";
 import { ReviewQueueSection } from "./ReviewQueueSection";
+import { MicrotasksTab, type NewMicrotaskResultInput } from "./microtasks/MicrotasksTab";
 
 export interface FocusWorkspaceProps {
   defaultFocusMin: number;
@@ -77,11 +83,15 @@ export interface FocusWorkspaceProps {
   initialPlannedMin?: number;
   sessions: FocusSession[];
   reviewItems: ReviewItem[];
+  microtaskResults?: MicrotaskResult[];
+  reducedMotion?: boolean;
   onCreateSession: (values: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => Promise<void>;
   onDeleteSession: (id: string) => Promise<void>;
   onAddReviewItem: (values: { topic: string; notes?: string }) => Promise<void>;
   onRateReviewItem: (id: string, rating: ReviewDifficulty) => Promise<number>;
   onDeleteReviewItem: (id: string) => Promise<void>;
+  onCreateMicrotaskResult?: (values: NewMicrotaskResultInput) => Promise<void>;
+  onDeleteMicrotaskResult?: (id: string) => Promise<void>;
 }
 
 function subscribeFocusHash(callback: () => void): () => void {
@@ -110,11 +120,15 @@ export function FocusWorkspace({
   initialPlannedMin,
   sessions,
   reviewItems,
+  microtaskResults = [],
+  reducedMotion = false,
   onCreateSession,
   onDeleteSession,
   onAddReviewItem,
   onRateReviewItem,
   onDeleteReviewItem,
+  onCreateMicrotaskResult,
+  onDeleteMicrotaskResult,
 }: FocusWorkspaceProps) {
   const activeTab = useSyncExternalStore(
     subscribeFocusHash,
@@ -362,6 +376,7 @@ export function FocusWorkspace({
             Review queue{dueCount > 0 ? ` (${dueCount})` : ""}
           </TabsTrigger>
           <TabsTrigger value="methods">Method stats</TabsTrigger>
+          <TabsTrigger value="microtasks">Microtasks</TabsTrigger>
         </TabsList>
 
         <TabsContent value="timer">
@@ -827,6 +842,15 @@ export function FocusWorkspace({
 
         <TabsContent value="methods">
           <MethodStatsCard sessions={sessions} />
+        </TabsContent>
+
+        <TabsContent value="microtasks">
+          <MicrotasksTab
+            results={microtaskResults}
+            reducedMotion={reducedMotion}
+            onCreateResult={onCreateMicrotaskResult ?? (async () => {})}
+            onDeleteResult={onDeleteMicrotaskResult ?? (async () => {})}
+          />
         </TabsContent>
       </Tabs>
     </div>
