@@ -139,10 +139,12 @@ export function IntroLoader({ state, onSkip }: IntroLoaderProps) {
       const elapsed = Math.max(0, performance.now() - start);
       const t = Math.min(1, elapsed / total);
 
-      // Sweep light across silhouette in the first ~500ms (t: 0..0.56)
-      const sweep = Math.min(1, t / 0.56);
-      // Particles lift outward starting around 320ms (t: 0.35..1)
-      const liftoff = t > 0.35 ? Math.min(1, (t - 0.35) / 0.65) : 0;
+      // Sweep light gently across silhouette in the first ~600ms (t: 0..0.48)
+      const rawSweep = Math.min(1, t / 0.48);
+      const sweep = rawSweep * rawSweep * (3 - 2 * rawSweep);
+      // Particles lift outward starting softly around 320ms (t: 0.26..1)
+      const rawLift = t > 0.26 ? Math.min(1, (t - 0.26) / 0.74) : 0;
+      const liftoff = rawLift * rawLift * (3 - 2 * rawLift);
 
       engineRef.current?.updateState({
         phase: "exiting",
@@ -152,11 +154,12 @@ export function IntroLoader({ state, onSkip }: IntroLoaderProps) {
         liftoffProgress: liftoff,
       });
 
-      // Circular radial aperture opens cleanly from center of silhouette after ~280ms
-      if (t > 0.31) {
-        const ap = Math.min(1, (t - 0.31) / 0.69);
-        const eased = 1 - Math.pow(1 - ap, 2.2);
-        const radiusPct = eased * 135;
+      // Feathered radial aperture opens smoothly from center of silhouette across t: 0.28..1
+      if (t > 0.28) {
+        const ap = Math.min(1, (t - 0.28) / 0.72);
+        const eased =
+          ap < 0.5 ? 4 * ap * ap * ap : 1 - Math.pow(-2 * ap + 2, 3) / 2;
+        const radiusPct = eased * 140;
         const rect = overlay.getBoundingClientRect();
         const layout = computeSilhouetteLayout(
           rect.width || window.innerWidth,
@@ -164,9 +167,9 @@ export function IntroLoader({ state, onSkip }: IntroLoaderProps) {
         );
         const mask = `radial-gradient(circle at ${layout.cx.toFixed(0)}px ${layout.cy.toFixed(
           0,
-        )}px, transparent ${radiusPct.toFixed(1)}%, rgba(0,0,0,0.92) ${(radiusPct + 9).toFixed(
+        )}px, transparent ${radiusPct.toFixed(1)}%, rgba(0,0,0,0.88) ${(radiusPct + 14).toFixed(
           1,
-        )}%, #000 ${(radiusPct + 18).toFixed(1)}%)`;
+        )}%, #000 ${(radiusPct + 28).toFixed(1)}%)`;
         overlay.style.maskImage = mask;
         overlay.style.webkitMaskImage = mask;
       }
@@ -363,7 +366,7 @@ export function IntroLoader({ state, onSkip }: IntroLoaderProps) {
               >
                 <div className="h-px w-full overflow-hidden bg-white/[0.14]">
                   <div
-                    className="h-full origin-left bg-gradient-to-r from-[#22D3EE] to-[#8B5CF6] transition-transform duration-150 ease-out"
+                    className="h-full origin-left bg-gradient-to-r from-[#22D3EE] to-[#8B5CF6] transition-transform duration-300 ease-out"
                     style={{ transform: `scaleX(${Math.max(0.03, state.progress)})` }}
                   />
                 </div>

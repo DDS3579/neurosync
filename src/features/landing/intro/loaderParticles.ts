@@ -119,6 +119,7 @@ export class LoaderParticleEngine {
   private ty: Float32Array;
   private reg: Uint8Array;
   private seeds: Float32Array;
+  private regionGlow: Float32Array;
 
   private pointerX = -9999;
   private pointerY = -9999;
@@ -161,6 +162,7 @@ export class LoaderParticleEngine {
     this.ty = new Float32Array(targetBudget);
     this.reg = new Uint8Array(targetBudget);
     this.seeds = new Float32Array(targetBudget);
+    this.regionGlow = new Float32Array(IGNITION_ORDER.length);
 
     // Deterministic strided sampling so every region keeps balanced density at 1,000 / 1,400 / 2,400 budgets.
     const stride = full.count / targetBudget;
@@ -302,31 +304,42 @@ export class LoaderParticleEngine {
     this.lastTick = now;
 
     const elapsed = (now - this.startedAt) / 1000;
-    const settle = this.state.phase === "idle" ? 0.15 : Math.min(1, elapsed / 0.85);
-    const springK = 14 + settle * 42;
-    const damping = Math.exp(-8.5 * dt);
+    // Hermite smoothstep settle over ~1.15s so dust drifts effortlessly into the silhouette.
+    const rawSettle = this.state.phase === "idle" ? 0.12 : Math.min(1, elapsed / 1.15);
+    const settle = rawSettle * rawSettle * (3 - 2 * rawSettle);
+    const springK = 10 + settle * 32;
+    const damping = Math.exp(-7.2 * dt);
+
+    // Smoothly ramp per-region ignition brightness instead of snapping bins sharply.
+    const glowRate = 1 - Math.exp(-6.5 * dt);
+    const allLit = this.state.phase === "exiting" || this.state.phase === "done";
+    for (let r = 0; r < this.regionGlow.length; r++) {
+      const target = allLit || r < this.state.ignitedCount ? 1 : 0;
+      this.regionGlow[r] += (target - this.regionGlow[r]) * glowRate;
+    }
 
     const { cx, cy, width, height, repelRadius } = this.layout;
     const scatterSpan = Math.max(width, height) * 0.38;
     const repelSq = repelRadius * repelRadius;
     const lift = this.state.liftoffProgress;
+    const liftEase = lift * lift * (3 - 2 * lift);
 
     for (let i = 0; i < this.count; i++) {
       // Blend target from drifting cosmic dust toward dotted brain silhouette.
-      const driftAngle = this.seeds[i] * Math.PI * 2 + elapsed * (0.22 + this.seeds[i] * 0.14);
-      const dustX = cx + this.sx[i] * scatterSpan + Math.cos(driftAngle) * 18;
-      const dustY = cy + this.sy[i] * scatterSpan + Math.sin(driftAngle) * 18;
+      const driftAngle = this.seeds[i] * Math.PI * 2 + elapsed * (0.18 + this.seeds[i] * 0.12);
+      const dustX = cx + this.sx[i] * scatterSpan + Math.cos(driftAngle) * 16;
+      const dustY = cy + this.sy[i] * scatterSpan + Math.sin(driftAngle) * 16;
 
       let goalX = dustX + (this.tx[i] - dustX) * settle;
       let goalY = dustY + (this.ty[i] - dustY) * settle;
 
-      if (lift > 0) {
+      if (liftEase > 0) {
         const dx = this.tx[i] - cx;
         const dy = this.ty[i] - cy;
         const len = Math.hypot(dx, dy) || 1;
-        const boost = lift * lift * (160 + this.seeds[i] * 260);
-        goalX += (dx / len) * boost + Math.cos(driftAngle) * 28 * lift;
-        goalY += (dy / len) * boost - 35 * lift;
+        const boost = liftEase * (170 + this.seeds[i] * 260);
+        goalX += (dx / len) * boost + Math.cos(driftAngle) * 26 * liftEase;
+        goalY += (dy / len) * boost - 34 * liftEase;
       }
 
       const ax = (goalX - this.px[i]) * springK;
@@ -359,42 +372,39 @@ export class LoaderParticleEngine {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const fadeOut = 1 - Math.min(1, Math.max(0, (this.state.liftoffProgress - 0.15) / 0.85));
+    const fadeOut = 1 - Math.min(1, Math.max(0, (this.state.liftoffProgress - 0.18) / 0.82));
     if (fadeOut <= 0.01) return;
 
     const elapsed = (now - this.startedAt) / 1000;
     const sweep = this.state.sweepProgress;
     const sweepWorldX = cx - size * 0.55 + sweep * (size * 1.1);
-    const sweepWidth = size * 0.18;
+    const sweepWidth = size * 0.22;
 
-    const ignitedCap = this.state.ignitedCount;
-    const activeReg = Math.max(0, ignitedCap - 1);
+    const activeReg = Math.max(0, this.state.ignitedCount - 1);
 
     for (let i = 0; i < this.count; i++) {
       const r = this.reg[i];
-      const isLit = r < ignitedCap;
-      const isNewest = isLit && r === activeReg && this.state.phase === "loading" && !this.state.reducedMotion;
+      const glow = this.state.reducedMotion
+        ? r < this.state.ignitedCount
+          ? 1
+          : 0
+        : (this.regionGlow[r] ?? 0);
+      const isNewest = glow > 0.2 && r === activeReg && this.state.phase === "loading" && !this.state.reducedMotion;
       const isEmphasisRegion = r === 5 || r === 6; // hippocampus / amygdala
 
-      let sprite = this.dimSprite;
-      let alpha = 0.52 * fadeOut;
-      let drawSize = 5.5;
-
-      if (isLit) {
-        sprite = isEmphasisRegion || isNewest ? this.violetSprite : this.cyanSprite;
-        const twinkle = this.state.reducedMotion
-          ? 0.92
-          : 0.78 + 0.22 * Math.sin(elapsed * 2.4 + this.seeds[i] * 12);
-        alpha = twinkle * fadeOut;
-        drawSize = isNewest || isEmphasisRegion ? 9.5 : 7.8;
-      }
+      const twinkle = this.state.reducedMotion
+        ? 0.92
+        : 0.82 + 0.18 * Math.sin(elapsed * 2.0 + this.seeds[i] * 12);
+      let alpha = (0.48 + glow * (0.48 * twinkle)) * fadeOut;
+      let drawSize = 5.4 + glow * (isNewest || isEmphasisRegion ? 4.0 : 2.5);
+      let sprite = glow > 0.35 ? (isEmphasisRegion || isNewest ? this.violetSprite : this.cyanSprite) : this.dimSprite;
 
       if (sweep > 0 && sweep < 1) {
         const dist = Math.abs(this.px[i] - sweepWorldX);
         if (dist < sweepWidth) {
-          const wave = 1 - dist / sweepWidth;
-          alpha = Math.min(1, alpha + wave * 0.5) * fadeOut;
-          drawSize += wave * 4.2;
+          const wave = Math.sin(((1 - dist / sweepWidth) * Math.PI) / 2);
+          alpha = Math.min(1, alpha + wave * 0.45) * fadeOut;
+          drawSize += wave * 3.8;
           sprite = this.cyanSprite;
         }
       }

@@ -35,43 +35,45 @@ describe("introMachine timing and state rules", () => {
     expect(state.progress).toBe(1);
   });
 
-  it("enforces >= 1200 ms minimum visible duration once animated loader starts, then exits with 60% headline release", () => {
+  it("enforces >= 2600 ms minimum visible duration once animated loader starts, then exits with 60% headline release", () => {
     let state = createIntroState({ mountedAtMs: 0 });
     state = transitionIntro(state, { type: "FONTS_READY", nowMs: 100 });
     state = transitionIntro(state, { type: "TICK", nowMs: 410 });
     expect(state.phase).toBe("loading");
     expect(state.loadingShownAtMs).toBe(410);
 
-    // Brain finishes quickly at 700 ms (only 290 ms after loader shown) -> holds in ready.
+    // Brain finishes quickly at 700 ms -> holds cleanly in ready and walks through regions gradually.
     state = transitionIntro(state, { type: "BRAIN_READY", nowMs: 700 });
     expect(state.phase).toBe("ready");
     expect(state.overlayMounted).toBe(true);
     expect(state.headlineReleased).toBe(false);
+    expect(state.ignitedCount).toBeGreaterThanOrEqual(1);
+    expect(state.ignitedCount).toBeLessThan(IGNITION_ORDER.length);
+
+    // Still inside 2600 ms hold at 2800 ms (410 + 2390), all 7 regions now ignited.
+    state = transitionIntro(state, { type: "TICK", nowMs: 2800 });
+    expect(state.phase).toBe("ready");
     expect(state.ignitedCount).toBe(IGNITION_ORDER.length);
 
-    // Still inside 1200 ms hold at 1500 ms (410 + 1090).
-    state = transitionIntro(state, { type: "TICK", nowMs: 1500 });
-    expect(state.phase).toBe("ready");
-
-    // Crosses 410 + 1200 = 1610 ms -> enters exiting.
-    state = transitionIntro(state, { type: "TICK", nowMs: 1620 });
+    // Crosses 410 + 2600 = 3010 ms -> enters exiting.
+    state = transitionIntro(state, { type: "TICK", nowMs: 3020 });
     expect(state.phase).toBe("exiting");
     expect(state.headlineReleased).toBe(false);
 
-    // At 50% of 900 ms exit (~450 ms elapsed), headline stays held.
-    state = transitionIntro(state, { type: "TICK", nowMs: 1620 + 450 });
+    // At 50% of 1250 ms exit (~625 ms elapsed), headline stays held.
+    state = transitionIntro(state, { type: "TICK", nowMs: 3020 + 625 });
     expect(state.phase).toBe("exiting");
     expect(state.headlineReleased).toBe(false);
 
-    // At 62% of 900 ms exit (~558 ms elapsed), headline reveals.
-    state = transitionIntro(state, { type: "TICK", nowMs: 1620 + 560 });
+    // At >60% of 1250 ms exit (~760 ms elapsed), headline reveals.
+    state = transitionIntro(state, { type: "TICK", nowMs: 3020 + 760 });
     expect(state.phase).toBe("exiting");
     expect(state.headlineReleased).toBe(true);
 
-    // At end of 900 ms exit -> done & persist flag.
+    // At end of 1250 ms exit -> done & persist flag.
     state = transitionIntro(state, {
       type: "TICK",
-      nowMs: 1620 + INTRO_TIMING.exitDurationMs,
+      nowMs: 3020 + INTRO_TIMING.exitDurationMs,
     });
     expect(state.phase).toBe("done");
     expect(state.overlayMounted).toBe(false);
@@ -130,10 +132,10 @@ describe("introMachine timing and state rules", () => {
     expect(state.headlineReleased).toBe(true);
     expect(state.overlayMounted).toBe(true);
 
-    state = transitionIntro(state, { type: "TICK", nowMs: 2750 });
+    state = transitionIntro(state, { type: "TICK", nowMs: 2800 });
     expect(state.overlayMounted).toBe(true);
 
-    state = transitionIntro(state, { type: "TICK", nowMs: 2860 });
+    state = transitionIntro(state, { type: "TICK", nowMs: 2600 + INTRO_TIMING.skipFadeMs });
     expect(state.overlayMounted).toBe(false);
   });
 
@@ -157,19 +159,19 @@ describe("introMachine timing and state rules", () => {
     expect(state.overlayMounted).toBe(false);
   });
 
-  it("supports reducedMotion with all regions lit quietly, working skip, and 200 ms fade exit", () => {
+  it("supports reducedMotion with all regions lit quietly, working skip, and plain fade exit", () => {
     let state = createIntroState({ mountedAtMs: 0, reducedMotion: true });
     state = transitionIntro(state, { type: "FONTS_READY", nowMs: 100 });
     state = transitionIntro(state, { type: "TICK", nowMs: 450 });
     expect(state.phase).toBe("loading");
     expect(state.ignitedCount).toBe(IGNITION_ORDER.length);
 
-    state = transitionIntro(state, { type: "BRAIN_READY", nowMs: 1700 });
+    state = transitionIntro(state, { type: "BRAIN_READY", nowMs: 3100 });
     expect(state.phase).toBe("exiting");
 
     state = transitionIntro(state, {
       type: "TICK",
-      nowMs: 1700 + INTRO_TIMING.exitReducedMs,
+      nowMs: 3100 + INTRO_TIMING.exitReducedMs,
     });
     expect(state.phase).toBe("done");
     expect(state.overlayMounted).toBe(false);

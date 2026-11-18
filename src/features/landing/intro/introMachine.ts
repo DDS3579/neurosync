@@ -11,12 +11,12 @@ export const INTRO_SESSION_KEY = "ns:intro:v1";
 
 export const INTRO_TIMING = {
   fastSkipMs: 400,
-  minVisibleMs: 1200,
+  minVisibleMs: 2600,
   skipButtonDelayMs: 2500,
   hardTimeoutMs: 12000,
-  skipFadeMs: 250,
-  exitDurationMs: 900,
-  exitReducedMs: 200,
+  skipFadeMs: 320,
+  exitDurationMs: 1250,
+  exitReducedMs: 250,
   headlineRevealRatio: 0.6,
 } as const;
 
@@ -101,22 +101,22 @@ function computeIgnitionForProgress(
   reducedMotion: boolean,
 ): { ignitedCount: number; activeRegionIndex: number | null } {
   const totalRegions = IGNITION_ORDER.length;
-  if (phase === "ready" || phase === "exiting" || phase === "done") {
+  if (phase === "exiting" || phase === "done") {
     return { ignitedCount: totalRegions, activeRegionIndex: totalRegions - 1 };
   }
-  if (phase !== "loading") {
+  if (phase !== "loading" && phase !== "ready") {
     return { ignitedCount: 0, activeRegionIndex: null };
   }
   if (reducedMotion) {
     return { ignitedCount: totalRegions, activeRegionIndex: totalRegions - 1 };
   }
 
-  // Spread ignition progressively by both real progress and gentle paced floor inside the 1.2s hold.
-  const progressRegions = Math.floor(clamp01(progress / 0.92) * totalRegions);
-  const pacedRegions = Math.floor(
-    clamp01(loadingElapsedMs / INTRO_TIMING.minVisibleMs) * totalRegions,
-  );
-  const ignited = Math.max(1, Math.min(totalRegions, Math.max(progressRegions, Math.min(pacedRegions, totalRegions - 1))));
+  // Spread ignition gently across the minimum visible duration so every region caption is readable,
+  // even after WebGL finishes early and holds in "ready".
+  const pacedFrac = clamp01((loadingElapsedMs + 140) / (INTRO_TIMING.minVisibleMs * 0.92));
+  const progressFrac = clamp01((progress * 0.85) / 0.94);
+  const combined = phase === "ready" ? pacedFrac : 0.78 * pacedFrac + 0.22 * progressFrac;
+  const ignited = Math.max(1, Math.min(totalRegions, Math.ceil(combined * totalRegions)));
   return {
     ignitedCount: ignited,
     activeRegionIndex: Math.min(totalRegions - 1, ignited - 1),
@@ -241,14 +241,20 @@ function finalizeReadyState(state: IntroMachineState, nowMs: number): IntroMachi
         headlineReleased: state.reducedMotion,
       };
     }
+    const ign = computeIgnitionForProgress(
+      "ready",
+      1,
+      Math.max(0, minVisibleElapsed),
+      state.reducedMotion,
+    );
     return {
       ...state,
       phase: "ready",
       progress: 1,
       stage: "firstFrame",
       stageLabel: STAGE_WEIGHTS.firstFrame.label,
-      ignitedCount: IGNITION_ORDER.length,
-      activeRegionIndex: IGNITION_ORDER.length - 1,
+      ignitedCount: Math.max(state.ignitedCount, ign.ignitedCount),
+      activeRegionIndex: Math.max(state.activeRegionIndex ?? 0, ign.activeRegionIndex ?? 0),
     };
   }
 
@@ -434,17 +440,30 @@ export function transitionIntro(state: IntroMachineState, event: IntroEvent): In
 
   if (state.phase === "ready") {
     const shownAt = state.loadingShownAtMs ?? state.mountedAtMs;
-    if (nowMs - shownAt >= INTRO_TIMING.minVisibleMs) {
+    const readyElapsed = Math.max(0, nowMs - shownAt);
+    if (readyElapsed >= INTRO_TIMING.minVisibleMs) {
       return {
         ...state,
         phase: "exiting",
         exitingStartedAtMs: nowMs,
         canSkip,
+        ignitedCount: IGNITION_ORDER.length,
+        activeRegionIndex: IGNITION_ORDER.length - 1,
         shouldPersistSeen: true,
         headlineReleased: state.reducedMotion,
       };
     }
-    return canSkip !== state.canSkip ? { ...state, canSkip } : state;
+    const ign = computeIgnitionForProgress("ready", 1, readyElapsed, state.reducedMotion);
+    const ignitedCount = Math.max(state.ignitedCount, ign.ignitedCount);
+    const activeRegionIndex = Math.max(state.activeRegionIndex ?? 0, ign.activeRegionIndex ?? 0);
+    if (
+      canSkip !== state.canSkip ||
+      ignitedCount !== state.ignitedCount ||
+      activeRegionIndex !== state.activeRegionIndex
+    ) {
+      return { ...state, canSkip, ignitedCount, activeRegionIndex };
+    }
+    return state;
   }
 
   return state;
