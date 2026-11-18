@@ -3,6 +3,15 @@
 ## v0.3.0 (2026-11-17)
 
 ### Added
+- **Microtasks tab in Focus Lab (`/focus#microtasks`), Dexie v9, Experiment metrics & Library entries**:
+  - Added `MicrotaskResult` domain model, Dexie `SCHEMA_VERSION = 9` migration (`microtaskResults: "id, date, task"`), `microtaskRepository`, `useMicrotaskResults`, and backup `schemaVersion` 9 import/export validation keeping v1–v8 backups compatible (`src/types/domain.ts`, `src/lib/db/dexie.ts`, `src/lib/db/backup.ts`, `src/lib/db/backup.test.ts`).
+  - Added three calm, non-diagnostic microtasks (`src/features/focus/microtasks.ts`, `src/features/focus/components/microtasks/`):
+    - **Reaction time**: random 1–4 s wait, `requestAnimationFrame` + `performance.now()` paint-synced timing, 5 trials, `< 100 ms` false-start note & retry, median and fastest trial summary.
+    - **Memory span**: 3×3 grid sequence starting at length 3, `+1` on match, stopping after 2 misses at the same length, recording longest correct span with keyboard (`1–9`) and touch/mouse support.
+    - **Attention (go/no-go)**: 40 trials (~75% Go cues), ~500 ms stimulus + 1000–1500 ms random gap, recording hits, misses, no-go commission errors, and mean Go reaction time.
+  - Added first-run practice rounds (`ns:ui:v1:microtask-practice-done`), Cancel/`Esc`, auto time-of-day detection, optional 1–5 rested rating, auto-detected input method, reduced-motion / flashing-stimuli notices, and per-task Trends chart (`<MicrotaskTrendsCard>`) with median line and practice-effect caveat.
+  - Extended Experiment Lab metrics (`reactionTime`, `memorySpan`) using per-day medians in `src/lib/insights/experiments.ts` (neutral `"faster"`/`"slower"`/`"longer"`/`"shorter"` wording and unit formatting in `ExperimentsWorkspace.tsx`), and added qualitative `reaction-time-variability` and `practice-effects` entries in `src/data/library.ts`.
+  - Added logic and UI component tests in `src/features/focus/microtasks.test.ts`, `src/features/focus/components/microtasks/MicrotasksTab.test.tsx`, `src/lib/insights/experiments.test.ts`, and `src/lib/db/backup.test.ts`.
 - **Constellation view (`/constellation`, `src/features/constellation/`)**:
   - Added `/constellation` (`Orbit` icon) to `NAV_GROUPS` in `src/components/app-shell/nav-items.ts` (automatically populating sidebar, topbar title, command palette `Ctrl+K`, and `/brain` immersive dock).
   - Built pure co-occurrence aggregation and deterministic force layout in `src/features/constellation/constellation.ts`: gathers non-archived habits (`done === true`), v0.2 `ActivityLog` types, `FocusSession` learning methods, `MovementLog` types, and `MindfulnessSession` types (no `goals` table exists); deduplicates per day across `14 / 30 / 90`-day windows; enforces a minimum 10-day gate (`MIN_CONSTELLATION_DAYS`) and `3+` shared-day edge threshold (`MIN_SHARED_DAYS`); and computes FNV-1a/Mulberry32 seeded settled positions that freeze at rest without external physics dependencies.

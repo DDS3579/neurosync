@@ -4,10 +4,17 @@ import { Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { FocusSkeleton, FocusWorkspace } from "@/features/focus/components/FocusWorkspace";
+import type { NewMicrotaskResultInput } from "@/features/focus/components/microtasks/MicrotasksTab";
 import { createInitialReviewSchedule, scheduleNextReview } from "@/features/focus/reviewScheduler";
 import { toLocalISODate } from "@/features/sleep/sleepUtils";
-import { useFocusSessions, useReviewItems, useSettings } from "@/lib/db/hooks";
-import { focusRepository, reviewRepository } from "@/lib/db/repositories";
+import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
+import {
+  useFocusSessions,
+  useMicrotaskResults,
+  useReviewItems,
+  useSettings,
+} from "@/lib/db/hooks";
+import { focusRepository, microtaskRepository, reviewRepository } from "@/lib/db/repositories";
 import type { FocusSession, ReviewDifficulty } from "@/types/domain";
 
 function FocusPageContent() {
@@ -15,6 +22,8 @@ function FocusPageContent() {
   const settings = useSettings();
   const focus = useFocusSessions();
   const reviews = useReviewItems();
+  const microtasks = useMicrotaskResults();
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const prefillSubject = searchParams.get("subject")?.trim() || undefined;
   const rawPlanned = Number(searchParams.get("plannedMin"));
@@ -59,13 +68,24 @@ function FocusPageContent() {
 
   const onDeleteReviewItem = useCallback((id: string) => reviewRepository.remove(id), []);
 
+  const onCreateMicrotaskResult = useCallback(async (values: NewMicrotaskResultInput) => {
+    await microtaskRepository.create(values);
+  }, []);
+
+  const onDeleteMicrotaskResult = useCallback(
+    (id: string) => microtaskRepository.remove(id),
+    [],
+  );
+
   if (
     settings.isLoading ||
     focus.isLoading ||
     reviews.isLoading ||
+    microtasks.isLoading ||
     !settings.data ||
     !focus.data ||
-    !reviews.data
+    !reviews.data ||
+    !microtasks.data
   ) {
     return <FocusSkeleton />;
   }
@@ -77,11 +97,15 @@ function FocusPageContent() {
       initialPlannedMin={prefillPlannedMin}
       sessions={focus.data}
       reviewItems={reviews.data}
+      microtaskResults={microtasks.data}
+      reducedMotion={Boolean(settings.data.reducedMotion) || prefersReducedMotion}
       onCreateSession={onCreateSession}
       onDeleteSession={onDeleteSession}
       onAddReviewItem={onAddReviewItem}
       onRateReviewItem={onRateReviewItem}
       onDeleteReviewItem={onDeleteReviewItem}
+      onCreateMicrotaskResult={onCreateMicrotaskResult}
+      onDeleteMicrotaskResult={onDeleteMicrotaskResult}
     />
   );
 }

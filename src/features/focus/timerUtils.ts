@@ -6,12 +6,12 @@ import type { FocusSession, ISODate, ISODateTime, LearningMethod } from "@/types
 export const FOCUS_STORAGE_KEY = "nx:focus-running-session-v1";
 export const FOCUS_PRESETS = [25, 50, 90] as const;
 
-export const FOCUS_TABS = ["timer", "review", "methods"] as const;
+export const FOCUS_TABS = ["timer", "review", "methods", "microtasks"] as const;
 export type FocusTab = (typeof FOCUS_TABS)[number];
 
 export const FOCUS_HASH_EVENT = "nx:focus-hash-change";
 
-/** Parses a Focus Lab URL hash (#timer, #review, #methods); unknown hashes default to "timer". */
+/** Parses a Focus Lab URL hash (#timer, #review, #methods, #microtasks); unknown hashes default to "timer". */
 export function parseFocusTabHash(hash: string): FocusTab {
   const cleaned = hash.replace(/^#/, "").trim().toLowerCase();
   return (FOCUS_TABS as readonly string[]).includes(cleaned)
