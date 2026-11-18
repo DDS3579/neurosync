@@ -56,7 +56,7 @@ export function BrainHero({ progress = 0, interactive = false, className }: Brai
           onContextLost={markLost}
         />
       ) : (
-        <div className="h-full w-full bg-[#060913]" />
+        <div className="h-full w-full" />
       )}
     </div>
   );

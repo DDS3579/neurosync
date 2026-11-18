@@ -20,7 +20,7 @@ const DynamicBrainHero = dynamic(
   () => import("@/features/brain/BrainHero").then((m) => m.BrainHero),
   {
     ssr: false,
-    loading: () => <BrainPoster />,
+    loading: () => <BrainPoster className="absolute inset-0" />,
   },
 );
 
@@ -47,6 +47,14 @@ const DynamicFinalCtaFooter = dynamic(() =>
  * (Three Instruments, Honest Science, Experiment Teaser, Privacy, Final CTA) + Footer.
  */
 export function LandingPage() {
+  return (
+    <SmoothScroll>
+      <LandingContent />
+    </SmoothScroll>
+  );
+}
+
+function LandingContent() {
   const descentRef = useRef<HTMLElement>(null);
   const isMobile = useIsMobile();
   const reducedMotion = usePrefersReducedMotion();
@@ -59,7 +67,7 @@ export function LandingPage() {
   });
 
   return (
-    <SmoothScroll>
+    <>
       <ServiceWorkerRegister />
       <div className="relative min-h-svh w-full overflow-x-clip bg-background text-foreground">
         <a
@@ -97,7 +105,7 @@ export function LandingPage() {
                 <DynamicBrainHero
                   progress={progress}
                   interactive={!isMobile}
-                  className="h-full w-full rounded-none border-0 bg-transparent sm:h-full"
+                  className="absolute inset-0 h-full w-full rounded-none border-0 bg-transparent sm:h-full"
                 />
               </div>
 
@@ -133,6 +141,6 @@ export function LandingPage() {
 
         <LandingFooter />
       </div>
-    </SmoothScroll>
+    </>
   );
 }

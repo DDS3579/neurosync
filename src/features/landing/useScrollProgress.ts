@@ -100,6 +100,7 @@ export function useScrollProgress(
         },
       });
 
+      ScrollTrigger.refresh();
       latestRef.current = st.progress;
       scheduleFlush();
       killTrigger = () => st.kill();
