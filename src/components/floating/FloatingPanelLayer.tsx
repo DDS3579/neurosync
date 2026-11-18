@@ -11,6 +11,7 @@ import {
 } from "react";
 import { ChevronDown } from "lucide-react";
 
+import { useHighContrast } from "@/features/brain/useBrainQuality";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { usePanelLayout } from "./usePanelLayout";
@@ -65,6 +66,7 @@ export function FloatingPanelLayer({
   onReturnFocusToCanvas,
 }: FloatingPanelLayerProps) {
   const isMobile = useIsMobile();
+  const highContrast = useHighContrast();
   const hydrateFromStorage = usePanelLayout((s) => s.hydrateFromStorage);
   const clampAllToViewport = usePanelLayout((s) => s.clampAllToViewport);
   const activeMobilePanelId = usePanelLayout((s) => s.activeMobilePanelId);
@@ -186,7 +188,10 @@ export function FloatingPanelLayer({
                     returnFocusToCanvas();
                   }
                 }}
-                className="pointer-events-auto flex max-h-[48dvh] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-surface/85 text-foreground shadow-xl backdrop-blur-md"
+                className={cn(
+                  "pointer-events-auto flex max-h-[48dvh] flex-col overflow-hidden rounded-[14px] border border-border-strong text-foreground shadow-xl backdrop-blur-md",
+                  highContrast ? "bg-surface/95" : "bg-surface/85",
+                )}
               >
                 <button
                   type="button"

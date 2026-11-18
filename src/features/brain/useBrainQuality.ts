@@ -38,6 +38,19 @@ function detectTier(): QualityTier {
   return "high";
 }
 
+export function computeCappedDpr(deviceDpr: number, tier: QualityTier): number {
+  const safeDpr = Number.isFinite(deviceDpr) && deviceDpr > 0 ? deviceDpr : 1;
+  return Math.min(safeDpr, QUALITY_PRESETS[tier].dprCap);
+}
+
+export function shouldDowngradeFps(
+  avgFps: number,
+  qualityPref: QualityPref,
+  tier: QualityTier,
+): boolean {
+  return qualityPref === "auto" && tier === "high" && avgFps < FPS_GOVERNOR.minFps;
+}
+
 export function useBrainQuality(pref: QualityPref): BrainQuality {
   const [autoTier, setAutoTier] = useState<QualityTier>(detectTier);
   const tier: QualityTier = pref === "auto" ? autoTier : pref;
@@ -46,7 +59,7 @@ export function useBrainQuality(pref: QualityPref): BrainQuality {
   const downgrade = useCallback(() => setAutoTier("low"), []);
   return {
     tier,
-    dpr: Math.min(deviceDpr, preset.dprCap),
+    dpr: computeCappedDpr(deviceDpr, tier),
     pointCount: preset.points,
     postprocessing: preset.postprocessing,
     downgrade,

@@ -123,15 +123,15 @@ function sanitizePanelState(raw: unknown, fallbackZ: number): PanelState | null 
   if (typeof y !== "number" || !Number.isFinite(y)) return null;
 
   const width =
-    typeof raw.width === "number" && Number.isFinite(raw.width) && raw.width > 0
+    typeof raw.width === "number" && Number.isFinite(raw.width) && raw.width >= 120 && raw.width <= 4096
       ? Math.round(raw.width)
       : undefined;
   const height =
-    typeof raw.height === "number" && Number.isFinite(raw.height) && raw.height > 0
+    typeof raw.height === "number" && Number.isFinite(raw.height) && raw.height >= 80 && raw.height <= 4096
       ? Math.round(raw.height)
       : undefined;
   const zIndex =
-    typeof raw.zIndex === "number" && Number.isFinite(raw.zIndex) && raw.zIndex >= 1
+    typeof raw.zIndex === "number" && Number.isFinite(raw.zIndex) && raw.zIndex >= 1 && raw.zIndex <= 10000
       ? Math.round(raw.zIndex)
       : fallbackZ;
 
@@ -173,7 +173,7 @@ export function parsePersistedPanelLayout(raw: string | null): PersistedPanelLay
     let index = 1;
 
     for (const [id, entry] of Object.entries(parsed.panels)) {
-      if (!id) continue;
+      if (!id || id === "__proto__" || id === "constructor" || id === "prototype") continue;
       const clean = sanitizePanelState(entry, index);
       if (!clean) continue;
       panels[id] = clean;

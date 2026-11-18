@@ -11,7 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 
-import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
+import { useHighContrast, usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 import { useFloatingPanelLayer } from "./FloatingPanelLayer";
 import {
@@ -77,6 +77,7 @@ export function FloatingPanel({
     returnFocusToCanvas,
   } = useFloatingPanelLayer();
   const reducedMotion = usePrefersReducedMotion();
+  const highContrast = useHighContrast();
 
   const panel = usePanelLayout((s) => s.panels[id]);
   const registerPanel = usePanelLayout((s) => s.registerPanel);
@@ -160,6 +161,31 @@ export function FloatingPanel({
       }
     };
   }, []);
+
+  // Re-clamp active drag transforms immediately if viewport resizes mid-drag.
+  useEffect(() => {
+    if (typeof window === "undefined" || isMobile) return;
+    const onResizeDuringDrag = () => {
+      const drag = dragStateRef.current;
+      const el = panelRef.current;
+      if (!drag || !drag.active || !el) return;
+      const rect = el.getBoundingClientRect();
+      const clamped = clampPanelPosition(
+        { x: drag.lastX, y: drag.lastY },
+        { width: rect.width || 240, height: rect.height || 120 },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      drag.lastX = clamped.x;
+      drag.lastY = clamped.y;
+      el.style.transform = `translate3d(${clamped.x}px, ${clamped.y}px, 0)`;
+    };
+    window.addEventListener("resize", onResizeDuringDrag);
+    window.addEventListener("orientationchange", onResizeDuringDrag);
+    return () => {
+      window.removeEventListener("resize", onResizeDuringDrag);
+      window.removeEventListener("orientationchange", onResizeDuringDrag);
+    };
+  }, [isMobile]);
 
   if (panel?.closed) return null;
 
@@ -410,7 +436,10 @@ export function FloatingPanel({
         maxHeight: `calc(100dvh - ${PANEL_VIEWPORT_MARGIN * 2}px)`,
       }}
       className={cn(
-        "pointer-events-auto fixed top-0 left-0 flex flex-col overflow-hidden border border-border bg-surface/80 text-foreground shadow-xl backdrop-blur-md",
+        "pointer-events-auto fixed top-0 left-0 flex flex-col overflow-hidden border text-foreground shadow-xl backdrop-blur-md",
+        highContrast
+          ? "border-border-strong bg-surface/95"
+          : "border-border bg-surface/80",
         collapsed ? "rounded-full" : "rounded-[14px]",
         isSnapping && !reducedMotion && "transition-transform duration-150 ease-out",
         className,
@@ -474,6 +503,7 @@ export function FloatingPanel({
             onClick={(e) => {
               e.stopPropagation();
               onClose();
+              returnFocusToCanvas();
             }}
             className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >

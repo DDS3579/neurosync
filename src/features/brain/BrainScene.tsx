@@ -52,7 +52,7 @@ import {
   connectionPulseFragment,
   connectionVertex,
 } from "./shaders/brainPoints";
-import { FPS_GOVERNOR, type BrainQuality, type QualityPref } from "./useBrainQuality";
+import { FPS_GOVERNOR, shouldDowngradeFps, type BrainQuality, type QualityPref } from "./useBrainQuality";
 
 /* ------------------------------------------------------------------ */
 /* TUNABLES                                                            */
@@ -353,7 +353,7 @@ function FpsGovernor({
     s.windowSec += clamped;
     if (s.windowSec >= FPS_GOVERNOR.windowSec) {
       const fps = s.frames / s.windowSec;
-      if (fps < FPS_GOVERNOR.minFps) {
+      if (shouldDowngradeFps(fps, qualityPref, tier)) {
         s.tripped = true;
         downgrade();
       }
@@ -362,6 +362,23 @@ function FpsGovernor({
     }
   });
 
+  return null;
+}
+
+/** Attaches and cleans up the `webglcontextlost` listener on the R3F canvas element. */
+function WebGLContextLossGuard({ onContextLost }: { onContextLost: () => void }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleLoss = (event: Event) => {
+      event.preventDefault();
+      onContextLost();
+    };
+    canvas.addEventListener("webglcontextlost", handleLoss);
+    return () => {
+      canvas.removeEventListener("webglcontextlost", handleLoss);
+    };
+  }, [gl, onContextLost]);
   return null;
 }
 
@@ -467,6 +484,20 @@ function ExplorerCore({
   }, [connectionsGeo]);
 
   const pointsMatRef = useRef<THREE.ShaderMaterial>(null);
+  const connLinesMatRef = useRef<THREE.ShaderMaterial>(null);
+  const connPulsesMatRef = useRef<THREE.ShaderMaterial>(null);
+
+  const proxyGeo = useMemo(() => new THREE.IcosahedronGeometry(1, 1), []);
+  const proxyMat = useMemo(
+    () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    [],
+  );
+  useEffect(() => {
+    return () => {
+      proxyGeo.dispose();
+      proxyMat.dispose();
+    };
+  }, [proxyGeo, proxyMat]);
 
   const shaderArgs = useMemo(() => {
     const uniforms = createBrainUniforms(quality.dpr, quality.tier, POINTS_SIZE.explorer, 1);
@@ -477,6 +508,17 @@ function ExplorerCore({
       connPulses: { ...base, vertexShader: connectionVertex, fragmentShader: connectionPulseFragment },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const pMat = pointsMatRef.current;
+    const lMat = connLinesMatRef.current;
+    const uMat = connPulsesMatRef.current;
+    return () => {
+      pMat?.dispose();
+      lMat?.dispose();
+      uMat?.dispose();
+    };
   }, []);
 
   // Update camera transition whenever selection, isolation, or explicit fly-to request changes
@@ -830,10 +872,10 @@ function ExplorerCore({
           <shaderMaterial ref={pointsMatRef} args={[shaderArgs.points]} />
         </points>
         <lineSegments geometry={connectionsGeo.lines} frustumCulled={false}>
-          <shaderMaterial args={[shaderArgs.connLines]} />
+          <shaderMaterial ref={connLinesMatRef} args={[shaderArgs.connLines]} />
         </lineSegments>
         <points geometry={connectionsGeo.pulses} frustumCulled={false}>
-          <shaderMaterial args={[shaderArgs.connPulses]} />
+          <shaderMaterial ref={connPulsesMatRef} args={[shaderArgs.connPulses]} />
         </points>
 
         {/* Cross-section slice ring guide */}
@@ -858,21 +900,20 @@ function ExplorerCore({
           </mesh>
         ) : null}
 
-        {/* Hidden low-poly region proxies for fast, accurate hover & click raycasting */}
+        {/* Hidden low-poly region proxies sharing one memoized geometry & material */}
         {REGION_PROXIES.map((proxy, idx) => {
           const disabledInIso = isolated && selectedRegion !== null && proxy.region !== selectedRegion;
           return (
             <mesh
               key={`${proxy.region}-${idx}`}
+              geometry={proxyGeo}
+              material={proxyMat}
               position={proxy.center}
               scale={proxy.radii}
               onPointerOver={disabledInIso ? undefined : handleProxyOver(proxy.region)}
               onPointerOut={disabledInIso ? undefined : handleProxyOut(proxy.region)}
               onClick={disabledInIso ? undefined : handleProxyClick(proxy.region)}
-            >
-              <icosahedronGeometry args={[1, 1]} />
-              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-            </mesh>
+            />
           );
         })}
 
@@ -940,15 +981,10 @@ export function BrainExplorerCanvas(
       camera={{ position: CAMERA.explorerStart, fov: CAMERA.fov, near: 0.05, far: 30 }}
       gl={{ antialias: false, powerPreference: "high-performance", alpha: true, localClippingEnabled: true }}
       onPointerMissed={() => onSelectRegion(null)}
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          onContextLost();
-        });
-      }}
       className="h-full w-full"
     >
       <color attach="background" args={["#060913"]} />
+      <WebGLContextLossGuard onContextLost={onContextLost} />
       <ExplorerCore
         {...rest}
         onSelectRegion={onSelectRegion}
@@ -995,6 +1031,12 @@ function HeroCore({
   useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
 
   const matRef = useRef<THREE.ShaderMaterial>(null);
+  useEffect(() => {
+    const mat = matRef.current;
+    return () => {
+      mat?.dispose();
+    };
+  }, []);
   const shaderArgs = useMemo(
     () => ({
       vertexShader: brainPointsVertex,
@@ -1096,15 +1138,10 @@ export function BrainHeroCanvas(
       frameloop={active ? "always" : "demand"}
       camera={{ position: [0, 0.75, 5.2], fov: CAMERA.fov, near: 0.04, far: 30 }}
       gl={{ antialias: false, powerPreference: "high-performance", alpha: true }}
-      onCreated={({ gl }) => {
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          onContextLost();
-        });
-      }}
       className="h-full w-full"
     >
       <color attach="background" args={["#060913"]} />
+      <WebGLContextLossGuard onContextLost={onContextLost} />
       <HeroCore {...rest} quality={quality} />
     </Canvas>
   );

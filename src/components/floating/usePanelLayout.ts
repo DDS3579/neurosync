@@ -326,12 +326,24 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
     set((state) => {
       let changed = false;
       const nextPanels: Record<string, PanelState> = { ...state.panels };
+      const narrowDesktop = viewport.width >= 768 && viewport.width < 920;
 
       for (const [id, panel] of Object.entries(state.panels)) {
         const size = getEffectiveSize(id, panel, state.defaults, state.measuredSizes);
         const clamped = clampPanelPosition(panel, size, viewport);
-        if (clamped.x !== panel.x || clamped.y !== panel.y) {
-          nextPanels[id] = { ...panel, x: clamped.x, y: clamped.y };
+        const shouldAutoCollapse =
+          narrowDesktop &&
+          !panel.collapsed &&
+          id !== "brain-region-panel" &&
+          id !== "constellation-detail";
+
+        if (clamped.x !== panel.x || clamped.y !== panel.y || shouldAutoCollapse) {
+          nextPanels[id] = {
+            ...panel,
+            x: clamped.x,
+            y: clamped.y,
+            ...(shouldAutoCollapse ? { collapsed: true } : {}),
+          };
           changed = true;
         }
       }
