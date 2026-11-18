@@ -481,6 +481,7 @@ export function SettingsWorkspace({
                 </div>
                 <Switch
                   id="settings-immersive-brain"
+                  aria-label="Open the Brain Explorer in full-screen mode"
                   checked={immersiveBrain}
                   onCheckedChange={(next) => writeBrainImmersivePref(next)}
                 />

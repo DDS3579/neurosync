@@ -72,7 +72,12 @@ function getEffectiveSize(
   panel: PanelState | undefined,
   defaults: Record<string, PanelDefaultsSpec>,
   measured: Record<string, { width: number; height: number }>,
+  collapsedOverride?: boolean,
 ): { width: number; height: number } {
+  const isCollapsed = collapsedOverride ?? Boolean(panel?.collapsed);
+  if (isCollapsed) {
+    return { width: 180, height: 38 };
+  }
   const measuredSize = measured[id];
   if (measuredSize && measuredSize.width > 0 && measuredSize.height > 0) {
     return measuredSize;
@@ -329,13 +334,15 @@ export const usePanelLayout = create<PanelLayoutStoreState>((set, get) => ({
       const narrowDesktop = viewport.width >= 768 && viewport.width < 920;
 
       for (const [id, panel] of Object.entries(state.panels)) {
-        const size = getEffectiveSize(id, panel, state.defaults, state.measuredSizes);
+        const shouldAutoCollapse = narrowDesktop && !panel.collapsed;
+        const size = getEffectiveSize(
+          id,
+          panel,
+          state.defaults,
+          state.measuredSizes,
+          shouldAutoCollapse || panel.collapsed,
+        );
         const clamped = clampPanelPosition(panel, size, viewport);
-        const shouldAutoCollapse =
-          narrowDesktop &&
-          !panel.collapsed &&
-          id !== "brain-region-panel" &&
-          id !== "constellation-detail";
 
         if (clamped.x !== panel.x || clamped.y !== panel.y || shouldAutoCollapse) {
           nextPanels[id] = {
