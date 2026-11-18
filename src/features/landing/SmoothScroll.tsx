@@ -18,12 +18,14 @@ interface SmoothScrollContextValue {
   scrollTo: (target: string | number | HTMLElement, offset?: number) => void;
   scrollReady: boolean;
   ensureScrollEngine: () => void;
+  setScrollLocked: (locked: boolean) => void;
 }
 
 const SmoothScrollContext = createContext<SmoothScrollContextValue>({
   scrollTo: () => {},
   scrollReady: false,
   ensureScrollEngine: () => {},
+  setScrollLocked: () => {},
 });
 
 export function useSmoothScroll() {
@@ -38,8 +40,18 @@ export function useSmoothScroll() {
 export function SmoothScroll({ children }: { children: ReactNode }) {
   const reducedMotion = usePrefersReducedMotion();
   const lenisRef = useRef<Lenis | null>(null);
+  const lockedRef = useRef(false);
   const [activated, setActivated] = useState(false);
   const [scrollReady, setScrollReady] = useState(false);
+
+  const setScrollLocked = useCallback((locked: boolean) => {
+    lockedRef.current = locked;
+    const lenis = lenisRef.current;
+    if (lenis) {
+      if (locked) lenis.stop();
+      else lenis.start();
+    }
+  }, []);
 
   const ensureScrollEngine = useCallback(() => {
     if (!reducedMotion) {
@@ -57,9 +69,11 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
     }
 
     const triggerActivation = () => {
+      if (lockedRef.current) return;
       setActivated(true);
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (lockedRef.current) return;
       if (isScrollKey(event.key)) {
         setActivated(true);
       }
@@ -100,6 +114,9 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
       });
+      if (lockedRef.current) {
+        lenis.stop();
+      }
       lenisRef.current = lenis;
 
       const handleScroll = () => {
@@ -179,7 +196,12 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
 
   return (
     <SmoothScrollContext.Provider
-      value={{ scrollTo, scrollReady: !reducedMotion && scrollReady, ensureScrollEngine }}
+      value={{
+        scrollTo,
+        scrollReady: !reducedMotion && scrollReady,
+        ensureScrollEngine,
+        setScrollLocked,
+      }}
     >
       {children}
     </SmoothScrollContext.Provider>

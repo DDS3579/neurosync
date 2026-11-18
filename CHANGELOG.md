@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased (v0.3)
+
+### Added
+- **First Light landing-page intro loader (`src/features/landing/intro/`)**:
+  - Added server-rendered instant first-paint overlay (`#060913` background, slow-pulsing `#22D3EE` dot, `"NEUROSYNC / 01"` micro-label, and `<noscript>` hide rule) plus `<head>` inline session check (`ns:intro:v1` -> `data-intro="seen"`) preventing flash and hydration mismatches on repeat visits.
+  - Added `scripts/generate-intro-silhouette.ts` (`pnpm run generate:intro-silhouette`) projecting `proceduralBrainCore` into a deterministic, quantized, delta-encoded `2,450`-point side-view silhouette (`silhouetteData.ts`, `silhouetteCodec.ts`) spanning all 7 valid regions (`prefrontal`, `parietal`, `temporal`, `occipital`, `cerebellum`, `hippocampus`, `amygdala`) with hedged 1-line educational captions and `"Educational associations, not measurements."`.
+  - Built 2D `<canvas>` `LoaderParticleEngine` (`Float32Array` typed arrays, viewport-scaled DPR/particle budgets, `ResizeObserver`, `~110px` pointer/touch repeller, sequential region ignition, `~500 ms` sweep + star lift-off + circular radial aperture reveal) coordinated by pure state machine `introMachine.ts` and `useBrainReadiness.ts` (400 ms fast-skip, 1200 ms min hold, 2500 ms Skip/`Esc`/`Enter`, 12 s timeout, WebGL fallback, reduced-motion summary + 200 ms fade, scroll lock + `inert`, and ~60% aperture headline reveal release).
+  - Moved procedural geometry generation into `brainGeometry.worker.ts` with Transferable `ArrayBuffer`s (`proceduralBrainCore.ts` + time-sliced async fallback) and added `renderer.compileAsync` + 2-rAF + `document.fonts.ready` gating behind backward-compatible `onProgress` / `onReady` callbacks on `BrainHeroProps`.
+  - Added `intro.test.ts` (12 tests covering timing rules, monotonic progress, silhouette determinism/size/region IDs, and async chunking) and extended `src/__tests__/a11y.test.tsx` to cover the active `IntroLoader` overlay and post-exit landing page.
+
+### Fixed
+- **Landing 3D brain stage & scroll progress (`BrainPoster.tsx`, `LandingPage.tsx`, `BrainHero.tsx`, `useScrollProgress.ts`)**: fixed class conflict keeping `BrainPoster` `relative` and moved `useScrollProgress` inside `<SmoothScroll>` so `/` renders the 3D nebula and morphs smoothly through `#descent`.
+
 ## v0.3.0 (2026-11-17)
 
 ### Added

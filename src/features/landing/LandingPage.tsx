@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 
 import { ServiceWorkerRegister } from "@/components/app-shell/service-worker-register";
@@ -11,9 +11,11 @@ import { BrainPoster } from "./BrainPoster";
 import { DescentSection } from "./DescentSection";
 import { HeroSection } from "./HeroSection";
 import { InViewSection } from "./InViewSection";
+import { IntroLoader } from "./intro/IntroLoader";
+import { useBrainReadiness } from "./intro/useBrainReadiness";
 import { LandingFooter } from "./LandingFooter";
 import { LandingHeader } from "./LandingHeader";
-import { SmoothScroll } from "./SmoothScroll";
+import { SmoothScroll, useSmoothScroll } from "./SmoothScroll";
 import { useScrollProgress } from "./useScrollProgress";
 
 const DynamicBrainHero = dynamic(
@@ -56,8 +58,58 @@ export function LandingPage() {
 
 function LandingContent() {
   const descentRef = useRef<HTMLElement>(null);
+  const skipLinkRef = useRef<HTMLAnchorElement>(null);
+  const wasLockedRef = useRef(false);
   const isMobile = useIsMobile();
   const reducedMotion = usePrefersReducedMotion();
+  const { setScrollLocked } = useSmoothScroll();
+  const {
+    state: introState,
+    handleBrainProgress,
+    handleBrainReady,
+    skipIntro,
+  } = useBrainReadiness();
+
+  const lockLanding =
+    introState.variant === "full" &&
+    (introState.phase === "idle" || introState.phase === "loading" || introState.phase === "ready");
+
+  // Under reduced motion LandingPage renders the static BrainPoster instead of WebGL DynamicBrainHero,
+  // so mark the hero stage ready directly once fonts/poster are mounted.
+  useEffect(() => {
+    if (!reducedMotion) return;
+    handleBrainProgress({ stage: "firstFrame", value: 1 });
+    handleBrainReady();
+  }, [reducedMotion, handleBrainProgress, handleBrainReady]);
+
+  // Lock page scroll + Lenis while full First Light overlay covers viewport; restore cleanly on exit.
+  useEffect(() => {
+    setScrollLocked(lockLanding);
+    if (!lockLanding) return;
+
+    wasLockedRef.current = true;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [lockLanding, setScrollLocked]);
+
+  // Move focus cleanly to the skip link / landing start after exit completes.
+  useEffect(() => {
+    if (lockLanding || !wasLockedRef.current) return;
+    if (introState.phase !== "done" && introState.phase !== "skipped") return;
+
+    wasLockedRef.current = false;
+    const id = window.requestAnimationFrame(() => {
+      const target = skipLinkRef.current ?? document.getElementById("main-content");
+      target?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [lockLanding, introState.phase]);
 
   const progress = useScrollProgress(descentRef, {
     start: "top top",
@@ -66,11 +118,20 @@ function LandingContent() {
     refreshKey: `${isMobile}-${reducedMotion}`,
   });
 
+  const headlineActive = reducedMotion || introState.headlineReleased;
+
   return (
     <>
+      <IntroLoader state={introState} onSkip={skipIntro} />
       <ServiceWorkerRegister />
-      <div className="relative min-h-svh w-full overflow-x-clip bg-background text-foreground">
+      <div
+        inert={lockLanding || undefined}
+        aria-hidden={lockLanding ? "true" : undefined}
+        className="relative min-h-svh w-full overflow-x-clip bg-background text-foreground"
+      >
         <a
+          ref={skipLinkRef}
+          id="skip-to-content"
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-control focus:border focus:border-cyan focus:bg-surface focus:px-4 focus:py-2 focus:text-body focus:font-medium focus:text-foreground focus:shadow-lg"
         >
@@ -87,7 +148,7 @@ function LandingContent() {
                   <BrainPoster />
                 </div>
                 <div className="relative z-10">
-                  <HeroSection />
+                  <HeroSection headlineActive={headlineActive} />
                 </div>
               </div>
               <DescentSection
@@ -105,13 +166,15 @@ function LandingContent() {
                 <DynamicBrainHero
                   progress={progress}
                   interactive={!isMobile}
+                  onProgress={handleBrainProgress}
+                  onReady={handleBrainReady}
                   className="absolute inset-0 h-full w-full rounded-none border-0 bg-transparent sm:h-full"
                 />
               </div>
 
               {/* Scrollable foreground layers over the sticky brain stage */}
               <div className="pointer-events-none relative z-10 -mt-[100svh]">
-                <HeroSection />
+                <HeroSection headlineActive={headlineActive} />
                 <DescentSection
                   ref={descentRef}
                   progress={progress}

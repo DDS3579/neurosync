@@ -51,7 +51,12 @@ function ObservatoryReadout() {
  * Pointer events pass through the wrapper to the underlying BrainHero canvas on desktop,
  * while interactive links and buttons capture pointer events normally.
  */
-export function HeroSection() {
+export interface HeroSectionProps {
+  /** Paused while intro overlay hides the hero; starts at ~60% of the aperture reveal. */
+  headlineActive?: boolean;
+}
+
+export function HeroSection({ headlineActive = true }: HeroSectionProps) {
   const { scrollTo } = useSmoothScroll();
 
   return (
@@ -80,8 +85,12 @@ export function HeroSection() {
             {HEADLINE_LINES.map((line, index) => (
               <span key={line} className="block overflow-hidden pb-[0.06em]">
                 <span
-                  className="nx-line-reveal block will-change-transform"
-                  style={{ animationDelay: `${index * 80}ms` }}
+                  className={
+                    headlineActive
+                      ? "nx-line-reveal block will-change-transform"
+                      : "block translate-y-[110%] opacity-0 will-change-transform"
+                  }
+                  style={headlineActive ? { animationDelay: `${index * 80}ms` } : undefined}
                 >
                   {line}
                 </span>

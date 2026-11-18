@@ -43,6 +43,8 @@ import { InsightsWorkspace } from "@/features/insights/components/InsightsWorksp
 import { WeeklyReportWorkspace } from "@/features/insights/components/WeeklyReportWorkspace";
 import { LibraryWorkspace } from "@/features/library/components/LibraryWorkspace";
 import { LandingPage } from "@/features/landing/LandingPage";
+import { IntroLoader } from "@/features/landing/intro/IntroLoader";
+import { createIntroState } from "@/features/landing/intro/introMachine";
 import { OverviewView } from "@/features/overview/OverviewView";
 import { buildOverviewViewData } from "@/features/overview/demoData";
 import AppSegmentError from "@/app/(app)/error";
@@ -400,7 +402,40 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     await runAxeCheck(settingsNode);
   });
 
-  it("Landing page landmarks, skip link, and heading structure pass axe-core", async () => {
+  it("IntroLoader overlay and post-exit Landing page pass axe-core and AA contrast", async () => {
+    const activeState = {
+      ...createIntroState({ mountedAtMs: 0, webglSupported: true, fontsReady: true }),
+      phase: "loading" as const,
+      loadingShownAtMs: 410,
+      progress: 0.45,
+      stage: "geometry" as const,
+      stageLabel: "PLACING PARTICLES",
+      pointsPlaced: 24000,
+      pointsTotal: 40000,
+      ignitedCount: 3,
+      activeRegionIndex: 2,
+      canSkip: true,
+    };
+
+    const overlayNode = await renderIntoMain(
+      <IntroLoader state={activeState} onSkip={vi.fn()} />,
+      false,
+    );
+    expect(overlayNode.querySelector('[role="status"]')).not.toBeNull();
+    expect(overlayNode.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(overlayNode.textContent).toContain("Skip");
+    expect(overlayNode.textContent).toContain("Educational associations, not measurements.");
+    expect(contrastRatio("#e6eaf5", "#060913")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#cbd5e1", "#060913")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#94a3b8", "#060913")).toBeGreaterThanOrEqual(4.5);
+    await runAxeCheck(overlayNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    overlayNode.remove();
+
     const node = await renderIntoMain(<LandingPage />, false);
     const skipLink = node.querySelector('a[href="#main-content"]');
     expect(skipLink?.textContent).toContain("Skip to content");
