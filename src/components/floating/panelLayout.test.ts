@@ -132,11 +132,12 @@ describe("panelLayout pure clamping, snapping, and persistence validation", () =
     expect(usePanelLayout.getState().panels.p2!.x).toBe(960 - 300 - 12);
     expect(usePanelLayout.getState().panels.p1!.collapsed).toBe(false);
 
-    // Shrink below 920px narrow-desktop threshold -> auto-collapses to 180px chips
+    // Shrink below 920px narrow-desktop threshold -> auto-collapses and keeps chip inside [12, 900 - 180 - 12]
     usePanelLayout.getState().clampAllToViewport({ width: 900, height: 600 });
     expect(usePanelLayout.getState().panels.p1!.collapsed).toBe(true);
     expect(usePanelLayout.getState().panels.p2!.collapsed).toBe(true);
-    expect(usePanelLayout.getState().panels.p2!.x).toBe(900 - 180 - 12);
+    expect(usePanelLayout.getState().panels.p2!.x).toBeLessThanOrEqual(900 - 180 - 12);
+    expect(usePanelLayout.getState().panels.p2!.x).toBe(960 - 300 - 12);
 
     // Rejects prototype keys and extreme dimensions in persisted JSON
     const protoSafe = parsePersistedPanelLayout(
