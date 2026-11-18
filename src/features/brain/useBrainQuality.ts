@@ -195,7 +195,7 @@ export function useTextSize(): TextSizePref {
 
 /* ---- WebGL support ----------------------------------------------------- */
 let webglSupport: boolean | undefined;
-function detectWebGL(): boolean {
+export function detectWebGL(): boolean {
   if (webglSupport !== undefined) return webglSupport;
   try {
     const canvas = document.createElement("canvas");

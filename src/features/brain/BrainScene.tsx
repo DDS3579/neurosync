@@ -29,8 +29,14 @@ import {
   clampBrainSize,
   computeFitCameraDistance,
 } from "./brainControls";
+import type { BrainReadinessProgress } from "./BrainHero";
 import { compareToSlotWeights } from "./brainCompare";
-import { generateBrainPoints, sampleBrainFromObject, type BrainPointData } from "./brainGeometry";
+import {
+  generateBrainPoints,
+  generateBrainPointsNonBlocking,
+  sampleBrainFromObject,
+  type BrainPointData,
+} from "./brainGeometry";
 import { buildConnectionGeometries } from "./connections";
 import {
   CUT_AXIS_DEFAULTS,
@@ -205,6 +211,76 @@ function useBrainPointData(pointCount: number) {
   }, []);
   const hasGlb = Boolean(glbState && glbState.data.count === pointCount);
   const data = hasGlb && glbState ? glbState.data : procedural;
+  return {
+    data,
+    hasGlb,
+    glbGroup: hasGlb && glbState ? glbState.clippedGroup : null,
+    onSampled,
+  };
+}
+
+function useBrainPointDataAsync(
+  pointCount: number,
+  onProgress?: (info: BrainReadinessProgress) => void,
+) {
+  const [proceduralState, setProceduralState] = useState<{
+    count: number;
+    data: BrainPointData;
+  } | null>(null);
+  const [glbState, setGlbState] = useState<{
+    data: BrainPointData;
+    clippedGroup: THREE.Group;
+  } | null>(null);
+  const onProgressRef = useRef(onProgress);
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    onProgressRef.current?.({
+      stage: "geometry",
+      value: 0.05,
+      pointsPlaced: 0,
+      pointsTotal: pointCount,
+    });
+    void generateBrainPointsNonBlocking(pointCount, {
+      signal,
+      onProgress: (placed, total) => {
+        if (!signal.cancelled) {
+          onProgressRef.current?.({
+            stage: "geometry",
+            value: total > 0 ? placed / total : 1,
+            pointsPlaced: placed,
+            pointsTotal: total,
+          });
+        }
+      },
+    }).then((data) => {
+      if (!signal.cancelled) {
+        onProgressRef.current?.({
+          stage: "geometry",
+          value: 1,
+          pointsPlaced: data.count,
+          pointsTotal: data.count,
+        });
+        setProceduralState({ count: pointCount, data });
+      }
+    });
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [pointCount]);
+
+  const onSampled = useCallback((d: BrainPointData, clippedGroup: THREE.Group) => {
+    setGlbState({ data: d, clippedGroup });
+  }, []);
+
+  const hasGlb = Boolean(glbState && glbState.data.count === pointCount);
+  const procedural =
+    proceduralState && proceduralState.count === pointCount ? proceduralState.data : null;
+  const data = hasGlb && glbState ? glbState.data : procedural;
+
   return {
     data,
     hasGlb,
@@ -990,6 +1066,8 @@ interface HeroSceneProps {
   quality: BrainQuality;
   reducedMotion: boolean;
   highContrast?: boolean;
+  onProgress?: (info: BrainReadinessProgress) => void;
+  onReady?: () => void;
 }
 
 const HERO_KEYFRAMES = {
@@ -1006,16 +1084,30 @@ function HeroCore({
   quality,
   reducedMotion,
   highContrast = false,
+  onProgress,
+  onReady,
 }: HeroSceneProps) {
-  const { camera } = useThree();
+  const { camera, gl, scene } = useThree();
   const groupRef = useRef<THREE.Group>(null);
   const dampedProgRef = useRef(progress);
   const camPosScratch = useRef(new THREE.Vector3());
   const lookAtScratch = useRef(new THREE.Vector3());
+  const shadersCompiledRef = useRef(false);
+  const firstFrameQueuedRef = useRef(false);
+  const readyEmittedRef = useRef(false);
+  const onProgressRef = useRef(onProgress);
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+    onReadyRef.current = onReady;
+  }, [onProgress, onReady]);
 
-  const { data: pointData, onSampled } = useBrainPointData(quality.pointCount);
-  const pointsGeo = useMemo(() => buildPointsGeometry(pointData), [pointData]);
-  useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
+  const { data: pointData, onSampled } = useBrainPointDataAsync(quality.pointCount, onProgress);
+  const pointsGeo = useMemo(
+    () => (pointData ? buildPointsGeometry(pointData) : null),
+    [pointData],
+  );
+  useEffect(() => () => pointsGeo?.dispose(), [pointsGeo]);
 
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const shaderArgs = useMemo(
@@ -1031,7 +1123,35 @@ function HeroCore({
     [],
   );
 
+  // Asynchronous shader compilation once points geometry is mounted.
+  useEffect(() => {
+    if (!pointsGeo || shadersCompiledRef.current) return;
+    let cancelled = false;
+    onProgressRef.current?.({ stage: "shaders", value: 0.2 });
+
+    const finishCompile = () => {
+      if (cancelled) return;
+      shadersCompiledRef.current = true;
+      onProgressRef.current?.({ stage: "shaders", value: 1 });
+    };
+
+    const rendererWithAsync = gl as THREE.WebGLRenderer & {
+      compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>;
+    };
+    if (typeof rendererWithAsync.compileAsync === "function") {
+      void rendererWithAsync.compileAsync(scene, camera).then(finishCompile, finishCompile);
+    } else {
+      gl.compile(scene, camera);
+      finishCompile();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pointsGeo, gl, scene, camera]);
+
   useFrame((state, delta) => {
+    if (!pointsGeo) return;
     const uniforms = matRef.current?.uniforms as BrainUniforms | undefined;
     if (!uniforms) return;
     const dt = Math.min(delta, 0.1);
@@ -1087,17 +1207,40 @@ function HeroCore({
     if (groupRef.current && !reducedMotion) {
       groupRef.current.rotation.y = Math.sin(t * 0.14) * 0.18 * (1 - dive * 0.7);
     }
+
+    // Fire firstFrame + onReady only after shader compilation, 2 presented rAFs, and document.fonts.ready.
+    if (shadersCompiledRef.current && !firstFrameQueuedRef.current) {
+      firstFrameQueuedRef.current = true;
+      onProgressRef.current?.({ stage: "firstFrame", value: 0.4 });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const fontsReady =
+            typeof document !== "undefined" && document.fonts?.ready
+              ? document.fonts.ready
+              : Promise.resolve();
+          void fontsReady.then(() => {
+            if (!readyEmittedRef.current) {
+              readyEmittedRef.current = true;
+              onProgressRef.current?.({ stage: "firstFrame", value: 1 });
+              onReadyRef.current?.();
+            }
+          });
+        });
+      });
+    }
   });
 
   return (
     <>
       <OptionalGlbLoader pointCount={quality.pointCount} onSampled={onSampled} />
       <FpsGovernor qualityPref="auto" tier={quality.tier} downgrade={quality.downgrade} />
-      <group ref={groupRef}>
-        <points geometry={pointsGeo} frustumCulled={false}>
-          <shaderMaterial ref={matRef} args={[shaderArgs]} />
-        </points>
-      </group>
+      {pointsGeo ? (
+        <group ref={groupRef}>
+          <points geometry={pointsGeo} frustumCulled={false}>
+            <shaderMaterial ref={matRef} args={[shaderArgs]} />
+          </points>
+        </group>
+      ) : null}
       {quality.postprocessing ? (
         <EffectComposer multisampling={0}>
           <Bloom intensity={0.6} luminanceThreshold={0.9} luminanceSmoothing={0.25} mipmapBlur />
