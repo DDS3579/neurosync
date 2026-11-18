@@ -69,7 +69,7 @@ export function AppSidebar() {
             N
           </span>
           <span className="font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-            v0.2
+            v0.3
           </span>
         </Link>
       </SidebarHeader>
