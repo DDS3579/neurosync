@@ -80,10 +80,10 @@ describe("MicrotasksTab, Runners & Trends", () => {
     expect(host.textContent).toContain("How rested do you feel?");
 
     // Practice round is primary before first run
-    const practiceBtn = Array.from(host.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Practice reaction time"),
-    ) as HTMLButtonElement | undefined;
-    expect(practiceBtn).toBeDefined();
+    const practiceBtn = host.querySelector(
+      'button[aria-label="Practice reaction time"]',
+    ) as HTMLButtonElement | null;
+    expect(practiceBtn).not.toBeNull();
 
     await act(async () => {
       practiceBtn!.click();

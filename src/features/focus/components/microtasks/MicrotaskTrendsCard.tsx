@@ -100,9 +100,14 @@ export function MicrotaskTrendsCard({
           variant="outline"
           size="sm"
           aria-label="Trend task filter"
+          className="h-auto w-full max-w-full flex-wrap justify-start sm:w-fit"
         >
           {TASK_ORDER.map((task) => (
-            <ToggleGroupItem key={task} value={task} className="text-caption">
+            <ToggleGroupItem
+              key={task}
+              value={task}
+              className="h-auto min-h-8 whitespace-normal px-2.5 py-1.5 text-caption"
+            >
               {MICROTASKS_LABELS[task]}
             </ToggleGroupItem>
           ))}

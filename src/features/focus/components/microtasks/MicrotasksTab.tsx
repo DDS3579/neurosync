@@ -350,17 +350,19 @@ export function MicrotasksTab({
                   <>
                     <Button
                       type="button"
+                      aria-label={`Practice ${card.title.toLowerCase()}`}
                       onClick={() => handleLaunch(card.task, true)}
-                      className="w-full rounded-control bg-violet text-white hover:bg-violet/90"
+                      className="h-auto min-h-9 w-full whitespace-normal rounded-control bg-violet px-3 py-2 text-center text-white hover:bg-violet/90"
                     >
-                      Practice {card.title.toLowerCase()}
+                      Practice round
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
+                      aria-label={`Skip practice and start ${card.title.toLowerCase()}`}
                       onClick={() => handleLaunch(card.task, false)}
-                      className="w-full rounded-control text-caption text-muted-foreground hover:text-foreground"
+                      className="h-auto min-h-8 w-full whitespace-normal rounded-control px-3 py-1.5 text-center text-caption text-muted-foreground hover:text-foreground"
                     >
                       Skip practice &amp; start
                     </Button>
@@ -369,17 +371,19 @@ export function MicrotasksTab({
                   <>
                     <Button
                       type="button"
+                      aria-label={`Start ${card.title.toLowerCase()}`}
                       onClick={() => handleLaunch(card.task, false)}
-                      className="w-full rounded-control bg-violet text-white hover:bg-violet/90"
+                      className="h-auto min-h-9 w-full whitespace-normal rounded-control bg-violet px-3 py-2 text-center text-white hover:bg-violet/90"
                     >
-                      Start {card.title.toLowerCase()}
+                      Start task
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      aria-label={`Practice ${card.title.toLowerCase()} again`}
                       onClick={() => handleLaunch(card.task, true)}
-                      className="w-full rounded-control text-caption"
+                      className="h-auto min-h-8 w-full whitespace-normal rounded-control px-3 py-1.5 text-center text-caption"
                     >
                       Practice round
                     </Button>
