@@ -270,5 +270,22 @@ describe("Immersive /brain shell, Escape hierarchy, and wheel controls", () => {
     });
     expect(panelWheel.defaultPrevented).toBe(false);
     expect(readBrainSizePref()).toBe(1.1);
+
+    // Focus rescue: clicking Enter full-screen moves focus out of hidden inert sidebar
+    const sidebarLink = node.querySelector('[data-slot="sidebar"] a') as HTMLElement | null;
+    if (sidebarLink) {
+      await act(async () => {
+        node
+          .querySelector<HTMLButtonElement>('button[aria-label="Exit immersive mode"]')!
+          .click();
+      });
+      sidebarLink.focus();
+      await act(async () => {
+        node
+          .querySelector<HTMLButtonElement>('button[aria-label="Enter full-screen immersive mode"]')!
+          .click();
+      });
+      expect(document.activeElement?.closest("[inert]")).toBeNull();
+    }
   });
 });

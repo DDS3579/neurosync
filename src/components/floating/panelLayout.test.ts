@@ -127,9 +127,25 @@ describe("panelLayout pure clamping, snapping, and persistence validation", () =
     const afterFront = usePanelLayout.getState();
     expect(afterFront.panels.p1!.zIndex).toBeGreaterThan(afterFront.panels.p2!.zIndex);
 
-    // Shrink viewport and re-clamp
+    // Shrink viewport and re-clamp (auto-collapses non-region panels below 920px)
     usePanelLayout.getState().clampAllToViewport({ width: 900, height: 600 });
     expect(usePanelLayout.getState().panels.p2!.x).toBe(900 - 300 - 12);
+    expect(usePanelLayout.getState().panels.p1!.collapsed).toBe(true);
+
+    // Rejects prototype keys and extreme dimensions in persisted JSON
+    const protoSafe = parsePersistedPanelLayout(
+      JSON.stringify({
+        version: PANEL_LAYOUT_SCHEMA_VERSION,
+        topZ: 2,
+        panels: {
+          ["__proto__"]: { x: 10, y: 10 },
+          oversized: { x: 50, y: 50, width: 99999, height: 99999, collapsed: false, closed: false, zIndex: 2 },
+        },
+      }),
+    );
+    expect(Object.prototype.hasOwnProperty.call(protoSafe.panels, "__proto__")).toBe(false);
+    expect(protoSafe.panels.oversized?.width).toBeUndefined();
+    expect(protoSafe.panels.oversized?.height).toBeUndefined();
 
     // Collapse & persist check
     usePanelLayout.getState().setCollapsed("p1", true, { width: 900, height: 600 });

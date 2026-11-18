@@ -27,12 +27,17 @@ vi.hoisted(() => {
     });
   }
 });
+import { AppShell } from "@/components/app-shell/app-shell";
 import { ChartCard } from "@/components/nx";
+import { usePanelLayout } from "@/components/floating";
 import { BrainExplorer } from "@/features/brain/BrainExplorer";
 import { BrainExplorerWorkspace } from "@/features/brain/components/BrainExplorerWorkspace";
 import { deriveWeeklyBrainActivity } from "@/features/brain/brainActivity";
+import { ConstellationWorkspace } from "@/features/constellation/components/ConstellationWorkspace";
+import { deriveConstellation } from "@/features/constellation/constellation";
 import { ExperimentsWorkspace } from "@/features/experiments/components/ExperimentsWorkspace";
 import { FocusWorkspace } from "@/features/focus/components/FocusWorkspace";
+import { MicrotasksTab } from "@/features/focus/components/microtasks/MicrotasksTab";
 import { HabitsWorkspace } from "@/features/habits/components/HabitsWorkspace";
 import { InsightsWorkspace } from "@/features/insights/components/InsightsWorkspace";
 import { WeeklyReportWorkspace } from "@/features/insights/components/WeeklyReportWorkspace";
@@ -46,9 +51,11 @@ import { SettingsWorkspace } from "@/features/settings/components/SettingsWorksp
 import { LIBRARY_ENTRIES } from "@/data/library";
 import { buildWeeklyReport, computeInsights, generateDemoData } from "@/lib/insights";
 
+let mockPathname = "/overview";
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
-  usePathname: () => "/overview",
+  usePathname: () => mockPathname,
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -484,5 +491,112 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     );
     expect(errNode.querySelector('[role="alert"]')).not.toBeNull();
     await runAxeCheck(errNode);
+  });
+
+  it("Immersive /brain, /constellation, and Microtasks pass axe-core", async () => {
+    const derived = deriveWeeklyBrainActivity({
+      focus: demo.focus,
+      movement: demo.movement,
+      sleep: demo.sleep,
+      habits: demo.habits,
+      habitLogs: demo.habitLogs,
+      mindfulness: [],
+      activities: [],
+      today: TODAY_DATE,
+    });
+
+    // 1. Immersive /brain with floating panels
+    mockPathname = "/brain";
+    const brainNode = await renderIntoMain(
+      <AppShell>
+        <BrainExplorerWorkspace
+          activity={derived.activity}
+          loggedItems={derived.items}
+          windowStart={derived.windowStart}
+          windowEnd={derived.windowEnd}
+          hasAnyData
+          onCreateActivity={vi.fn(async () => {})}
+          onQuickMoodCheckin={vi.fn(async () => "created" as const)}
+          onQuickFocusLog={vi.fn(async () => {})}
+        />
+      </AppShell>,
+      false,
+    );
+    await runAxeCheck(brainNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    brainNode.remove();
+    usePanelLayout.setState({
+      hydrated: false,
+      topZ: 1,
+      panels: {},
+      defaults: {},
+      measuredSizes: {},
+      activeMobilePanelId: null,
+    });
+
+    // 2. /constellation workspace (Starfield map + Table view)
+    mockPathname = "/constellation";
+    const constellationData = deriveConstellation({
+      habits: demo.habits,
+      habitLogs: demo.habitLogs,
+      activities: [],
+      focus: demo.focus,
+      movement: demo.movement,
+      mindfulness: [],
+      windowDays: 30,
+      today: TODAY_DATE,
+    });
+    const constNode = await renderIntoMain(
+      <ConstellationWorkspace
+        data={constellationData}
+        windowDays={30}
+        onChangeWindowDays={vi.fn()}
+        reducedMotion
+      />,
+    );
+    await runAxeCheck(constNode);
+
+    const tableBtn = constNode.querySelector('button[aria-label="Table view"]') as HTMLButtonElement;
+    await act(async () => {
+      tableBtn.click();
+    });
+    await runAxeCheck(constNode);
+
+    await act(async () => {
+      mountRoot?.unmount();
+    });
+    mountRoot = null;
+    constNode.remove();
+
+    // 3. Microtasks tab & trends
+    mockPathname = "/focus";
+    const microNode = await renderIntoMain(
+      <MicrotasksTab
+        results={[
+          {
+            id: "a11y-mt-1",
+            date: "2026-11-16",
+            createdAt: "2026-11-16T08:00:00.000Z",
+            updatedAt: "2026-11-16T08:00:00.000Z",
+            task: "reaction_time",
+            timeOfDay: "morning",
+            restedRating: 4,
+            inputType: "keyboard",
+            metrics: { trialsMs: [280, 290, 300], medianMs: 290, bestMs: 280, falseStarts: 0 },
+          },
+        ]}
+        reducedMotion
+        onCreateResult={vi.fn(async () => {})}
+        onDeleteResult={vi.fn(async () => {})}
+      />,
+    );
+    await runAxeCheck(microNode);
+
+    mockPathname = "/overview";
+    window.localStorage.clear();
   });
 });

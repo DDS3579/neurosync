@@ -221,7 +221,7 @@ export function BrainImmersivePanels({
           y: Math.max(16, vp.height - Math.max(size.height, 140) - 16),
         })}
         defaultSize={{ width: 396 }}
-        defaultCollapsed={(vp) => vp.width < 1180}
+        defaultCollapsed={(vp) => vp.width < 1024}
       >
         {timelineContent}
       </FloatingPanel>
@@ -254,7 +254,7 @@ export function BrainImmersivePanels({
           y: Math.max(16, vp.height - Math.max(size.height, 340) - 16),
         })}
         defaultSize={{ width: 356, height: 340 }}
-        defaultCollapsed={(vp) => vp.width < 1180}
+        defaultCollapsed={(vp) => vp.width < 1024}
         resizable
       >
         {impactContent}

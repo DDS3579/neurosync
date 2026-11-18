@@ -484,8 +484,6 @@ function ExplorerCore({
   }, [connectionsGeo]);
 
   const pointsMatRef = useRef<THREE.ShaderMaterial>(null);
-  const connLinesMatRef = useRef<THREE.ShaderMaterial>(null);
-  const connPulsesMatRef = useRef<THREE.ShaderMaterial>(null);
 
   const proxyGeo = useMemo(() => new THREE.IcosahedronGeometry(1, 1), []);
   const proxyMat = useMemo(
@@ -508,17 +506,6 @@ function ExplorerCore({
       connPulses: { ...base, vertexShader: connectionVertex, fragmentShader: connectionPulseFragment },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const pMat = pointsMatRef.current;
-    const lMat = connLinesMatRef.current;
-    const uMat = connPulsesMatRef.current;
-    return () => {
-      pMat?.dispose();
-      lMat?.dispose();
-      uMat?.dispose();
-    };
   }, []);
 
   // Update camera transition whenever selection, isolation, or explicit fly-to request changes
@@ -872,10 +859,10 @@ function ExplorerCore({
           <shaderMaterial ref={pointsMatRef} args={[shaderArgs.points]} />
         </points>
         <lineSegments geometry={connectionsGeo.lines} frustumCulled={false}>
-          <shaderMaterial ref={connLinesMatRef} args={[shaderArgs.connLines]} />
+          <shaderMaterial args={[shaderArgs.connLines]} />
         </lineSegments>
         <points geometry={connectionsGeo.pulses} frustumCulled={false}>
-          <shaderMaterial ref={connPulsesMatRef} args={[shaderArgs.connPulses]} />
+          <shaderMaterial args={[shaderArgs.connPulses]} />
         </points>
 
         {/* Cross-section slice ring guide */}
@@ -1031,12 +1018,6 @@ function HeroCore({
   useEffect(() => () => pointsGeo.dispose(), [pointsGeo]);
 
   const matRef = useRef<THREE.ShaderMaterial>(null);
-  useEffect(() => {
-    const mat = matRef.current;
-    return () => {
-      mat?.dispose();
-    };
-  }, []);
   const shaderArgs = useMemo(
     () => ({
       vertexShader: brainPointsVertex,

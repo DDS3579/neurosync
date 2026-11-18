@@ -94,7 +94,7 @@ export function ConstellationCanvas({
     >
       <svg
         viewBox={`0 0 ${CONSTELLATION_VIEWBOX.width} ${CONSTELLATION_VIEWBOX.height}`}
-        role="img"
+        role="group"
         aria-label={data.summaryText}
         className="block h-auto w-full select-none"
       >
