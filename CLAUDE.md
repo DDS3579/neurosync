@@ -28,9 +28,9 @@ text #E6EAF5, muted #8A93AD. Geist Sans + Mono. Cyan = information, violet = emp
 ## 3D coordinates
 x +right, y +up, z +front. Brain normalized to about [-1,1].
 
-## Workflow (v0.3)
-- Each task: create branch `v0.3/<short-feature-name>` off `v0.3` (note: if Git disallows `v0.3/<name>` while branch `v0.3` exists as a ref, use `v0.3-<short-feature-name>`), commit in small conventional commits, and when all checks pass merge into `v0.3` (no force-push, no pushing to remote unless asked).
-- Before finishing every task run: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. Report the REAL results. If a command is blocked by the environment, say so explicitly; never claim a pass you didn't observe.
+## Workflow (v0.4)
+- All v0.4 work happens exclusively on the single `v0.4` branch (no feature branches). Commit in small conventional commits after each meaningful step, and do not push or run force operations unless explicitly asked.
+- Before finishing every task run: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:a11y`, and `pnpm build` (plus browser verification when UI changes are in scope). Report the REAL results only; if a command is blocked by the environment, say so explicitly and never claim a pass you didn't observe.
 - Any new persisted data: add a new Dexie version with a migration, bump the backup `schemaVersion`, keep importing older backups, extend the backup validation, and add tests (including importing a v0.1 backup).
 - UI-only preferences (panel layout, immersive on/off, brain size) live in localStorage under versioned keys (e.g. `ns:ui:v1:...`), wrapped in try/catch with safe defaults; they are NOT stored in Dexie, so they need no schema migration.
 - New pure logic gets Vitest tests. New UI follows the existing design tokens and `nx` primitives; no new UI libraries without telling the user why.
