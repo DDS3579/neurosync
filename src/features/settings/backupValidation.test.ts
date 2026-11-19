@@ -151,6 +151,10 @@ describe("backup import validation", () => {
     expect(await getDb().reviewItems.count()).toBe(0);
     expect(await getDb().dayPlans.count()).toBe(0);
     expect(await getDb().insightFeedback.count()).toBe(0);
+    expect(await getDb().projects.count()).toBe(0);
+    expect(await getDb().tasks.count()).toBe(0);
+    expect(await getDb().blocks.count()).toBe(0);
+    expect(await getDb().dayPlanMeta.count()).toBe(0);
   });
 
   it("rejects invalid mindfulness, journal, gratitude, activity, or review rows without wiping existing data", async () => {
@@ -257,5 +261,20 @@ describe("backup import validation", () => {
     await expect(importAll(JSON.stringify(badTextSizeBackup), "replace")).rejects.toBeInstanceOf(
       BackupError,
     );
+
+    const badBlockStartWithoutDate = structuredClone(await buildBackup());
+    badBlockStartWithoutDate.tables.blocks.push({
+      id: "bad-block",
+      createdAt: "2026-11-15T08:00:00.000Z",
+      updatedAt: "2026-11-15T08:00:00.000Z",
+      taskId: "t1",
+      order: 0,
+      plannedMin: 50,
+      status: "scheduled",
+      plannedStart: "09:00",
+    });
+    await expect(
+      importAll(JSON.stringify(badBlockStartWithoutDate), "replace"),
+    ).rejects.toBeInstanceOf(BackupError);
   });
 });

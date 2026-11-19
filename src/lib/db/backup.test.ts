@@ -5,7 +5,9 @@ import { BackupError, SCHEMA_VERSION, buildBackup, exportAll, importAll } from "
 import { NeuroSyncDatabase, getDb } from "@/lib/db/dexie";
 import {
   activityRepository,
+  blockRepository,
   checkinRepository,
+  dayPlanMetaRepository,
   dayPlanRepository,
   focusRepository,
   gratitudeRepository,
@@ -15,9 +17,11 @@ import {
   journalRepository,
   microtaskRepository,
   mindfulnessRepository,
+  projectRepository,
   reviewRepository,
   settingsRepository,
   sleepRepository,
+  taskRepository,
 } from "@/lib/db/repositories";
 
 const DATE = "2026-03-02";
@@ -146,6 +150,41 @@ async function seed(): Promise<void> {
       falseStarts: 0,
     },
   });
+
+  const project = await projectRepository.create({
+    name: "Neurobiology",
+    color: "#8B5CF6",
+    archived: false,
+  });
+
+  const task = await taskRepository.create({
+    title: "Synaptic plasticity chapter",
+    projectId: project.id,
+    kind: "deep",
+    estimateMin: 100,
+    dueDate: DATE,
+    status: "active",
+    repeatWeekdays: [1, 3, 5],
+  });
+
+  await blockRepository.bulkCreate([
+    {
+      taskId: task.id,
+      order: 0,
+      plannedMin: 50,
+      status: "scheduled",
+      plannedDate: DATE,
+      plannedStart: "09:00",
+    },
+    {
+      taskId: task.id,
+      order: 1,
+      plannedMin: 50,
+      status: "todo",
+    },
+  ]);
+
+  await dayPlanMetaRepository.setShutdownDone(DATE, true, "Wrapped up cleanly before wind-down.");
 }
 
 describe("backup round-trip", () => {
@@ -181,6 +220,10 @@ describe("backup round-trip", () => {
     expect(summary.imported.dayPlans).toBe(1);
     expect(summary.imported.insightFeedback).toBe(1);
     expect(summary.imported.microtaskResults).toBe(1);
+    expect(summary.imported.projects).toBe(1);
+    expect(summary.imported.tasks).toBe(1);
+    expect(summary.imported.blocks).toBe(2);
+    expect(summary.imported.dayPlanMeta).toBe(1);
   });
 
   it("imports a v0.1 backup (schemaVersion 1) and migrates settings to current schema", async () => {
@@ -234,8 +277,15 @@ describe("backup round-trip", () => {
     expect(restoredSettings?.highContrast).toBe(false);
     expect(restoredSettings?.textSize).toBe("md");
     expect(restoredSettings?.reminders?.windDown.enabled).toBe(false);
+    expect(restoredSettings?.defaultBlockMin).toBe(50);
+    expect(restoredSettings?.deepWorkCapMin).toBe(240);
+    expect(restoredSettings?.snapMin).toBe(15);
     expect(await getDb().sleepLogs.count()).toBe(1);
     expect(await getDb().activityLogs.count()).toBe(0);
+    expect(await getDb().projects.count()).toBe(0);
+    expect(await getDb().tasks.count()).toBe(0);
+    expect(await getDb().blocks.count()).toBe(0);
+    expect(await getDb().dayPlanMeta.count()).toBe(0);
   });
 
   it("imports a v2 backup (schemaVersion 2) and migrates settings to current schema", async () => {
@@ -400,6 +450,131 @@ describe("backup round-trip", () => {
     expect(summary.imported.microtaskResults).toBe(0);
     expect((await getDb().settings.get("me"))?.schemaVersion).toBe(SCHEMA_VERSION);
     expect(await getDb().microtaskResults.count()).toBe(0);
+  });
+
+  it("imports a v9 backup cleanly with empty v10 planner tables and default settings", async () => {
+    const v9Backup = {
+      schemaVersion: 9,
+      exportedAt: `${DATE}T12:00:00.000Z`,
+      tables: {
+        settings: [
+          {
+            id: "me",
+            createdAt: `${DATE}T08:00:00.000Z`,
+            updatedAt: `${DATE}T08:00:00.000Z`,
+            sleepTargetMin: 480,
+            focusDefaultMin: 25,
+            breakDefaultMin: 5,
+            onboarded: true,
+            highContrast: false,
+            textSize: "md",
+            schemaVersion: 9,
+          },
+        ],
+        sleepLogs: [],
+        checkins: [],
+        focusSessions: [],
+        movementLogs: [],
+        nutritionLogs: [],
+        habits: [],
+        habitLogs: [],
+        experiments: [],
+        mindfulnessSessions: [],
+        journalEntries: [],
+        gratitudeEntries: [],
+        activityLogs: [],
+        reviewItems: [],
+        dayPlans: [],
+        insightFeedback: [],
+        microtaskResults: [
+          {
+            id: "mt-v9",
+            createdAt: `${DATE}T08:00:00.000Z`,
+            updatedAt: `${DATE}T08:00:00.000Z`,
+            date: DATE,
+            timeOfDay: "morning",
+            inputType: "keyboard",
+            task: "reaction_time",
+            metrics: { trialsMs: [280, 290], medianMs: 285, bestMs: 280, falseStarts: 0 },
+          },
+        ],
+      },
+    };
+
+    const summary = await importAll(JSON.stringify(v9Backup), "replace");
+    expect(summary.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(summary.imported.microtaskResults).toBe(1);
+    expect(summary.imported.projects).toBe(0);
+    expect(summary.imported.tasks).toBe(0);
+    expect(summary.imported.blocks).toBe(0);
+    expect(summary.imported.dayPlanMeta).toBe(0);
+    const settings = await getDb().settings.get("me");
+    expect(settings?.defaultBlockMin).toBe(50);
+    expect(settings?.deepWorkCapMin).toBe(240);
+    expect(settings?.snapMin).toBe(15);
+    expect(settings?.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("upgrades an existing Dexie v9 database to v10 preserving rows and migrating settings", async () => {
+    const dbName = `neurosync-v9-to-v10-${Date.now()}`;
+    const v9Db = new Dexie(dbName);
+    v9Db.version(9).stores({
+      settings: "id",
+      sleepLogs: "id, date",
+      checkins: "id, date",
+      focusSessions: "id, date, subject, method",
+      movementLogs: "id, date, type",
+      nutritionLogs: "id, date",
+      habits: "id, archived",
+      habitLogs: "id, date, habitId, [date+habitId]",
+      experiments: "id, status, metric, baselineStart",
+      mindfulnessSessions: "id, date, type",
+      journalEntries: "id, date",
+      gratitudeEntries: "id, date",
+      activityLogs: "id, date, type",
+      reviewItems: "id, nextReviewDate, intervalStep",
+      dayPlans: "id, date",
+      insightFeedback: "id, insightId, status",
+      microtaskResults: "id, date, task",
+    });
+    await v9Db.open();
+    await v9Db.table("settings").put({
+      id: "me",
+      createdAt: `${DATE}T08:00:00.000Z`,
+      updatedAt: `${DATE}T08:00:00.000Z`,
+      sleepTargetMin: 480,
+      focusDefaultMin: 25,
+      breakDefaultMin: 5,
+      onboarded: true,
+      schemaVersion: 9,
+    });
+    await v9Db.table("microtaskResults").put({
+      id: "mt-preserve",
+      createdAt: `${DATE}T09:00:00.000Z`,
+      updatedAt: `${DATE}T09:00:00.000Z`,
+      date: DATE,
+      timeOfDay: "morning",
+      inputType: "mouse",
+      task: "memory_span",
+      metrics: { longestSpan: 5, startingLength: 3, totalRounds: 4, failures: 2 },
+    });
+    v9Db.close();
+
+    const upgradedDb = new NeuroSyncDatabase(dbName);
+    await upgradedDb.open();
+    const migratedSettings = await upgradedDb.settings.get("me");
+    const preservedMt = await upgradedDb.microtaskResults.get("mt-preserve");
+    expect(migratedSettings?.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migratedSettings?.defaultBlockMin).toBe(50);
+    expect(migratedSettings?.deepWorkCapMin).toBe(240);
+    expect(migratedSettings?.snapMin).toBe(15);
+    expect(preservedMt?.task).toBe("memory_span");
+    expect(await upgradedDb.projects.count()).toBe(0);
+    expect(await upgradedDb.tasks.count()).toBe(0);
+    expect(await upgradedDb.blocks.count()).toBe(0);
+    expect(await upgradedDb.dayPlanMeta.count()).toBe(0);
+    upgradedDb.close();
+    await Dexie.delete(dbName);
   });
 
   it("upgrades an existing Dexie v1 database to v3 preserving rows and migrating settings", async () => {
