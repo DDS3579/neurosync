@@ -7,6 +7,9 @@ import { createRepository, type UpdateInput } from "./base";
 export const DEFAULT_SLEEP_TARGET_MIN = 480;
 export const DEFAULT_FOCUS_MIN = 25;
 export const DEFAULT_BREAK_MIN = 5;
+export const DEFAULT_BLOCK_MIN = 50;
+export const DEFAULT_DEEP_WORK_CAP_MIN = 240;
+export const DEFAULT_SNAP_MIN = 15;
 
 export type SettingsInput = Omit<UserSettings, "id" | "createdAt" | "updatedAt">;
 
@@ -19,6 +22,9 @@ export const DEFAULT_SETTINGS_INPUT: SettingsInput = {
   highContrast: false,
   textSize: "md",
   reminders: DEFAULT_REMINDER_SETTINGS,
+  defaultBlockMin: DEFAULT_BLOCK_MIN,
+  deepWorkCapMin: DEFAULT_DEEP_WORK_CAP_MIN,
+  snapMin: DEFAULT_SNAP_MIN,
   schemaVersion: SCHEMA_VERSION,
 };
 
