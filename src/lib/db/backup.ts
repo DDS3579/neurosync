@@ -5,8 +5,10 @@ import { SCHEMA_VERSION, getDb } from "@/lib/db/dexie";
 import type {
   ActivityLog,
   Base,
+  Block,
   DailyCheckin,
   DayPlan,
+  DayPlanMeta,
   Experiment,
   FocusSession,
   GratitudeEntry,
@@ -19,8 +21,10 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  Project,
   ReviewItem,
   SleepLog,
+  Task,
   UserSettings,
 } from "@/types/domain";
 
@@ -75,6 +79,9 @@ const settingsSchema = z.object({
   highContrast: z.boolean().optional(),
   textSize: z.enum(["sm", "md", "lg"]).optional(),
   reminders: reminderSettingsSchema.optional(),
+  defaultBlockMin: z.number().int().min(15).max(240).optional(),
+  deepWorkCapMin: z.number().int().min(15).max(720).optional(),
+  snapMin: z.number().int().min(5).max(60).optional(),
   schemaVersion: z.number().int().positive(),
 });
 
@@ -328,6 +335,50 @@ const microtaskResultSchema = z.discriminatedUnion("task", [
   }),
 ]);
 
+const projectSchema = z.object({
+  ...baseFields,
+  name: z.string().trim().min(1),
+  color: z.string().optional(),
+  archived: z.boolean(),
+});
+
+const taskSchema = z.object({
+  ...baseFields,
+  title: z.string().trim().min(1),
+  projectId: z.string().min(1).optional(),
+  notes: z.string().optional(),
+  kind: z.enum(["deep", "shallow", "recovery"]),
+  estimateMin: z.number().int().positive(),
+  dueDate: isoDate.optional(),
+  status: z.enum(["inbox", "active", "done", "archived"]),
+  repeatWeekdays: z.array(z.number().int().min(0).max(6)).optional(),
+});
+
+const blockSchema = z
+  .object({
+    ...baseFields,
+    taskId: z.string().min(1),
+    order: z.number().int().min(0),
+    plannedMin: z.number().int().positive(),
+    status: z.enum(["todo", "scheduled", "done", "skipped"]),
+    plannedDate: isoDate.optional(),
+    plannedStart: hhmmTime.optional(),
+    actualMin: z.number().int().nonnegative().optional(),
+    focusSessionId: z.string().min(1).optional(),
+    completedAt: isoDateTime.optional(),
+  })
+  .refine((row) => !(row.plannedStart && !row.plannedDate), {
+    message: "plannedStart requires plannedDate",
+    path: ["plannedStart"],
+  });
+
+const dayPlanMetaSchema = z.object({
+  ...baseFields,
+  date: isoDate,
+  shutdownDone: z.boolean(),
+  reflection: z.string().optional(),
+});
+
 const v1TablesShape = {
   settings: z.array(settingsSchema),
   sleepLogs: z.array(sleepSchema),
@@ -424,10 +475,24 @@ const v9TablesShape = {
   microtaskResults: z.array(microtaskResultSchema),
 };
 
+const v9BackupFileSchema = z.object({
+  schemaVersion: z.literal(9),
+  exportedAt: isoDateTime,
+  tables: z.object(v9TablesShape),
+});
+
+const v10TablesShape = {
+  ...v9TablesShape,
+  projects: z.array(projectSchema),
+  tasks: z.array(taskSchema),
+  blocks: z.array(blockSchema),
+  dayPlanMeta: z.array(dayPlanMetaSchema),
+};
+
 export const backupFileSchema = z.object({
   schemaVersion: z.number().int().positive(),
   exportedAt: isoDateTime,
-  tables: z.object(v9TablesShape),
+  tables: z.object(v10TablesShape),
 });
 
 export interface BackupTables {
@@ -448,6 +513,10 @@ export interface BackupTables {
   dayPlans: DayPlan[];
   insightFeedback: InsightFeedback[];
   microtaskResults: MicrotaskResult[];
+  projects: Project[];
+  tasks: Task[];
+  blocks: Block[];
+  dayPlanMeta: DayPlanMeta[];
 }
 
 export interface BackupFile {
@@ -489,6 +558,10 @@ const TABLE_NAMES = [
   "dayPlans",
   "insightFeedback",
   "microtaskResults",
+  "projects",
+  "tasks",
+  "blocks",
+  "dayPlanMeta",
 ] as const satisfies readonly (keyof BackupTables)[];
 
 /** Reads every table into one plain object. */
@@ -513,6 +586,10 @@ export async function buildBackup(): Promise<BackupFile> {
     dayPlans: await db.dayPlans.toArray(),
     insightFeedback: await db.insightFeedback.toArray(),
     microtaskResults: await db.microtaskResults.toArray(),
+    projects: await db.projects.toArray(),
+    tasks: await db.tasks.toArray(),
+    blocks: await db.blocks.toArray(),
+    dayPlanMeta: await db.dayPlanMeta.toArray(),
   };
 
   return {
@@ -542,6 +619,9 @@ function normalizeSettingsRows(rows: UserSettings[]): UserSettings[] {
     highContrast: row.highContrast ?? false,
     textSize: row.textSize ?? "md",
     reminders: normalizeReminderSettings(row.reminders),
+    defaultBlockMin: row.defaultBlockMin ?? 50,
+    deepWorkCapMin: row.deepWorkCapMin ?? 240,
+    snapMin: row.snapMin ?? 15,
     schemaVersion: SCHEMA_VERSION,
   }));
 }
@@ -556,6 +636,45 @@ function validateWithSchema<T>(schema: z.ZodType<T>, raw: unknown): T {
     );
   }
   return parsed.data;
+}
+
+const LEGACY_BACKUP_SCHEMAS: ReadonlyMap<number, z.ZodType<{ exportedAt: string; tables: Partial<BackupTables> }>> =
+  new Map([
+    [1, v1BackupFileSchema],
+    [2, v2BackupFileSchema],
+    [3, v3BackupFileSchema],
+    [4, v4BackupFileSchema],
+    [5, v5BackupFileSchema],
+    [6, v6BackupFileSchema],
+    [7, v7BackupFileSchema],
+    [8, v8BackupFileSchema],
+    [9, v9BackupFileSchema],
+  ]);
+
+function upgradeTablesToCurrent(partial: Partial<BackupTables>): BackupTables {
+  return {
+    settings: normalizeSettingsRows(partial.settings ?? []),
+    sleepLogs: partial.sleepLogs ?? [],
+    checkins: partial.checkins ?? [],
+    focusSessions: normalizeFocusSessions(partial.focusSessions ?? []),
+    movementLogs: partial.movementLogs ?? [],
+    nutritionLogs: partial.nutritionLogs ?? [],
+    habits: partial.habits ?? [],
+    habitLogs: partial.habitLogs ?? [],
+    experiments: partial.experiments ?? [],
+    mindfulnessSessions: partial.mindfulnessSessions ?? [],
+    journalEntries: partial.journalEntries ?? [],
+    gratitudeEntries: partial.gratitudeEntries ?? [],
+    activityLogs: partial.activityLogs ?? [],
+    reviewItems: partial.reviewItems ?? [],
+    dayPlans: partial.dayPlans ?? [],
+    insightFeedback: partial.insightFeedback ?? [],
+    microtaskResults: partial.microtaskResults ?? [],
+    projects: partial.projects ?? [],
+    tasks: partial.tasks ?? [],
+    blocks: partial.blocks ?? [],
+    dayPlanMeta: partial.dayPlanMeta ?? [],
+  };
 }
 
 function parseBackup(text: string): BackupFile {
@@ -581,139 +700,22 @@ function parseBackup(text: string): BackupFile {
     );
   }
 
-  if (version === 1) {
-    const data = validateWithSchema(v1BackupFileSchema, raw);
+  const legacySchema = LEGACY_BACKUP_SCHEMAS.get(version);
+  if (legacySchema) {
+    const data = validateWithSchema(legacySchema, raw);
     return {
       schemaVersion: SCHEMA_VERSION,
       exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        mindfulnessSessions: [],
-        journalEntries: [],
-        gratitudeEntries: [],
-        activityLogs: [],
-        reviewItems: [],
-        dayPlans: [],
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 2) {
-    const data = validateWithSchema(v2BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        activityLogs: [],
-        reviewItems: [],
-        dayPlans: [],
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 3) {
-    const data = validateWithSchema(v3BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        reviewItems: [],
-        dayPlans: [],
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 4) {
-    const data = validateWithSchema(v4BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        dayPlans: [],
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 5) {
-    const data = validateWithSchema(v5BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        dayPlans: [],
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 6) {
-    const data = validateWithSchema(v6BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        insightFeedback: [],
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 7) {
-    const data = validateWithSchema(v7BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        microtaskResults: [],
-      },
-    };
-  }
-
-  if (version === 8) {
-    const data = validateWithSchema(v8BackupFileSchema, raw);
-    return {
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: data.exportedAt,
-      tables: {
-        ...data.tables,
-        settings: normalizeSettingsRows(data.tables.settings),
-        focusSessions: normalizeFocusSessions(data.tables.focusSessions),
-        microtaskResults: [],
-      },
+      tables: upgradeTablesToCurrent(data.tables),
     };
   }
 
   const data = validateWithSchema(backupFileSchema, raw);
-  return data as BackupFile;
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: data.exportedAt,
+    tables: upgradeTablesToCurrent(data.tables as BackupTables),
+  };
 }
 
 /**
