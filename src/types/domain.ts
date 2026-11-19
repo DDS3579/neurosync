@@ -44,6 +44,9 @@ export interface UserSettings extends Base {
   onboarded: boolean; reducedMotion?: boolean;
   highContrast?: boolean; textSize?: TextSizePref;
   reminders?: ReminderSettings;
+  defaultBlockMin?: number;                           // default 50
+  deepWorkCapMin?: number;                            // default 240
+  snapMin?: number;                                   // default 15
   schemaVersion: number;
 }
 export interface SleepLog extends Base {
@@ -173,6 +176,45 @@ export interface DayPlan extends Base {
   studyGoals: PlannerStudyGoal[];
   blocks: ScheduledPlanBlock[];
   unscheduled: UnscheduledGoalItem[];
+}
+
+export type TaskKind = 'deep' | 'shallow' | 'recovery';
+export type TaskStatus = 'inbox' | 'active' | 'done' | 'archived';
+export type BlockStatus = 'todo' | 'scheduled' | 'done' | 'skipped';
+
+export interface Project extends Base {
+  name: string;
+  color?: string;
+  archived: boolean;
+}
+
+export interface Task extends Base {
+  title: string;
+  projectId?: string;
+  notes?: string;
+  kind: TaskKind;
+  estimateMin: number;
+  dueDate?: ISODate;
+  status: TaskStatus;
+  repeatWeekdays?: number[];
+}
+
+export interface Block extends Base {
+  taskId: string;
+  order: number;
+  plannedMin: number;
+  status: BlockStatus;
+  plannedDate?: ISODate;
+  plannedStart?: string;
+  actualMin?: number;
+  focusSessionId?: string;
+  completedAt?: ISODateTime;
+}
+
+export interface DayPlanMeta extends Base {
+  date: ISODate;
+  shutdownDone: boolean;
+  reflection?: string;
 }
 
 export type MicrotaskKind = 'reaction_time' | 'memory_span' | 'go_no_go';
