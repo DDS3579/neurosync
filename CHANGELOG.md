@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased (v0.4)
+
+### Added
+- **Block Planner spec (`docs/v0.4-block-planner.md`) & workflow (`CLAUDE.md`)**: Documented Cal Newport–style time-block planning, Pointer Events drag-and-drop architecture decision with keyboard/mobile tap-to-place parity, and v0.4 single-branch workflow rules.
+- **Block Planner data layer, Dexie v10 & backup compatibility**:
+  - Extended `src/types/domain.ts` with `Project`, `Task`, `Block`, `DayPlanMeta`, and `UserSettings` additions (`defaultBlockMin: 50`, `deepWorkCapMin: 240`, `snapMin: 15`).
+  - Added Dexie `SCHEMA_VERSION = 10` migration (`projects`, `tasks`, `blocks`, `dayPlanMeta`) and bumped backup `schemaVersion` to `10` with Zod validation (enforcing `plannedStart` requires `plannedDate`) while keeping `v1–v9` backups compatible (`src/lib/db/dexie.ts`, `src/lib/db/backup.ts`, `src/app/(app)/settings/page.tsx`).
+  - Added `projectRepository`, `taskRepository` (with cascade block deletion and unscheduling on archive), `blockRepository` (bulkCreate, reorder, schedule, unschedule, complete/uncomplete task-status sync, skip, listForDate, listUnscheduled), `dayPlanMetaRepository`, and live Dexie hooks (`src/lib/db/repositories/`, `src/lib/db/hooks.ts`).
+  - Added pure block planner engine in `src/features/planner/blocks/` (`splitIntoBlocks`, `manualSplitBlock`, `mergeBlocks`, `resizeBlockPreservingTotal`, `validateSchedule`, `snapTimeToGrid`, and `capacity`) with unit tests (`blocks.test.ts`), migration/repository tests (`backup.test.ts`, `backupValidation.test.ts`, `plannerRepos.test.ts`), and deterministic `demo-` task/block/project/meta records (`src/features/overview/demoData.ts`).
+
 ## Unreleased (v0.3)
 
 ### Added
