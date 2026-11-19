@@ -7,7 +7,9 @@ import { SETTINGS_ID, isIndexedDbAvailable } from "@/lib/db/dexie";
 import {
   ALL_TIME,
   activityRepository,
+  blockRepository,
   checkinRepository,
+  dayPlanMetaRepository,
   dayPlanRepository,
   experimentRepository,
   focusRepository,
@@ -20,28 +22,35 @@ import {
   mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  projectRepository,
   reviewRepository,
   settingsRepository,
   sleepRepository,
+  taskRepository,
   type DateRange,
 } from "@/lib/db/repositories";
 import type {
   ActivityLog,
+  Block,
   DailyCheckin,
   DayPlan,
+  DayPlanMeta,
   Experiment,
   FocusSession,
   GratitudeEntry,
   Habit,
   HabitLog,
+  ISODate,
   InsightFeedback,
   JournalEntry,
   MicrotaskResult,
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  Project,
   ReviewItem,
   SleepLog,
+  Task,
   UserSettings,
 } from "@/types/domain";
 
@@ -126,6 +135,44 @@ export function useInsightFeedback(): LiveResult<InsightFeedback> {
 
 export function useMicrotaskResults(range: DateRange = ALL_TIME): LiveResult<MicrotaskResult> {
   return useRows(() => microtaskRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useProjects(): LiveResult<Project> {
+  return useRows(() => projectRepository.listAll(), ["projects"]);
+}
+
+export function useTasks(): LiveResult<Task> {
+  return useRows(() => taskRepository.listAll(), ["tasks"]);
+}
+
+export function useBlocks(): LiveResult<Block> {
+  return useRows(() => blockRepository.listAll(), ["blocks"]);
+}
+
+export function useBlocksForDate(date: ISODate): LiveResult<Block> {
+  return useRows(() => blockRepository.listForDate(date), ["blocks", date]);
+}
+
+export function useUnscheduledBlocks(): LiveResult<Block> {
+  return useRows(() => blockRepository.listUnscheduled(), ["blocks", "unscheduled"]);
+}
+
+export function useDayPlanMeta(range: DateRange = ALL_TIME): LiveResult<DayPlanMeta> {
+  return useRows(() => dayPlanMetaRepository.listByDateRange(range), rangeDeps(range));
+}
+
+export function useDayPlanMetaForDate(date: ISODate): {
+  data: DayPlanMeta | null | undefined;
+  isLoading: boolean;
+} {
+  const data = useLiveQuery(
+    async () =>
+      isIndexedDbAvailable()
+        ? ((await dayPlanMetaRepository.getByDate(date)) ?? null)
+        : null,
+    ["dayPlanMeta", date],
+  );
+  return { data, isLoading: data === undefined };
 }
 
 export function useSettings(): { data: UserSettings | undefined; isLoading: boolean } {
