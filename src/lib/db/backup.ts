@@ -638,18 +638,22 @@ function validateWithSchema<T>(schema: z.ZodType<T>, raw: unknown): T {
   return parsed.data;
 }
 
-const LEGACY_BACKUP_SCHEMAS: ReadonlyMap<number, z.ZodType<{ exportedAt: string; tables: Partial<BackupTables> }>> =
-  new Map([
-    [1, v1BackupFileSchema],
-    [2, v2BackupFileSchema],
-    [3, v3BackupFileSchema],
-    [4, v4BackupFileSchema],
-    [5, v5BackupFileSchema],
-    [6, v6BackupFileSchema],
-    [7, v7BackupFileSchema],
-    [8, v8BackupFileSchema],
-    [9, v9BackupFileSchema],
-  ]);
+type LegacyBackupSchema = z.ZodType<{ exportedAt: string; tables: Partial<BackupTables> }>;
+
+const LEGACY_BACKUP_SCHEMAS: ReadonlyMap<number, LegacyBackupSchema> = new Map<
+  number,
+  LegacyBackupSchema
+>([
+  [1, v1BackupFileSchema],
+  [2, v2BackupFileSchema],
+  [3, v3BackupFileSchema],
+  [4, v4BackupFileSchema],
+  [5, v5BackupFileSchema],
+  [6, v6BackupFileSchema],
+  [7, v7BackupFileSchema],
+  [8, v8BackupFileSchema],
+  [9, v9BackupFileSchema],
+]);
 
 function upgradeTablesToCurrent(partial: Partial<BackupTables>): BackupTables {
   return {
