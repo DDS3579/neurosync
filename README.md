@@ -91,3 +91,6 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 - **Educational associations, never measurements**: NeuroSync never gives a "brain score," never claims habits "grew" or "strengthened" brain regions, and never diagnoses anything. Every activity-linked brain view displays: *"Educational association, not a measurement of your brain activity."*
 - **Non-judgmental reflection**: No streaks, guilt framing, or calorie/macro counting. Journal entries and gratitude notes are never analyzed, scored, or sent anywhere.
 - **Honest browser limits & storage**: All logs stay in browser `IndexedDB` with zero network requests, zero accounts, and zero third-party analytics. Data is **not encrypted** on your device — use **Settings → Export JSON** anytime to keep a personal backup. Opt-in reminders explain clearly that browser apps without a push server cannot reliably fire alerts when closed, offering recurring `.ics` calendar export alongside active in-app notifications.
+
+
+v0.4 coming
