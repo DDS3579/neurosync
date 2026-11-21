@@ -277,6 +277,12 @@ export interface InsightInput {
   activities?: ActivityLog[]; mindfulness?: MindfulnessSession[];
   journal?: JournalEntry[]; gratitude?: GratitudeEntry[];
   microtaskResults?: MicrotaskResult[];
+  /** v0.4 planner inputs. Optional so every pre-v0.4 caller and backup stays valid. */
+  projects?: Project[];
+  tasks?: Task[];
+  blocks?: Block[];
+  dayPlans?: DayPlan[];
+  dayPlanMeta?: DayPlanMeta[];
 }
 export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
 export type DataConfidenceLevel = 'low' | 'moderate' | 'enough';
