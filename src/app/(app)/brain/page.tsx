@@ -16,12 +16,14 @@ import { upsertCheckin } from "@/features/checkin/checkinUtils";
 import { loadDemoDataToDb } from "@/features/overview/demoData";
 import {
   useActivityLogs,
+  useBlocks,
   useFocusSessions,
   useHabitLogs,
   useHabits,
   useMindfulnessSessions,
   useMovementLogs,
   useSleepLogs,
+  useTasks,
 } from "@/lib/db/hooks";
 import {
   activityRepository,
@@ -38,6 +40,8 @@ export default function BrainPage() {
   const habitLogs = useHabitLogs();
   const mindfulness = useMindfulnessSessions();
   const activities = useActivityLogs();
+  const blocks = useBlocks();
+  const tasks = useTasks();
 
   const isLoading =
     focus.isLoading ||
@@ -46,7 +50,9 @@ export default function BrainPage() {
     habits.isLoading ||
     habitLogs.isLoading ||
     mindfulness.isLoading ||
-    activities.isLoading;
+    activities.isLoading ||
+    blocks.isLoading ||
+    tasks.isLoading;
 
   const derived = useMemo(() => {
     if (
@@ -57,7 +63,9 @@ export default function BrainPage() {
       !habits.data ||
       !habitLogs.data ||
       !mindfulness.data ||
-      !activities.data
+      !activities.data ||
+      !blocks.data ||
+      !tasks.data
     ) {
       return null;
     }
@@ -70,6 +78,8 @@ export default function BrainPage() {
       habitLogs: habitLogs.data,
       mindfulness: mindfulness.data,
       activities: activities.data,
+      blocks: blocks.data,
+      tasks: tasks.data,
     };
 
     const weekly = deriveWeeklyBrainActivity(sources);
@@ -87,6 +97,8 @@ export default function BrainPage() {
     habitLogs.data,
     mindfulness.data,
     activities.data,
+    blocks.data,
+    tasks.data,
   ]);
 
   const handleLoadDemo = useCallback(async () => {
