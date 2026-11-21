@@ -658,6 +658,58 @@ describe("backup round-trip", () => {
     expect(await getDb().sleepLogs.count()).toBe(1);
   });
 
+  it("rejects a corrupt block payload atomically", async () => {
+    await seed();
+    const good = await buildBackup();
+    const broken = JSON.parse(JSON.stringify(good)) as {
+      tables: { blocks: Array<Record<string, unknown>> };
+    };
+    // plannedStart without plannedDate violates the block invariant.
+    broken.tables.blocks.push({
+      id: "corrupt-block",
+      createdAt: `${DATE}T08:00:00.000Z`,
+      updatedAt: `${DATE}T08:00:00.000Z`,
+      taskId: "missing-task",
+      order: 9,
+      plannedMin: 30,
+      status: "scheduled",
+      plannedStart: "09:00",
+    });
+
+    await expect(importAll(JSON.stringify(broken), "replace")).rejects.toBeInstanceOf(BackupError);
+
+    expect(await getDb().blocks.count()).toBe(2);
+    expect(await getDb().tasks.count()).toBe(1);
+    expect(await getDb().projects.count()).toBe(1);
+    expect(await getDb().sleepLogs.count()).toBe(1);
+  });
+
+  it("a replace import clears planner tables and leaves no orphan blocks", async () => {
+    await seed();
+    expect(await getDb().blocks.count()).toBe(2);
+
+    const good = await buildBackup();
+    const plannerFree = JSON.parse(JSON.stringify(good)) as {
+      tables: Record<string, unknown[]>;
+    };
+    plannerFree.tables.projects = [];
+    plannerFree.tables.tasks = [];
+    plannerFree.tables.blocks = [];
+    plannerFree.tables.dayPlanMeta = [];
+
+    const summary = await importAll(JSON.stringify(plannerFree), "replace");
+
+    expect(summary.mode).toBe("replace");
+    expect(await getDb().blocks.count()).toBe(0);
+    expect(await getDb().tasks.count()).toBe(0);
+    expect(await getDb().projects.count()).toBe(0);
+    expect(await getDb().dayPlanMeta.count()).toBe(0);
+    const orphan = await getDb()
+      .blocks.filter((block) => Boolean(block.taskId))
+      .count();
+    expect(orphan).toBe(0);
+  });
+
   it("never partially imports an invalid file", async () => {
     await seed();
     const good = await buildBackup();
