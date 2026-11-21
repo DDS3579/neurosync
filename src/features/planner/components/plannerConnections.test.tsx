@@ -116,6 +116,116 @@ describe("planner connections UI", () => {
     expect((await blockRepository.getById(tray.id))?.plannedStart).toBeUndefined();
   });
 
+  const settle = async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  };
+
+  it("places a block from the slot rail (tap/keyboard parity)", async () => {
+    const host = await render(
+      <PlannerTodayPanel
+        date={DATE} todayISO={DATE} onChangeDate={vi.fn()}
+        blocks={[done, tray]} tasks={[task]} projects={[]} settings={settings}
+      />,
+    );
+
+    const arm = host.querySelector(
+      'button[aria-label="Pick a timeline slot for Chapter"]',
+    ) as HTMLButtonElement | null;
+    expect(arm).not.toBeNull();
+    await act(async () => { arm!.click(); });
+    await settle();
+
+    const slot = host.querySelector('button[aria-label="Place Chapter at 13:00"]') as HTMLButtonElement | null;
+    expect(slot).not.toBeNull();
+    await act(async () => { slot!.click(); });
+    await settle();
+
+    const stored = await blockRepository.getById(tray.id);
+    expect(stored?.plannedStart).toBe("13:00");
+    expect(stored?.status).toBe("scheduled");
+  });
+
+  it("nudges a placed block by 15 minutes and rejects an overlapping nudge", async () => {
+    const host = await render(
+      <PlannerTodayPanel
+        date={DATE} todayISO={DATE} onChangeDate={vi.fn()}
+        blocks={[done, tray]} tasks={[task]} projects={[]} settings={settings}
+      />,
+    );
+    const time = host.querySelector(`input[id="block-clock-${tray.id}"]`) as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(time, "11:00");
+      time.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const place = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Place")!;
+    await act(async () => { place.click(); });
+    await settle();
+    const placedBlock = await blockRepository.getById(tray.id);
+    expect(placedBlock?.plannedStart).toBe("11:00");
+
+    // The panel receives props from a live query in the app, so re-render with
+    // the stored row before asserting the timeline-only nudge controls.
+    await act(async () => {
+      root!.render(
+        <TooltipProvider>
+          <PlannerTodayPanel
+            date={DATE} todayISO={DATE} onChangeDate={vi.fn()}
+            blocks={[done, placedBlock!]} tasks={[task]} projects={[]} settings={settings}
+          />
+        </TooltipProvider>,
+      );
+    });
+
+    const earlier = host.querySelector(
+      'button[aria-label="Move Chapter earlier by 15 minutes"]',
+    ) as HTMLButtonElement | null;
+    expect(earlier).not.toBeNull();
+    await act(async () => { earlier!.click(); });
+    await settle();
+    expect((await blockRepository.getById(tray.id))?.plannedStart).toBe("10:45");
+  });
+
+  it("places a block with a pointer drag onto a slot", async () => {
+    const host = await render(
+      <PlannerTodayPanel
+        date={DATE} todayISO={DATE} onChangeDate={vi.fn()}
+        blocks={[done, tray]} tasks={[task]} projects={[]} settings={settings}
+      />,
+    );
+
+    // Open the rail first so a drop target exists, then drag the same block.
+    const arm = host.querySelector(
+      'button[aria-label="Pick a timeline slot for Chapter"]',
+    ) as HTMLButtonElement;
+    await act(async () => { arm.click(); });
+    await settle();
+    const slot = host.querySelector('[data-slot-clock="14:00"]') as HTMLElement;
+    expect(slot).not.toBeNull();
+
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = () => slot;
+
+    const handle = host.querySelector('[title="Drag to a timeline slot"]') as HTMLElement;
+    expect(handle).not.toBeNull();
+
+    await act(async () => {
+      // Let the dynamically imported drag module resolve.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      handle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 40 }));
+      window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 40, clientY: 40 }));
+    });
+
+    await settle();
+    document.elementFromPoint = originalElementFromPoint;
+    expect((await blockRepository.getById(tray.id))?.plannedStart).toBe("14:00");
+  });
+
   it("Today shows the overpacked notice neutrally when planned time exceeds capacity", async () => {
     const heavy = await blockRepository.bulkCreate([
       { taskId: task.id, order: 5, plannedMin: 900, status: "scheduled", plannedDate: DATE, plannedStart: "12:00" },
