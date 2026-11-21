@@ -440,6 +440,55 @@ export function WeeklyReportWorkspace({
             <FocusChart data={focusSeries} />
           </ChartCard>
 
+          {/* 2b. Planned vs actual (v0.4 planner blocks) */}
+          <ChartCard
+            title="Planned vs logged blocks"
+            description="Average minutes by block length, with sample sizes"
+            summary={report.planner.summaryLine}
+            tableData={{
+              caption: "Average planned and logged minutes by block length",
+              columns: ["Group", "Blocks (n)", "Avg planned", "Avg logged", "Difference"],
+              rows: report.planner.byLength.map((row) => [
+                row.label,
+                row.n,
+                `${row.avgPlannedMin}m`,
+                `${row.avgActualMin}m`,
+                `${row.deltaMin > 0 ? "+" : row.deltaMin < 0 ? "−" : ""}${Math.abs(row.deltaMin)}m`,
+              ]),
+            }}
+            empty={report.planner.measuredBlocks === 0}
+            emptyMessage="No planner blocks were completed with a logged duration this week. Start a block from the planner to build this comparison."
+            footer={report.planner.caveats[0]}
+          >
+            <div className="space-y-2">
+              {report.planner.byLength.map((row) => {
+                const max = Math.max(row.avgPlannedMin, row.avgActualMin, 1);
+                return (
+                  <div key={row.key} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-caption">
+                      <span className="text-foreground">{row.label}</span>
+                      <span className="font-mono text-muted-foreground tabular-nums">
+                        n = {row.n} · {row.avgPlannedMin}m → {row.avgActualMin}m
+                      </span>
+                    </div>
+                    <div aria-hidden className="space-y-0.5">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                        <div className="h-full rounded-full bg-cyan" style={{ width: `${Math.round((row.avgPlannedMin / max) * 100)}%` }} />
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]">
+                        <div className="h-full rounded-full bg-violet" style={{ width: `${Math.round((row.avgActualMin / max) * 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="pt-1 text-[11px] text-muted-foreground">
+                Cyan = average planned · violet = average logged.{" "}
+                {report.planner.byKind.map((row) => `${row.label} n=${row.n}`).join(" · ")}
+              </p>
+            </div>
+          </ChartCard>
+
           {/* 3. Learning methods */}
           <ChartCard
             title="Learning methods"
