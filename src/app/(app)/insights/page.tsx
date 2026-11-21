@@ -10,7 +10,10 @@ import {
 } from "@/features/insights/components/InsightsWorkspace";
 import {
   useActivityLogs,
+  useBlocks,
   useCheckins,
+  useDayPlanMeta,
+  useDayPlans,
   useFocusSessions,
   useGratitudeEntries,
   useHabitLogs,
@@ -20,8 +23,10 @@ import {
   useMindfulnessSessions,
   useMovementLogs,
   useNutritionLogs,
+  useProjects,
   useSettings,
   useSleepLogs,
+  useTasks,
 } from "@/lib/db/hooks";
 import { insightFeedbackRepository } from "@/lib/db/repositories";
 import {
@@ -47,6 +52,11 @@ export default function InsightsPage() {
   const journal = useJournalEntries();
   const gratitude = useGratitudeEntries();
   const insightFeedback = useInsightFeedback();
+  const blocks = useBlocks();
+  const tasks = useTasks();
+  const projects = useProjects();
+  const dayPlans = useDayPlans();
+  const dayPlanMeta = useDayPlanMeta();
 
   const settingsData = settings.data;
   const sleepData = sleep.data;
@@ -61,6 +71,11 @@ export default function InsightsPage() {
   const journalData = journal.data;
   const gratitudeData = gratitude.data;
   const insightFeedbackData = insightFeedback.data;
+  const blocksData = blocks.data;
+  const tasksData = tasks.data;
+  const projectsData = projects.data;
+  const dayPlansData = dayPlans.data;
+  const dayPlanMetaData = dayPlanMeta.data;
 
   const isLoading =
     settings.isLoading ||
@@ -75,7 +90,12 @@ export default function InsightsPage() {
     mindfulness.isLoading ||
     journal.isLoading ||
     gratitude.isLoading ||
-    insightFeedback.isLoading;
+    insightFeedback.isLoading ||
+    blocks.isLoading ||
+    tasks.isLoading ||
+    projects.isLoading ||
+    dayPlans.isLoading ||
+    dayPlanMeta.isLoading;
 
   const onDismissInsight = useCallback(async (insight: Insight) => {
     await insightFeedbackRepository.dismiss({
@@ -115,7 +135,12 @@ export default function InsightsPage() {
       !mindfulnessData ||
       !journalData ||
       !gratitudeData ||
-      !insightFeedbackData
+      !insightFeedbackData ||
+      !blocksData ||
+      !tasksData ||
+      !projectsData ||
+      !dayPlansData ||
+      !dayPlanMetaData
     ) {
       return null;
     }
@@ -138,6 +163,11 @@ export default function InsightsPage() {
       mindfulness: mindfulnessData,
       journal: journalData,
       gratitude: gratitudeData,
+      blocks: blocksData,
+      tasks: tasksData,
+      projects: projectsData,
+      dayPlans: dayPlansData,
+      dayPlanMeta: dayPlanMetaData,
     };
 
     const allInsights = computeInsights(input, todayISO);
@@ -195,6 +225,11 @@ export default function InsightsPage() {
     journalData,
     gratitudeData,
     insightFeedbackData,
+    blocksData,
+    tasksData,
+    projectsData,
+    dayPlansData,
+    dayPlanMetaData,
   ]);
 
   if (!computed) {
