@@ -335,6 +335,43 @@ describe("backup round-trip", () => {
     expect((await getDb().settings.get("me"))?.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
+  it.each([3, 4, 5])(
+    "imports a v%i backup (v0.2/v0.3 era) and normalizes the planner tables",
+    async (version) => {
+      await seed();
+      const legacy = {
+        schemaVersion: version,
+        exportedAt: `${DATE}T12:00:00.000Z`,
+        tables: {
+          settings: [],
+          sleepLogs: [],
+          checkins: [],
+          focusSessions: [],
+          movementLogs: [],
+          nutritionLogs: [],
+          habits: [],
+          habitLogs: [],
+          experiments: [],
+          mindfulnessSessions: [],
+          journalEntries: [],
+          gratitudeEntries: [],
+          activityLogs: [],
+          ...(version >= 4 ? { reviewItems: [] } : {}),
+        },
+      };
+
+      const summary = await importAll(JSON.stringify(legacy), "merge");
+
+      expect(summary.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(summary.imported.projects).toBe(0);
+      expect(summary.imported.blocks).toBe(0);
+      expect(summary.imported.dayPlanMeta).toBe(0);
+      // Merge mode keeps existing planner rows from a newer backup.
+      expect(await getDb().blocks.count()).toBe(2);
+      expect(await getDb().sleepLogs.count()).toBe(1);
+    },
+  );
+
   it("imports a v6 backup cleanly with empty insightFeedback", async () => {
     const v6Backup = {
       schemaVersion: 6,
