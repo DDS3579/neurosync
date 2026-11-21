@@ -703,6 +703,32 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     expect(node.textContent).toContain("By block length");
     await runAxeCheck(node);
 
+    const openTab = async (label: string) => {
+      const tab = Array.from(node.querySelectorAll('[role="tab"]')).find(
+        (candidate) => candidate.textContent?.trim() === label,
+      ) as HTMLElement | undefined;
+      expect(tab).toBeTruthy();
+      await act(async () => {
+        tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+        tab!.click();
+      });
+    };
+
+    await openTab("Week");
+    expect(node.textContent).toContain("Planned this week");
+    expect(node.textContent).toContain("Open window");
+    expect(node.textContent).not.toMatch(/\bscore|productivity|failed|behind|streak/i);
+    await runAxeCheck(node);
+
+    await openTab("Tasks");
+    expect(node.textContent).toContain("Open tasks");
+    expect(node.textContent).toContain("Add a task");
+    await runAxeCheck(node);
+
+    await openTab("Today");
+    expect(node.textContent).toContain("Timeline");
+    await runAxeCheck(node);
+
     mockPathname = "/overview";
     window.localStorage.clear();
   });
