@@ -1,24 +1,33 @@
 "use client";
 
-import { useCallback } from "react";
-
+import { useCallback, useMemo } from "react";
 import {
-  PlannerSkeleton,
-  PlannerWorkspace,
-} from "@/features/planner/components/PlannerWorkspace";
-import { useDayPlans, useFocusSessions, useSettings } from "@/lib/db/hooks";
+  PlannerConnectionsShell,
+  PlannerConnectionsSkeleton,
+} from "@/features/planner/components/PlannerConnectionsShell";
+import {
+  useBlocks,
+  useDayPlanMeta,
+  useDayPlans,
+  useFocusSessions,
+  useProjects,
+  useSettings,
+  useTasks,
+} from "@/lib/db/hooks";
 import { dayPlanRepository, getDayPlanByDate } from "@/lib/db/repositories";
-import type { DayPlan } from "@/types/domain";
+import type { DayPlan, ISODate } from "@/types/domain";
 
 export default function PlannerPage() {
   const settings = useSettings();
   const focus = useFocusSessions();
   const plans = useDayPlans();
+  const projects = useProjects();
+  const tasks = useTasks();
+  const blocks = useBlocks();
+  const meta = useDayPlanMeta();
 
   const onSavePlan = useCallback(
-    async (
-      plan: Omit<DayPlan, "id" | "createdAt" | "updatedAt">,
-    ): Promise<"created" | "updated"> => {
+    async (plan: Omit<DayPlan, "id" | "createdAt" | "updatedAt">): Promise<"created" | "updated"> => {
       const existing = await getDayPlanByDate(plan.date);
       if (existing) {
         await dayPlanRepository.update(existing.id, plan);
@@ -30,23 +39,39 @@ export default function PlannerPage() {
     [],
   );
 
+  const shutdownDates = useMemo(
+    () => new Set<ISODate>((meta.data ?? []).filter((m) => m.shutdownDone).map((m) => m.date)),
+    [meta.data],
+  );
+  const reflections = useMemo(
+    () =>
+      new Map<ISODate, string>(
+        (meta.data ?? [])
+          .filter((m) => Boolean(m.reflection))
+          .map((m) => [m.date, m.reflection as string]),
+      ),
+    [meta.data],
+  );
+
   if (
-    settings.isLoading ||
-    focus.isLoading ||
-    plans.isLoading ||
-    !settings.data ||
-    !focus.data ||
-    !plans.data
+    settings.isLoading || focus.isLoading || plans.isLoading || projects.isLoading ||
+    tasks.isLoading || blocks.isLoading || meta.isLoading ||
+    !settings.data || !focus.data || !plans.data || !projects.data ||
+    !tasks.data || !blocks.data || !meta.data
   ) {
-    return <PlannerSkeleton />;
+    return <PlannerConnectionsSkeleton />;
   }
 
   return (
-    <PlannerWorkspace
-      defaultSleepTargetMin={settings.data.sleepTargetMin}
-      defaultBreakMin={settings.data.breakDefaultMin}
+    <PlannerConnectionsShell
+      settings={settings.data}
+      projects={projects.data}
+      tasks={tasks.data}
+      blocks={blocks.data}
       focusSessions={focus.data}
-      savedPlans={plans.data}
+      plans={plans.data}
+      shutdownDates={shutdownDates}
+      reflections={reflections}
       onSavePlan={onSavePlan}
     />
   );
