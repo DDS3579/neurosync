@@ -81,8 +81,10 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 
 - UI components and pages **never** import `dexie` directly; they read via `lib/db/hooks.ts` and mutate via repositories.
 - Every record implements `Base` (`id`, `createdAt`, `updatedAt`) with local `YYYY-MM-DD` day keys.
-- `SCHEMA_VERSION = 9` covers all 17 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`, `microtaskResults`).
-- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v8` backups.
+- `SCHEMA_VERSION = 10` covers all 21 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`, `microtaskResults`, `projects`, `tasks`, `blocks`, `dayPlanMeta`).
+- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v9` backups. A corrupt block (for example `plannedStart` without `plannedDate`) rejects the whole import atomically.
+
+**Planner connections (v0.4)**: `/planner` has three tabs — **Today** (capture a task, split it into blocks, place them on the timeline, start/skip/finish them), **Review** (planned vs logged minutes by block length and kind, always with sample sizes and a self-logged caveat) and **Day plan** (the rule-based generator, plus read-only busy time from an imported `.ics`). Finishing a timer records exactly one `FocusSession` and links it to the block, so brain and weekly totals never count a block twice. Export day/week as `.ics` with floating local wall-clock times; import is parsed locally and kept for the visit only. No new Dexie version was needed: `Block.actualMin/completedAt/focusSessionId` and `DayPlanMeta.shutdownDone/reflection` already existed at v10.
 
 ---
 
@@ -93,4 +95,4 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 - **Honest browser limits & storage**: All logs stay in browser `IndexedDB` with zero network requests, zero accounts, and zero third-party analytics. Data is **not encrypted** on your device — use **Settings → Export JSON** anytime to keep a personal backup. Opt-in reminders explain clearly that browser apps without a push server cannot reliably fire alerts when closed, offering recurring `.ics` calendar export alongside active in-app notifications.
 
 
-v0.4 coming
+See `INTEGRATION_REPORT_v0.4.md` for the verification evidence, bundle sizes, known issues and v0.5 suggestions.
