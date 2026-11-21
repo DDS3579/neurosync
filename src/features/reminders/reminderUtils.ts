@@ -214,7 +214,8 @@ const ICS_META: Record<ReminderKind, { summary: string; description: string }> =
   },
 };
 
-function formatIcsLocalDateTime(date: Date, timeHHMM: string): string {
+/** Floating local wall-clock stamp (no offset, no TZID) — DST-safe by construction. */
+export function formatIcsLocalDateTime(date: Date, timeHHMM: string): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
@@ -222,7 +223,7 @@ function formatIcsLocalDateTime(date: Date, timeHHMM: string): string {
   return `${y}${m}${d}T${hh}${mm}00`;
 }
 
-function formatIcsUtcStamp(date: Date): string {
+export function formatIcsUtcStamp(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const d = String(date.getUTCDate()).padStart(2, "0");
