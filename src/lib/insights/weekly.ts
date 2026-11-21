@@ -1,4 +1,10 @@
 import { activityToRegionIntensity, BRAIN_REGIONS } from '@/data/brainRegions';
+import { buildFocusLedger } from '@/features/planner/review/focusLedger';
+import {
+  buildPlannedActualReport,
+  collectBlockSamples,
+  type PlannedActualReport,
+} from '@/features/planner/review/plannedVsActual';
 import type {
   ActivityKind,
   InsightInput,
@@ -44,6 +50,8 @@ export interface WeeklyReport {
     regions: Partial<Record<RegionId, number>>;
     topRegions: { region: RegionId; intensity: number }[];
   };
+  /** v0.4 planned-vs-actual for completed planner blocks. Empty when no blocks exist. */
+  planner: PlannedActualReport;
   daily: {
     date: ISODate;
     sleepHours: number | null;
@@ -105,14 +113,8 @@ function fmtDur(min: number): string {
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-const METHOD_TO_ACTIVITY: Record<LearningMethod, ActivityKind> = {
-  active_recall: 'active_recall',
-  spaced_repetition: 'spaced_repetition',
-  problem_solving: 'problem_solving',
-  deep_reading: 'reading',
-  skill_practice: 'skill_practice',
-  teaching: 'teaching',
-};
+// Method → activity mapping now lives in the focus ledger so planner-linked
+// sessions and standalone sessions resolve identically.
 
 type Sections = Pick<
   WeeklyReport,
@@ -264,9 +266,12 @@ function bestFocusDay(input: InsightInput, start: ISODate, end: ISODate): { date
 function buildWeekBrainActivity(input: InsightInput, start: ISODate, end: ISODate): WeeklyReport['brainActivity'] {
   const items: { kind: ActivityKind; minutes: number }[] = [];
 
-  for (const s of inWindow(input.focus, start, end)) {
-    if (s.durationMin > 0) items.push({ kind: METHOD_TO_ACTIVITY[s.method], minutes: s.durationMin });
-  }
+  const ledger = buildFocusLedger(
+    inWindow(input.focus, start, end),
+    input.blocks ?? [],
+    input.tasks ?? [],
+  );
+  for (const item of ledger.activityItems) items.push(item);
   for (const m of inWindow(input.movement, start, end)) {
     if (m.durationMin > 0) items.push({ kind: 'exercise', minutes: m.durationMin });
   }
@@ -395,10 +400,16 @@ export function buildWeeklyReport(input: InsightInput, weekStartISO: ISODate): W
   prompts.push('What is one small thing from this week you would like to keep?');
   prompts.push('What would make next week feel a little easier?');
 
+  const planner = buildPlannedActualReport(
+    collectBlockSamples(input.blocks ?? [], input.tasks ?? []),
+    { range: { start: weekStart, end: weekEnd } },
+  );
+
   return {
     weekStart,
     weekEnd,
     ...current,
+    planner,
     brainActivity: buildWeekBrainActivity(input, weekStart, weekEnd),
     daily: buildDailySeries(input, weekStart, weekEnd),
     vsPreviousWeek,
