@@ -22,12 +22,14 @@ import {
   taskRepository,
 } from "@/lib/db/repositories";
 import { computeInsights, generateDemoData, selectOverviewInsights } from "@/lib/insights";
+import { pickNextBlock } from "@/features/planner/nextBlock";
 import type { OverviewViewProps } from "@/features/overview/OverviewView";
 import type {
   ActivityKind,
   ActivityLog,
   Block,
   DailyCheckin,
+  DayPlan,
   DayPlanMeta,
   FocusSession,
   Habit,
@@ -407,6 +409,11 @@ export interface OverviewAggregationInput {
   mindfulness?: MindfulnessSession[];
   activities?: ActivityLog[];
   insightFeedback?: InsightFeedback[];
+  projects?: Project[];
+  tasks?: Task[];
+  blocks?: Block[];
+  dayPlans?: DayPlan[];
+  dayPlanMeta?: DayPlanMeta[];
   today?: Date;
 }
 
@@ -479,10 +486,29 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
       habitLogs: input.habitLogs,
       activities: input.activities,
       mindfulness: input.mindfulness,
+      projects: input.projects,
+      tasks: input.tasks,
+      blocks: input.blocks,
+      dayPlans: input.dayPlans,
+      dayPlanMeta: input.dayPlanMeta,
     },
     todayISO,
     { feedback: input.insightFeedback },
   );
+  const todayPlan = (input.dayPlans ?? []).find((plan) => plan.date === todayISO);
+  const nextBlock = pickNextBlock({
+    blocks: input.blocks ?? [],
+    tasks: input.tasks ?? [],
+    projects: input.projects ?? [],
+    date: todayISO,
+    wakeTime: todayPlan?.wakeTime ?? "07:00",
+    nowMinutes:
+      input.today === undefined
+        ? new Date().getHours() * 60 + new Date().getMinutes()
+        : todayISO === format(startOfDay(new Date()), "yyyy-MM-dd")
+          ? new Date().getHours() * 60 + new Date().getMinutes()
+          : null,
+  });
   const insights = selectOverviewInsights(allInsights, 3);
 
   const isEmpty =
@@ -536,5 +562,6 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
     brainActivity: activityToRegionIntensity(activityItems),
     isEmpty,
     hasDemoData,
+    nextBlock,
   };
 }
