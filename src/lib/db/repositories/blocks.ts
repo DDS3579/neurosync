@@ -1,7 +1,13 @@
 import { getDb } from "@/lib/db/dexie";
-import type { Block, ISODate, ISODateTime } from "@/types/domain";
+import type { Block, FocusSession, ISODate, ISODateTime } from "@/types/domain";
 
 import { createRepository, type CreateInput, type UpdateInput } from "./base";
+
+function newEntityId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `blk-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,22 +54,55 @@ async function assertTasksExist(taskIds: readonly string[]): Promise<void> {
   }
 }
 
+/**
+ * Single source of truth for parent-task progress:
+ *  - every block done/skipped (with at least one done) -> task done
+ *  - anything still open                              -> a done task reopens
+ *  - any block placed on a date                        -> an inbox task becomes active
+ * Archived tasks are never touched.
+ */
 async function syncParentTaskCompletion(taskId: string): Promise<void> {
   const db = getDb();
   const task = await db.tasks.get(taskId);
   if (!task || task.status === "archived") return;
-
   const siblings = await db.blocks.where("taskId").equals(taskId).toArray();
   if (siblings.length === 0) return;
-
-  const allDone = siblings.every((b) => b.status === "done");
-  const now = new Date().toISOString();
-
-  if (allDone && task.status !== "done") {
-    await db.tasks.put({ ...task, status: "done", updatedAt: now });
-  } else if (!allDone && task.status === "done") {
-    await db.tasks.put({ ...task, status: "active", updatedAt: now });
+  const resolved = siblings.every((b) => b.status === "done" || b.status === "skipped");
+  const anyDone = siblings.some((b) => b.status === "done");
+  const anyPlaced = siblings.some((b) => Boolean(b.plannedDate));
+  let next = task.status;
+  if (resolved && anyDone) next = "done";
+  else if (task.status === "done") next = "active";
+  else if (task.status === "inbox" && anyPlaced) next = "active";
+  if (next !== task.status) {
+    await db.tasks.put({ ...task, status: next, updatedAt: new Date().toISOString() });
   }
+}
+
+/**
+ * Standalone update so `schedule`/`complete`/`skip` never depend on `this`
+ * (repositories are frequently destructured or passed as callbacks).
+ */
+async function updateBlock(id: string, patch: UpdateInput<Block>): Promise<Block> {
+  const db = getDb();
+  return db.transaction("rw", [db.blocks, db.tasks], async () => {
+    const existing = await db.blocks.get(id);
+    if (!existing) {
+      throw new Error(`Block: no record found with id "${id}".`);
+    }
+    const next: Block = {
+      ...existing,
+      ...patch,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    assertBlockInvariants(next);
+    await assertTasksExist([next.taskId]);
+    await db.blocks.put(next);
+    await syncParentTaskCompletion(next.taskId);
+    return next;
+  });
 }
 
 /**
@@ -112,27 +151,7 @@ export const blockRepository = {
     });
   },
 
-  async update(id: string, patch: UpdateInput<Block>): Promise<Block> {
-    const db = getDb();
-    return db.transaction("rw", [db.blocks, db.tasks], async () => {
-      const existing = await db.blocks.get(id);
-      if (!existing) {
-        throw new Error(`Block: no record found with id "${id}".`);
-      }
-      const next: Block = {
-        ...existing,
-        ...patch,
-        id: existing.id,
-        createdAt: existing.createdAt,
-        updatedAt: new Date().toISOString(),
-      };
-      assertBlockInvariants(next);
-      await assertTasksExist([next.taskId]);
-      await db.blocks.put(next);
-      await syncParentTaskCompletion(next.taskId);
-      return next;
-    });
-  },
+  update: updateBlock,
 
   async reorder(orderedIds: readonly string[]): Promise<void> {
     if (orderedIds.length === 0) return;
@@ -159,7 +178,7 @@ export const blockRepository = {
     if (plannedStart !== undefined && !HHMM_RE.test(plannedStart)) {
       throw new Error("Block: plannedStart must be HH:MM 24-hour time.");
     }
-    return this.update(id, {
+    return updateBlock(id, {
       plannedDate,
       plannedStart,
       status: plannedStart ? "scheduled" : "todo",
@@ -168,11 +187,11 @@ export const blockRepository = {
   },
 
   async unschedule(id: string, options: { keepDate?: boolean } = {}): Promise<Block> {
-    const existing = await this.getById(id);
+    const existing = await base.getById(id);
     if (!existing) {
       throw new Error(`Block: no record found with id "${id}".`);
     }
-    return this.update(id, {
+    return updateBlock(id, {
       plannedDate: options.keepDate ? existing.plannedDate : undefined,
       plannedStart: undefined,
       status: "todo",
@@ -184,11 +203,11 @@ export const blockRepository = {
     id: string,
     opts: { actualMin?: number; focusSessionId?: string; completedAt?: ISODateTime } = {},
   ): Promise<Block> {
-    const existing = await this.getById(id);
+    const existing = await base.getById(id);
     if (!existing) {
       throw new Error(`Block: no record found with id "${id}".`);
     }
-    return this.update(id, {
+    return updateBlock(id, {
       status: "done",
       actualMin:
         opts.actualMin !== undefined
@@ -200,19 +219,19 @@ export const blockRepository = {
   },
 
   async uncomplete(id: string): Promise<Block> {
-    const existing = await this.getById(id);
+    const existing = await base.getById(id);
     if (!existing) {
       throw new Error(`Block: no record found with id "${id}".`);
     }
     const revertedStatus = existing.plannedDate && existing.plannedStart ? "scheduled" : "todo";
-    return this.update(id, {
+    return updateBlock(id, {
       status: revertedStatus,
       completedAt: undefined,
     });
   },
 
   async skip(id: string): Promise<Block> {
-    return this.update(id, {
+    return updateBlock(id, {
       status: "skipped",
       plannedStart: undefined,
       completedAt: undefined,
@@ -229,6 +248,60 @@ export const blockRepository = {
     return rows
       .filter((b) => !b.plannedDate && !b.plannedStart)
       .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+  },
+
+  /** Indexed single-task read; never scan the whole blocks table for one task. */
+  async listForTask(taskId: string): Promise<Block[]> {
+    const rows = await getDb().blocks.where("taskId").equals(taskId).toArray();
+    return rows.sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+  },
+
+  /**
+   * THE completion write for a timed block: creates the FocusSession, links it,
+   * sets actualMin/completedAt/status and re-syncs the parent task in ONE
+   * transaction. Idempotent — a block already linked to a session is returned
+   * as-is, so a double submit can never create a second session (no double count).
+   */
+  async completeWithSession(input: {
+    blockId: string;
+    session: Omit<FocusSession, "id" | "createdAt" | "updatedAt"> & { id?: string };
+    actualMin?: number;
+    completedAt?: ISODateTime;
+  }): Promise<{ block: Block; session: FocusSession; alreadyDone: boolean }> {
+    if (!Number.isFinite(input.session.durationMin) || input.session.durationMin <= 0) {
+      throw new Error("FocusSession: durationMin must be a positive number of minutes.");
+    }
+    const db = getDb();
+    return db.transaction("rw", [db.blocks, db.tasks, db.focusSessions], async () => {
+      const existing = await db.blocks.get(input.blockId);
+      if (!existing) {
+        throw new Error(`Block: no record found with id "${input.blockId}".`);
+      }
+      if (existing.status === "done" && existing.focusSessionId) {
+        const linked = await db.focusSessions.get(existing.focusSessionId);
+        if (linked) return { block: existing, session: linked, alreadyDone: true };
+      }
+      const now = new Date().toISOString();
+      const session: FocusSession = {
+        ...input.session,
+        id: input.session.id ?? newEntityId(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.focusSessions.add(session);
+      const block: Block = {
+        ...existing,
+        status: "done",
+        actualMin: Math.max(0, Math.round(input.actualMin ?? session.durationMin)),
+        focusSessionId: session.id,
+        completedAt: input.completedAt ?? now,
+        updatedAt: now,
+      };
+      assertBlockInvariants(block);
+      await db.blocks.put(block);
+      await syncParentTaskCompletion(block.taskId);
+      return { block, session, alreadyDone: false };
+    });
   },
 
   async remove(id: string): Promise<void> {
