@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,21 @@ export function ShutdownDialog({
   const [note, setNote] = useState(reflection ?? "");
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  // The dialog is opened from state (and from a #shutdown deep link), so it has
+  // no Radix trigger to restore focus to; remember what was focused instead.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (open) returnFocusRef.current = document.activeElement as HTMLElement | null;
+  }, [open]);
+
+  const handleCloseAutoFocus = (event: Event) => {
+    const target = returnFocusRef.current;
+    if (target && target.isConnected) {
+      event.preventDefault();
+      target.focus();
+    }
+  };
 
   // Reset per-open state during render (React's "adjust state when props change"
   // pattern) instead of an effect, so opening never triggers a cascading render.
@@ -221,7 +236,11 @@ export function ShutdownDialog({
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto rounded-t-card border-border bg-surface pb-[env(safe-area-inset-bottom)]">
+        <SheetContent
+          side="bottom"
+          onCloseAutoFocus={handleCloseAutoFocus}
+          className="max-h-[90svh] overflow-y-auto rounded-t-card border-border bg-surface pb-[env(safe-area-inset-bottom)]"
+        >
           <SheetHeader className="border-b border-border px-4 py-3 text-left">
             <SheetTitle className="text-section font-medium">{title}</SheetTitle>
             <SheetDescription className="text-caption text-muted-foreground">{description}</SheetDescription>
@@ -234,7 +253,10 @@ export function ShutdownDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88svh] overflow-y-auto border-border bg-surface sm:max-w-xl">
+      <DialogContent
+        onCloseAutoFocus={handleCloseAutoFocus}
+        className="max-h-[88svh] overflow-y-auto border-border bg-surface sm:max-w-xl"
+      >
         <DialogHeader>
           <DialogTitle className="text-section font-medium">{title}</DialogTitle>
           <DialogDescription className="text-caption text-muted-foreground">{description}</DialogDescription>
