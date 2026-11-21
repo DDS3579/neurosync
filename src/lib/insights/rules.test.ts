@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { format, parseISO, subDays, subMinutes } from 'date-fns';
 import type {
   ActivityLog,
+  Block,
   DailyCheckin,
+  DayPlan,
+  DayPlanMeta,
   FocusSession,
   Insight,
   InsightInput,
@@ -12,6 +15,7 @@ import type {
   NutritionLog,
   Rating,
   SleepLog,
+  Task,
   UserSettings,
 } from '@/types/domain';
 import { RULES } from './rules';
@@ -988,7 +992,47 @@ describe('insight copy safety', () => {
     sleep: Array.from({ length: 14 }, (_, i) => makeSleep(d(13 - i), 460 + (i % 2) * 20)),
   });
 
-  // Cover every registered rule across positive/negative/v0.2 fixtures.
+  // v0.4 planner fixture: fires all four planner rules at once.
+  const plannerTasks: Task[] = [
+    { ...base(), id: 'p-deep', title: 'Deep work', kind: 'deep', estimateMin: 300, status: 'active' },
+    { ...base(), id: 'p-shallow', title: 'Admin', kind: 'shallow', estimateMin: 300, status: 'active' },
+  ];
+  const plannerBlock = (id: string, over: Partial<Block> = {}): Block => ({
+    ...base(), id, taskId: 'p-deep', order: 0, plannedMin: 50, status: 'done', plannedDate: d(1), ...over,
+  });
+  const plannerDays = [1, 2, 3].map((offset) => {
+    const date = d(offset);
+    const plan: DayPlan = {
+      ...base(), id: `p-plan-${offset}`, date, wakeTime: '07:00', sleepTargetMin: 480, windDownMin: 45,
+      maxStudyBlockMin: 50, breakMin: 10, bufferMin: 10, movementGoalMin: 30, preferRecoverySpacing: true,
+      commitments: [{ id: `p-c-${offset}`, title: 'Classes', startTime: '07:00', endTime: '20:00' }],
+      studyGoals: [], blocks: [], unscheduled: [],
+    };
+    const dayBlocks: Block[] = [
+      plannerBlock(`p-s${offset}-1`, { taskId: 'p-shallow', plannedMin: 30, status: 'scheduled', plannedDate: date, plannedStart: '20:00' }),
+      plannerBlock(`p-s${offset}-2`, { taskId: 'p-shallow', plannedMin: 30, status: 'scheduled', plannedDate: date, plannedStart: '20:45' }),
+      plannerBlock(`p-s${offset}-3`, { taskId: 'p-shallow', plannedMin: 30, status: 'scheduled', plannedDate: date, plannedStart: '21:30' }),
+      plannerBlock(`p-l${offset}-1`, { taskId: 'p-shallow', plannedMin: 60, status: 'todo', plannedDate: date }),
+      plannerBlock(`p-l${offset}-2`, { taskId: 'p-shallow', plannedMin: 60, status: 'todo', plannedDate: date }),
+    ];
+    return { plan, dayBlocks };
+  });
+  const plannerMeta: DayPlanMeta[] = [0, 1, 2].map((offset) => ({
+    ...base(), id: `p-meta-${offset}`, date: d(offset), shutdownDone: true,
+  }));
+  const plannerScanInput = emptyInput({
+    tasks: plannerTasks,
+    blocks: [
+      ...plannerDays.flatMap((day) => day.dayBlocks),
+      ...Array.from({ length: 6 }, (_, i) =>
+        plannerBlock(`p-e${i}`, { plannedMin: 50, actualMin: 62, plannedDate: d(4 + i) }),
+      ),
+    ],
+    dayPlans: plannerDays.map((day) => day.plan),
+    dayPlanMeta: plannerMeta,
+  });
+
+  // Cover every registered rule across positive/negative/v0.2/v0.4 fixtures.
   const allInsights: Insight[] = [
     fullInput(),
     negativePairingInput(),
@@ -1001,6 +1045,7 @@ describe('insight copy safety', () => {
     mindfulStressInput,
     activityMoodInput,
     steadyMonthSleepInput,
+    plannerScanInput,
   ].flatMap((input) =>
     RULES.map((r) => r.run(input, TODAY)).filter((i): i is Insight => i !== null),
   );
