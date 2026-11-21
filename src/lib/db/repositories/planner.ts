@@ -22,6 +22,28 @@ const metaBase = createRepository<DayPlanMeta>({
   dateKey: "date",
 });
 
+/** Standalone so callers can destructure or pass these as callbacks safely. */
+async function upsertDayPlanMeta(
+  date: ISODate,
+  patch: { shutdownDone?: boolean; reflection?: string },
+): Promise<DayPlanMeta> {
+  const db = getDb();
+  return db.transaction("rw", db.dayPlanMeta, async () => {
+    const existing = await db.dayPlanMeta.where("date").equals(date).first();
+    if (existing) {
+      return metaBase.update(existing.id, {
+        shutdownDone: patch.shutdownDone ?? existing.shutdownDone,
+        reflection: patch.reflection !== undefined ? patch.reflection : existing.reflection,
+      });
+    }
+    return metaBase.create({
+      date,
+      shutdownDone: patch.shutdownDone ?? false,
+      reflection: patch.reflection,
+    });
+  });
+}
+
 export const dayPlanMetaRepository = {
   ...metaBase,
 
@@ -29,29 +51,10 @@ export const dayPlanMetaRepository = {
     return getDb().dayPlanMeta.where("date").equals(date).first();
   },
 
-  async upsertForDate(
-    date: ISODate,
-    patch: { shutdownDone?: boolean; reflection?: string },
-  ): Promise<DayPlanMeta> {
-    const db = getDb();
-    return db.transaction("rw", db.dayPlanMeta, async () => {
-      const existing = await db.dayPlanMeta.where("date").equals(date).first();
-      if (existing) {
-        return metaBase.update(existing.id, {
-          shutdownDone: patch.shutdownDone ?? existing.shutdownDone,
-          reflection: patch.reflection !== undefined ? patch.reflection : existing.reflection,
-        });
-      }
-      return metaBase.create({
-        date,
-        shutdownDone: patch.shutdownDone ?? false,
-        reflection: patch.reflection,
-      });
-    });
-  },
+  upsertForDate: upsertDayPlanMeta,
 
   setShutdownDone(date: ISODate, shutdownDone: boolean, reflection?: string): Promise<DayPlanMeta> {
-    return this.upsertForDate(date, { shutdownDone, reflection });
+    return upsertDayPlanMeta(date, { shutdownDone, reflection });
   },
 };
 
