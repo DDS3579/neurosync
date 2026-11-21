@@ -41,6 +41,7 @@ import {
   writeBrainImmersivePref,
   writeBrainSizePref,
 } from "@/lib/ui/brainUiPrefs";
+import { CalendarsSection } from "@/features/settings/components/CalendarsSection";
 import type { ReminderSettings, TextSizePref, UserSettings } from "@/types/domain";
 
 const hhmmSchema = z
@@ -533,6 +534,8 @@ export function SettingsWorkspace({
                 </Button>
               </div>
             </div>
+
+            <CalendarsSection />
 
             {/* Reminders */}
             <div className="space-y-4 border-t border-border pt-6">
