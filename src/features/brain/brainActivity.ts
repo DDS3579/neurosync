@@ -6,28 +6,24 @@ import {
   BRAIN_REGIONS,
   activityToRegionIntensity,
 } from "@/data/brainRegions";
+import {
+  activityKindForFocusSession,
+  buildLinkedKindMap,
+} from "@/features/planner/review/focusLedger";
 import type {
   ActivityKind,
   ActivityLog,
+  Block,
   FocusSession,
   Habit,
   HabitLog,
   ISODate,
-  LearningMethod,
   MindfulnessSession,
   MovementLog,
   RegionId,
   SleepLog,
+  Task,
 } from "@/types/domain";
-
-const METHOD_TO_ACTIVITY: Record<LearningMethod, ActivityKind> = {
-  active_recall: "active_recall",
-  spaced_repetition: "spaced_repetition",
-  problem_solving: "problem_solving",
-  deep_reading: "reading",
-  skill_practice: "skill_practice",
-  teaching: "teaching",
-};
 
 const REGION_NAME_BY_ID: Record<RegionId, string> = Object.fromEntries(
   BRAIN_REGIONS.map((r) => [r.id, r.name]),
@@ -71,6 +67,13 @@ export interface BrainActivitySources {
   habitLogs: readonly HabitLog[];
   mindfulness?: readonly MindfulnessSession[];
   activities?: readonly ActivityLog[];
+  /**
+   * Planner blocks are used ONLY to resolve which task kind produced a linked
+   * FocusSession. Block minutes are never added — the session is the single
+   * source of focus minutes, so nothing is counted twice.
+   */
+  blocks?: readonly Block[];
+  tasks?: readonly Task[];
 }
 
 export interface BrainTimelineSnapshot {
@@ -144,8 +147,9 @@ function collectRawEventsByDate(
     else byDate.set(date, [{ kind, minutes }]);
   };
 
+  const linkedKinds = buildLinkedKindMap(params.blocks ?? [], params.tasks ?? []);
   for (const f of params.focus) {
-    add(f.date, METHOD_TO_ACTIVITY[f.method], f.durationMin);
+    add(f.date, activityKindForFocusSession(f, linkedKinds.get(f.id)), f.durationMin);
   }
   for (const m of params.movement) {
     add(m.date, "exercise", m.durationMin);
