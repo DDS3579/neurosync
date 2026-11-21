@@ -22,7 +22,9 @@ import { useTodayISO } from "@/features/planner/useTodayISO";
 import type { Block, DayPlan, FocusSession, ISODate, Project, Task, UserSettings } from "@/types/domain";
 import { ImportIcsPanel } from "./ImportIcsPanel";
 import { PlannerReviewPanel } from "./PlannerReviewPanel";
+import { PlannerTasksPanel } from "./PlannerTasksPanel";
 import { PlannerTodayPanel } from "./PlannerTodayPanel";
+import { PlannerWeekPanel } from "./PlannerWeekPanel";
 import { PlannerWorkspace } from "./PlannerWorkspace";
 import { ShutdownDialog } from "./ShutdownDialog";
 
@@ -118,6 +120,16 @@ export function PlannerConnectionsShell({
       setFollowsToday(next === todayISO);
     },
     [todayISO],
+  );
+
+  /** Week and Tasks boards open a date on the Today board. */
+  const openDay = useCallback(
+    (next: ISODate) => {
+      setDate(next);
+      setFollowsToday(next === todayISO);
+      changeTab("today");
+    },
+    [changeTab, todayISO],
   );
 
   // LocalIcsProvider is the single read interface for busy time.
@@ -225,7 +237,7 @@ export function PlannerConnectionsShell({
 
       <Tabs value={hash.tab} onValueChange={changeTab} className="space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-control border border-border bg-surface p-1 sm:w-fit">
-          {(["today", "review", "day"] as const).map((tab) => (
+          {(["today", "week", "tasks", "review", "day"] as const).map((tab) => (
             <TabsTrigger key={tab} value={tab}>
               {PLANNER_TAB_LABELS[tab]}
             </TabsTrigger>
@@ -242,6 +254,29 @@ export function PlannerConnectionsShell({
             projects={projects}
             settings={settings}
             plan={plan}
+          />
+        </TabsContent>
+
+        <TabsContent value="week">
+          <PlannerWeekPanel
+            date={effectiveDate}
+            todayISO={todayISO}
+            blocks={blocks}
+            tasks={tasks}
+            plans={plans}
+            settings={settings}
+            onOpenDay={openDay}
+          />
+        </TabsContent>
+
+        <TabsContent value="tasks">
+          <PlannerTasksPanel
+            todayISO={todayISO}
+            tasks={tasks}
+            blocks={blocks}
+            projects={projects}
+            settings={settings}
+            onOpenDay={openDay}
           />
         </TabsContent>
 
