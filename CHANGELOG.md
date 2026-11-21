@@ -3,6 +3,8 @@
 ## Unreleased (v0.4)
 
 ### Added
+- **Planner polish: Week board, Tasks board, slot rail, pointer drag, memoised rows (v0.4)** — `/planner` now has five tabs. **Week** (`PlannerWeekPanel.tsx` + `weekBalance.ts`) shows Mon–Sun planned vs open-window minutes, finished counts, "open the day" actions and a neutral "this day has room" hint. **Tasks** (`PlannerTasksPanel.tsx`) lists open tasks with block/done counts and add-to-today. Every block can be placed from a **Slots** grid (`TimelineDropRail.tsx` + `timelineSlots.ts`, `Place <title> at HH:MM`) as tap/keyboard parity for drag. Drag-and-drop is a dependency-free Pointer Events controller (`dnd/pointerDrag.ts`) imported on demand into its own ~2 KiB chunk, with a 6 px threshold, rAF-positioned ghost (no React render per frame), Escape/pointercancel cancel and reduced-motion handling. Block rows are `memo`-ised (`PlannerBlockRow.tsx`) and the shutdown dialog restores focus to the element that opened it.
+- **Tests**: `timelineSlots.test.ts`, `weekBalance.test.ts`, tap/keyboard/pointer-drag placement tests against real IndexedDB, a 40-task/200-block render benchmark (`plannerPerf.test.tsx`), v3–v5 legacy import tests, and Week/Tasks tabs added to the axe suite.
 - **Planner connections: Review, insights, Overview, brain and calendars (v0.4)** — verified locally with `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:a11y` and `pnpm build`.
 - **No schema change.** Every field these connections need already exists at Dexie v10 (`Block.actualMin/completedAt/focusSessionId`, `DayPlanMeta.shutdownDone/reflection`). Imported `.ics` busy windows are session-scoped and never persisted.
 - **Planned vs actual** (`src/features/planner/review/plannedVsActual.ts`): average logged vs planned minutes by planned length (5-minute buckets) and by kind, with sample sizes, separate counts for completed-without-duration blocks, and a self-logged caveat. Surfaced in the `/planner` **Review** tab and as a **Planned vs logged blocks** card in the weekly report. No scores, no ranking of days.
@@ -21,6 +23,9 @@
   - Added Dexie `SCHEMA_VERSION = 10` migration (`projects`, `tasks`, `blocks`, `dayPlanMeta`) and bumped backup `schemaVersion` to `10` with Zod validation (enforcing `plannedStart` requires `plannedDate`) while keeping `v1–v9` backups compatible (`src/lib/db/dexie.ts`, `src/lib/db/backup.ts`, `src/app/(app)/settings/page.tsx`).
   - Added `projectRepository`, `taskRepository` (with cascade block deletion and unscheduling on archive), `blockRepository` (bulkCreate, reorder, schedule, unschedule, complete/uncomplete task-status sync, skip, listForDate, listUnscheduled), `dayPlanMetaRepository`, and live Dexie hooks (`src/lib/db/repositories/`, `src/lib/db/hooks.ts`).
   - Added pure block planner engine in `src/features/planner/blocks/` (`splitIntoBlocks`, `manualSplitBlock`, `mergeBlocks`, `resizeBlockPreservingTotal`, `validateSchedule`, `snapTimeToGrid`, and `capacity`) with unit tests (`blocks.test.ts`), migration/repository tests (`backup.test.ts`, `backupValidation.test.ts`, `plannerRepos.test.ts`), and deterministic `demo-` task/block/project/meta records (`src/features/overview/demoData.ts`).
+
+### Fixed
+- **Planner layout, time and focus defects found in the v0.4 audit** — slot generation on late wake times is capped at midnight instead of spilling into the next day; the slot rail resolves tray blocks (which have no `plannedDate`) as well as day blocks; `placeBlockAt` matches overlap issues by `blockId || otherId`; the shutdown dialog restores focus after `Escape`; planner block rows use 36 px minimum touch targets and slots 44 px.
 
 ## Unreleased (v0.3)
 
