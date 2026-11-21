@@ -38,6 +38,10 @@ import {
   type ExperimentFormValues,
 } from "@/features/experiments/experimentUtils";
 import { analyzeExperiment } from "@/lib/insights";
+import {
+  EXPERIMENT_TEMPLATES,
+  applyExperimentTemplate,
+} from "@/features/experiments/experimentTemplates";
 import type { Experiment, InsightInput, ISODate } from "@/types/domain";
 
 export interface ExperimentsWorkspaceProps {
@@ -343,6 +347,28 @@ export function ExperimentsWorkspace({
           </DialogHeader>
 
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            {!editing ? (
+              <section aria-labelledby="exp-templates" className="space-y-2 rounded-control border border-border bg-surface-2 p-3">
+                <h3 id="exp-templates" className="text-caption font-medium text-foreground">
+                  Start from a template
+                </h3>
+                {EXPERIMENT_TEMPLATES.map((template) => (
+                  <div key={template.id} className="space-y-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => form.reset(applyExperimentTemplate(template, todayISO))}
+                      className="h-auto min-h-8 w-full whitespace-normal rounded-control px-2.5 py-1.5 text-left text-caption"
+                    >
+                      {template.label}
+                    </Button>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">{template.summary}</p>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">{template.caveat}</p>
+                  </div>
+                ))}
+              </section>
+            ) : null}
             <div className="space-y-1.5">
               <Label htmlFor="exp-title">Title</Label>
               <Input
