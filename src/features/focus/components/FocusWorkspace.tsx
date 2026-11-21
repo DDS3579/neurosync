@@ -81,6 +81,17 @@ export interface FocusWorkspaceProps {
   defaultFocusMin: number;
   initialSubject?: string;
   initialPlannedMin?: number;
+  initialMethod?: FocusSession["method"];
+  /**
+   * Present when the timer was started from a planner block. Finishing routes
+   * through the planner's single completeBlock path, so exactly one
+   * FocusSession is created and the block is linked to it.
+   */
+  blockFinish?: {
+    blockId: string;
+    title: string;
+    onFinish: (session: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+  } | null;
   sessions: FocusSession[];
   reviewItems: ReviewItem[];
   microtaskResults?: MicrotaskResult[];
@@ -118,6 +129,8 @@ export function FocusWorkspace({
   defaultFocusMin,
   initialSubject,
   initialPlannedMin,
+  initialMethod,
+  blockFinish = null,
   sessions,
   reviewItems,
   microtaskResults = [],
@@ -160,7 +173,7 @@ export function FocusWorkspace({
     resolver: zodResolver(focusSetupSchema),
     defaultValues: {
       subject: initialSubject ?? "",
-      method: "active_recall",
+      method: initialMethod ?? "active_recall",
       plannedMin: initialPlannedMin ?? (defaultFocusMin || 25),
     },
   });
@@ -249,6 +262,7 @@ export function FocusWorkspace({
       subject: parsed.subject,
       method: parsed.method,
       plannedMin: parsed.plannedMin,
+      ...(blockFinish ? { blockId: blockFinish.blockId } : {}),
     });
     setNowMs(session.startedAtMs);
     setFinishing(false);
@@ -275,7 +289,7 @@ export function FocusWorkspace({
   const onCompleteSession = async (values: FocusCompleteValues) => {
     if (!running) return;
     const parsed = focusCompleteSchema.parse(values);
-    await onCreateSession({
+    const payload = {
       date: running.date,
       startedAt: running.startedAtISO,
       durationMin: parsed.durationMin,
@@ -288,13 +302,17 @@ export function FocusWorkspace({
       practicedRetrieval: parsed.practicedRetrieval,
       reviewedPrior: parsed.reviewedPrior,
       notes: parsed.notes?.trim() || undefined,
-    });
+    };
+    if (blockFinish && running.blockId === blockFinish.blockId) {
+      // One transaction creates the session AND completes the linked block.
+      await blockFinish.onFinish(payload);
+    } else {
+      await onCreateSession(payload);
+    }
     if (parsed.addToReviewQueue) {
       await onAddReviewItem({ topic: running.subject });
-      toast.success(
-        `Saved ${parsed.durationMin}m focus session and added "${running.subject}" to review queue.`,
-      );
-    } else {
+      toast.success(`Added "${running.subject}" to the review queue.`);
+    } else if (!blockFinish) {
       toast.success(`Saved ${parsed.durationMin}m focus session on ${running.subject}.`);
     }
     setFinishing(false);
