@@ -49,6 +49,8 @@ import { OverviewView } from "@/features/overview/OverviewView";
 import { buildOverviewViewData } from "@/features/overview/demoData";
 import AppSegmentError from "@/app/(app)/error";
 import { PlannerWorkspace } from "@/features/planner/components/PlannerWorkspace";
+import { PlannerConnectionsShell } from "@/features/planner/components/PlannerConnectionsShell";
+import { ShutdownDialog } from "@/features/planner/components/ShutdownDialog";
 import { SettingsWorkspace } from "@/features/settings/components/SettingsWorkspace";
 import { LIBRARY_ENTRIES } from "@/data/library";
 import { buildWeeklyReport, computeInsights, generateDemoData } from "@/lib/insights";
@@ -631,6 +633,148 @@ describe("NeuroSync accessibility audit (axe-core + WCAG AA tokens)", () => {
     );
     await runAxeCheck(microNode);
 
+    mockPathname = "/overview";
+    window.localStorage.clear();
+  });
+
+  it("Planner connections shell (Today, Review, Day plan) passes axe-core", async () => {
+    mockPathname = "/planner";
+    const plannerTasks = [
+      {
+        id: "a11y-task-1",
+        createdAt: "2026-11-16T08:00:00.000Z",
+        updatedAt: "2026-11-16T08:00:00.000Z",
+        title: "Synaptic plasticity chapter",
+        kind: "deep" as const,
+        estimateMin: 100,
+        status: "active" as const,
+      },
+    ];
+    const plannerBlocks = [
+      {
+        id: "a11y-block-1",
+        createdAt: "2026-11-16T08:00:00.000Z",
+        updatedAt: "2026-11-16T08:00:00.000Z",
+        taskId: "a11y-task-1",
+        order: 0,
+        plannedMin: 50,
+        status: "done" as const,
+        actualMin: 62,
+        plannedDate: TODAY_ISO,
+        plannedStart: "09:00",
+      },
+      {
+        id: "a11y-block-2",
+        createdAt: "2026-11-16T08:00:00.000Z",
+        updatedAt: "2026-11-16T08:00:00.000Z",
+        taskId: "a11y-task-1",
+        order: 1,
+        plannedMin: 30,
+        status: "todo" as const,
+      },
+    ];
+    const node = await renderIntoMain(
+      <PlannerConnectionsShell
+        settings={demo.settings}
+        projects={[]}
+        tasks={plannerTasks}
+        blocks={plannerBlocks}
+        focusSessions={demo.focus}
+        plans={[]}
+        shutdownDates={new Set<string>()}
+        reflections={new Map<string, string>()}
+        onSavePlan={vi.fn(async () => "created" as const)}
+      />,
+    );
+    expect(node.textContent).toContain("Add a task");
+    expect(node.textContent).toContain("Block tray");
+    expect(node.textContent).not.toMatch(/\bscore|\bproductivity|\boverdue|\bstreak/i);
+    await runAxeCheck(node);
+
+    const reviewTab = Array.from(node.querySelectorAll('[role="tab"]')).find((tab) =>
+      tab.textContent?.trim() === "Review",
+    ) as HTMLElement;
+    // Radix Tabs activates on mousedown (automatic activation), which a bare
+    // .click() does not fire in jsdom.
+    await act(async () => {
+      reviewTab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      reviewTab.click();
+    });
+    expect(node.textContent).toContain("By block length");
+    await runAxeCheck(node);
+
+    const openTab = async (label: string) => {
+      const tab = Array.from(node.querySelectorAll('[role="tab"]')).find(
+        (candidate) => candidate.textContent?.trim() === label,
+      ) as HTMLElement | undefined;
+      expect(tab).toBeTruthy();
+      await act(async () => {
+        tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+        tab!.click();
+      });
+    };
+
+    await openTab("Week");
+    expect(node.textContent).toContain("Planned this week");
+    expect(node.textContent).toContain("Open window");
+    expect(node.textContent).not.toMatch(/\bscore|productivity|failed|behind|streak/i);
+    await runAxeCheck(node);
+
+    await openTab("Tasks");
+    expect(node.textContent).toContain("Open tasks");
+    expect(node.textContent).toContain("Add a task");
+    await runAxeCheck(node);
+
+    await openTab("Today");
+    expect(node.textContent).toContain("Timeline");
+    await runAxeCheck(node);
+
+    mockPathname = "/overview";
+    window.localStorage.clear();
+  });
+
+  it("Shutdown ritual dialog passes axe-core", async () => {
+    mockPathname = "/planner";
+    const tasks = [
+      {
+        id: "a11y-shutdown-task",
+        createdAt: "2026-11-16T08:00:00.000Z",
+        updatedAt: "2026-11-16T08:00:00.000Z",
+        title: "Review lecture notes",
+        kind: "shallow" as const,
+        estimateMin: 50,
+        status: "active" as const,
+      },
+    ];
+    const blocks = [
+      {
+        id: "a11y-shutdown-block",
+        createdAt: "2026-11-16T08:00:00.000Z",
+        updatedAt: "2026-11-16T08:00:00.000Z",
+        taskId: "a11y-shutdown-task",
+        order: 0,
+        plannedMin: 50,
+        status: "todo" as const,
+        plannedDate: TODAY_ISO,
+      },
+    ];
+    await renderIntoMain(
+      <ShutdownDialog
+        open
+        onOpenChange={vi.fn()}
+        date={TODAY_ISO}
+        blocks={blocks}
+        tasks={tasks}
+        onCompleted={vi.fn()}
+      />,
+    );
+    // The dialog renders in a portal on document.body, so audit the body.
+    const results = await axe.run(document.body, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(results.violations).toEqual([]);
+    expect(document.body.textContent).toContain("Shutdown");
+    expect(document.body.textContent).toMatch(/roll|tray|skip/i);
     mockPathname = "/overview";
     window.localStorage.clear();
   });

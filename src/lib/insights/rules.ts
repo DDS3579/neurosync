@@ -11,6 +11,7 @@ import type {
 } from '@/types/domain';
 import { format, getDay, parseISO, subDays } from 'date-fns';
 import { buildConfidence } from './confidence';
+import { PLANNER_RULES } from './plannerRules';
 import {
   circularMeanMinutes,
   circularStdMinutes,
@@ -914,4 +915,6 @@ export const RULES: readonly InsightRule[] = [
       return null;
     },
   },
+  // v0.4 planner rules are appended so every pre-v0.4 ordering assertion holds.
+  ...PLANNER_RULES,
 ];

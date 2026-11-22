@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { FocusSkeleton, FocusWorkspace } from "@/features/focus/components/FocusWorkspace";
 import type { NewMicrotaskResultInput } from "@/features/focus/components/microtasks/MicrotasksTab";
 import { createInitialReviewSchedule, scheduleNextReview } from "@/features/focus/reviewScheduler";
+import { LEARNING_METHOD_OPTIONS } from "@/features/focus/timerUtils";
 import { toLocalISODate } from "@/features/sleep/sleepUtils";
 import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import {
@@ -15,7 +16,10 @@ import {
   useSettings,
 } from "@/lib/db/hooks";
 import { focusRepository, microtaskRepository, reviewRepository } from "@/lib/db/repositories";
-import type { FocusSession, ReviewDifficulty } from "@/types/domain";
+import { completeBlock } from "@/features/planner/services/blockActions";
+import { useBlocks, useTasks } from "@/lib/db/hooks";
+import { toast } from "sonner";
+import type { FocusSession, LearningMethod, ReviewDifficulty } from "@/types/domain";
 
 function FocusPageContent() {
   const searchParams = useSearchParams();
@@ -25,12 +29,48 @@ function FocusPageContent() {
   const microtasks = useMicrotaskResults();
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  const prefillSubject = searchParams.get("subject")?.trim() || undefined;
+  const blocks = useBlocks();
+  const tasks = useTasks();
+  const rawBlockId = searchParams.get("blockId")?.trim() || undefined;
+  const linkedBlock = rawBlockId ? blocks.data?.find((b) => b.id === rawBlockId) : undefined;
+  const linkedTask = linkedBlock ? tasks.data?.find((t) => t.id === linkedBlock.taskId) : undefined;
+  const linkable = useMemo(
+    () =>
+      linkedBlock && linkedTask && linkedBlock.status !== "done" && linkedBlock.status !== "skipped"
+        ? { block: linkedBlock, task: linkedTask }
+        : null,
+    [linkedBlock, linkedTask],
+  );
+
+  const prefillSubject = linkable?.task.title ?? (searchParams.get("subject")?.trim() || undefined);
   const rawPlanned = Number(searchParams.get("plannedMin"));
-  const prefillPlannedMin =
-    Number.isFinite(rawPlanned) && rawPlanned >= 1 && rawPlanned <= 240
+  const prefillPlannedMin = linkable
+    ? Math.max(1, Math.min(240, Math.round(linkable.block.plannedMin)))
+    : Number.isFinite(rawPlanned) && rawPlanned >= 1 && rawPlanned <= 240
       ? Math.round(rawPlanned)
       : undefined;
+  const rawMethod = searchParams.get("method");
+  const prefillMethod: LearningMethod | undefined =
+    rawMethod && LEARNING_METHOD_OPTIONS.some((option) => option.value === rawMethod)
+      ? (rawMethod as LearningMethod)
+      : undefined;
+
+  const blockFinish = useMemo(() => {
+    if (!linkable) return null;
+    const { block, task } = linkable;
+    return {
+      blockId: block.id,
+      title: task.title,
+      onFinish: async (session: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => {
+        const result = await completeBlock(block.id, { session });
+        toast.success(
+          result.alreadyDone
+            ? `"${task.title}" was already finished — no second session was created.`
+            : `Logged ${session.durationMin}m and marked "${task.title}" done.`,
+        );
+      },
+    };
+  }, [linkable]);
 
   const onCreateSession = useCallback(
     async (values: Omit<FocusSession, "id" | "createdAt" | "updatedAt">) => {
@@ -82,10 +122,14 @@ function FocusPageContent() {
     focus.isLoading ||
     reviews.isLoading ||
     microtasks.isLoading ||
+    blocks.isLoading ||
+    tasks.isLoading ||
     !settings.data ||
     !focus.data ||
     !reviews.data ||
-    !microtasks.data
+    !microtasks.data ||
+    !blocks.data ||
+    !tasks.data
   ) {
     return <FocusSkeleton />;
   }
@@ -95,6 +139,8 @@ function FocusPageContent() {
       defaultFocusMin={settings.data.focusDefaultMin}
       initialSubject={prefillSubject}
       initialPlannedMin={prefillPlannedMin}
+      initialMethod={prefillMethod}
+      blockFinish={blockFinish}
       sessions={focus.data}
       reviewItems={reviews.data}
       microtaskResults={microtasks.data}

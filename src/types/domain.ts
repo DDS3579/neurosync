@@ -44,6 +44,9 @@ export interface UserSettings extends Base {
   onboarded: boolean; reducedMotion?: boolean;
   highContrast?: boolean; textSize?: TextSizePref;
   reminders?: ReminderSettings;
+  defaultBlockMin?: number;                           // default 50
+  deepWorkCapMin?: number;                            // default 240
+  snapMin?: number;                                   // default 15
   schemaVersion: number;
 }
 export interface SleepLog extends Base {
@@ -175,6 +178,45 @@ export interface DayPlan extends Base {
   unscheduled: UnscheduledGoalItem[];
 }
 
+export type TaskKind = 'deep' | 'shallow' | 'recovery';
+export type TaskStatus = 'inbox' | 'active' | 'done' | 'archived';
+export type BlockStatus = 'todo' | 'scheduled' | 'done' | 'skipped';
+
+export interface Project extends Base {
+  name: string;
+  color?: string;
+  archived: boolean;
+}
+
+export interface Task extends Base {
+  title: string;
+  projectId?: string;
+  notes?: string;
+  kind: TaskKind;
+  estimateMin: number;
+  dueDate?: ISODate;
+  status: TaskStatus;
+  repeatWeekdays?: number[];
+}
+
+export interface Block extends Base {
+  taskId: string;
+  order: number;
+  plannedMin: number;
+  status: BlockStatus;
+  plannedDate?: ISODate;
+  plannedStart?: string;
+  actualMin?: number;
+  focusSessionId?: string;
+  completedAt?: ISODateTime;
+}
+
+export interface DayPlanMeta extends Base {
+  date: ISODate;
+  shutdownDone: boolean;
+  reflection?: string;
+}
+
 export type MicrotaskKind = 'reaction_time' | 'memory_span' | 'go_no_go';
 export type MicrotaskTimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 export type MicrotaskInputType = 'mouse' | 'touch' | 'keyboard';
@@ -235,6 +277,12 @@ export interface InsightInput {
   activities?: ActivityLog[]; mindfulness?: MindfulnessSession[];
   journal?: JournalEntry[]; gratitude?: GratitudeEntry[];
   microtaskResults?: MicrotaskResult[];
+  /** v0.4 planner inputs. Optional so every pre-v0.4 caller and backup stays valid. */
+  projects?: Project[];
+  tasks?: Task[];
+  blocks?: Block[];
+  dayPlans?: DayPlan[];
+  dayPlanMeta?: DayPlanMeta[];
 }
 export type Pillar = 'sleep'|'focus'|'movement'|'nutrition'|'wellbeing'|'learning';
 export type DataConfidenceLevel = 'low' | 'moderate' | 'enough';

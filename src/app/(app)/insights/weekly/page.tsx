@@ -9,7 +9,10 @@ import {
 } from "@/features/insights/components/WeeklyReportWorkspace";
 import {
   useActivityLogs,
+  useBlocks,
   useCheckins,
+  useDayPlanMeta,
+  useDayPlans,
   useFocusSessions,
   useGratitudeEntries,
   useHabitLogs,
@@ -18,8 +21,10 @@ import {
   useMindfulnessSessions,
   useMovementLogs,
   useNutritionLogs,
+  useProjects,
   useSettings,
   useSleepLogs,
+  useTasks,
 } from "@/lib/db/hooks";
 import { buildWeeklyReport } from "@/lib/insights";
 import type { ISODate } from "@/types/domain";
@@ -39,6 +44,11 @@ export default function WeeklyReportPage() {
   const journal = useJournalEntries();
   const gratitude = useGratitudeEntries();
   const activities = useActivityLogs();
+  const blocks = useBlocks();
+  const tasks = useTasks();
+  const projects = useProjects();
+  const dayPlans = useDayPlans();
+  const dayPlanMeta = useDayPlanMeta();
 
   const isLoading =
     settings.isLoading ||
@@ -52,7 +62,12 @@ export default function WeeklyReportPage() {
     mindfulness.isLoading ||
     journal.isLoading ||
     gratitude.isLoading ||
-    activities.isLoading;
+    activities.isLoading ||
+    blocks.isLoading ||
+    tasks.isLoading ||
+    projects.isLoading ||
+    dayPlans.isLoading ||
+    dayPlanMeta.isLoading;
 
   const computed = useMemo(() => {
     if (
@@ -68,7 +83,12 @@ export default function WeeklyReportPage() {
       !mindfulness.data ||
       !journal.data ||
       !gratitude.data ||
-      !activities.data
+      !activities.data ||
+      !blocks.data ||
+      !tasks.data ||
+      !projects.data ||
+      !dayPlans.data ||
+      !dayPlanMeta.data
     ) {
       return null;
     }
@@ -91,6 +111,10 @@ export default function WeeklyReportPage() {
         journal: journal.data,
         gratitude: gratitude.data,
         activities: activities.data,
+        blocks: blocks.data,
+        tasks: tasks.data,
+        projects: projects.data,
+        dayPlans: dayPlans.data,
       },
       weekStartISO,
     );
@@ -114,6 +138,11 @@ export default function WeeklyReportPage() {
     journal.data,
     gratitude.data,
     activities.data,
+    blocks.data,
+    tasks.data,
+    projects.data,
+    dayPlans.data,
+    dayPlanMeta.data,
   ]);
 
   if (!computed) {

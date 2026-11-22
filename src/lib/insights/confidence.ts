@@ -18,7 +18,7 @@ export const CONFIDENCE_THRESHOLDS = {
 
 export interface ConfidenceParams {
   sampleSize: number;
-  unit: 'day' | 'night' | 'session' | 'entry';
+  unit: 'day' | 'night' | 'session' | 'entry' | 'block';
   paired?: boolean;
   windowDays?: number;
   /** Optional 0..1 normalized effect strength (e.g. |Pearson r| or standardized diff). */

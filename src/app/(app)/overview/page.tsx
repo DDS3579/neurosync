@@ -13,7 +13,10 @@ import {
 import { OverviewSkeleton, OverviewView } from "@/features/overview/OverviewView";
 import {
   useActivityLogs,
+  useBlocks,
   useCheckins,
+  useDayPlanMeta,
+  useDayPlans,
   useFocusSessions,
   useHabitLogs,
   useHabits,
@@ -21,8 +24,10 @@ import {
   useMindfulnessSessions,
   useMovementLogs,
   useNutritionLogs,
+  useProjects,
   useSettings,
   useSleepLogs,
+  useTasks,
 } from "@/lib/db/hooks";
 import { insightFeedbackRepository } from "@/lib/db/repositories";
 import type { Insight } from "@/types/domain";
@@ -40,9 +45,18 @@ export default function OverviewPage() {
   const mindfulness = useMindfulnessSessions();
   const activities = useActivityLogs();
   const insightFeedback = useInsightFeedback();
+  const projects = useProjects();
+  const tasks = useTasks();
+  const blocks = useBlocks();
+  const dayPlans = useDayPlans();
+  const dayPlanMeta = useDayPlanMeta();
 
   const onLogToday = useCallback(() => router.push("/habits"), [router]);
   const onOpenBrain = useCallback(() => router.push("/brain"), [router]);
+  const onStartNextBlock = useCallback(
+    (blockId: string) => router.push(`/focus?blockId=${encodeURIComponent(blockId)}`),
+    [router],
+  );
 
   const onDismissInsight = useCallback(async (insight: Insight) => {
     await insightFeedbackRepository.dismiss({
@@ -83,7 +97,12 @@ export default function OverviewPage() {
     habitLogs.isLoading ||
     mindfulness.isLoading ||
     activities.isLoading ||
-    insightFeedback.isLoading;
+    insightFeedback.isLoading ||
+    projects.isLoading ||
+    tasks.isLoading ||
+    blocks.isLoading ||
+    dayPlans.isLoading ||
+    dayPlanMeta.isLoading;
 
   const aggregated = useMemo(() => {
     if (
@@ -98,7 +117,12 @@ export default function OverviewPage() {
       !habitLogs.data ||
       !mindfulness.data ||
       !activities.data ||
-      !insightFeedback.data
+      !insightFeedback.data ||
+      !projects.data ||
+      !tasks.data ||
+      !blocks.data ||
+      !dayPlans.data ||
+      !dayPlanMeta.data
     ) {
       return null;
     }
@@ -115,6 +139,11 @@ export default function OverviewPage() {
       mindfulness: mindfulness.data,
       activities: activities.data,
       insightFeedback: insightFeedback.data,
+      projects: projects.data,
+      tasks: tasks.data,
+      blocks: blocks.data,
+      dayPlans: dayPlans.data,
+      dayPlanMeta: dayPlanMeta.data,
     });
   }, [
     isLoading,
@@ -129,6 +158,11 @@ export default function OverviewPage() {
     mindfulness.data,
     activities.data,
     insightFeedback.data,
+    projects.data,
+    tasks.data,
+    blocks.data,
+    dayPlans.data,
+    dayPlanMeta.data,
   ]);
 
   if (!aggregated) {
@@ -142,6 +176,7 @@ export default function OverviewPage() {
       onLoadDemo={onLoadDemo}
       onClearDemo={onClearDemo}
       onOpenBrain={onOpenBrain}
+      onStartNextBlock={onStartNextBlock}
       onDismissInsight={onDismissInsight}
       onSnoozeInsight={onSnoozeInsight}
     />

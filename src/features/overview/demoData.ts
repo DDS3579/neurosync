@@ -4,7 +4,9 @@ import { activityToRegionIntensity } from "@/data/brainRegions";
 import { SCHEMA_VERSION, importAll } from "@/lib/db/backup";
 import {
   activityRepository,
+  blockRepository,
   checkinRepository,
+  dayPlanMetaRepository,
   focusRepository,
   gratitudeRepository,
   habitLogRepository,
@@ -13,16 +15,22 @@ import {
   mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  projectRepository,
   reviewRepository,
   settingsRepository,
   sleepRepository,
+  taskRepository,
 } from "@/lib/db/repositories";
 import { computeInsights, generateDemoData, selectOverviewInsights } from "@/lib/insights";
+import { pickNextBlock } from "@/features/planner/nextBlock";
 import type { OverviewViewProps } from "@/features/overview/OverviewView";
 import type {
   ActivityKind,
   ActivityLog,
+  Block,
   DailyCheckin,
+  DayPlan,
+  DayPlanMeta,
   FocusSession,
   Habit,
   HabitLog,
@@ -32,7 +40,9 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  Project,
   SleepLog,
+  Task,
   UserSettings,
 } from "@/types/domain";
 
@@ -189,6 +199,141 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
     },
   ];
 
+  const projects: Project[] = [
+    {
+      id: "demo-proj-1",
+      name: "Cognitive Neuro",
+      color: "#8B5CF6",
+      archived: false,
+      createdAt: stamp(7, "08:00:00"),
+      updatedAt: stamp(7, "08:00:00"),
+    },
+    {
+      id: "demo-proj-2",
+      name: "Daily Ops",
+      color: "#22D3EE",
+      archived: false,
+      createdAt: stamp(7, "08:05:00"),
+      updatedAt: stamp(7, "08:05:00"),
+    },
+  ];
+
+  const tasks: Task[] = [
+    {
+      id: "demo-task-1",
+      title: "Prefrontal executive-control notes",
+      projectId: "demo-proj-1",
+      notes: "Summarize retrieval cues in own words.",
+      kind: "deep",
+      estimateMin: 100,
+      dueDate: day(0),
+      status: "active",
+      createdAt: stamp(2, "09:00:00"),
+      updatedAt: stamp(0, "08:00:00"),
+    },
+    {
+      id: "demo-task-2",
+      title: "Spaced-repetition card batch",
+      projectId: "demo-proj-2",
+      kind: "shallow",
+      estimateMin: 30,
+      dueDate: day(0),
+      status: "active",
+      repeatWeekdays: [1, 3, 5],
+      createdAt: stamp(3, "09:00:00"),
+      updatedAt: stamp(0, "08:05:00"),
+    },
+    {
+      id: "demo-task-3",
+      title: "Afternoon walk without headphones",
+      kind: "recovery",
+      estimateMin: 30,
+      dueDate: day(0),
+      status: "active",
+      createdAt: stamp(1, "09:00:00"),
+      updatedAt: stamp(0, "08:10:00"),
+    },
+    {
+      id: "demo-task-4",
+      title: "Weekly reading inbox triage",
+      projectId: "demo-proj-2",
+      kind: "shallow",
+      estimateMin: 40,
+      dueDate: day(1),
+      status: "done",
+      createdAt: stamp(2, "10:00:00"),
+      updatedAt: stamp(1, "14:40:00"),
+    },
+  ];
+
+  const blocks: Block[] = [
+    {
+      id: "demo-blk-1",
+      taskId: "demo-task-1",
+      order: 0,
+      plannedMin: 50,
+      status: "scheduled",
+      plannedDate: day(0),
+      plannedStart: "09:00",
+      createdAt: stamp(2, "09:00:00"),
+      updatedAt: stamp(0, "08:00:00"),
+    },
+    {
+      id: "demo-blk-2",
+      taskId: "demo-task-1",
+      order: 1,
+      plannedMin: 50,
+      status: "todo",
+      createdAt: stamp(2, "09:01:00"),
+      updatedAt: stamp(2, "09:01:00"),
+    },
+    {
+      id: "demo-blk-3",
+      taskId: "demo-task-2",
+      order: 1,
+      plannedMin: 30,
+      status: "todo",
+      plannedDate: day(0),
+      createdAt: stamp(0, "08:05:00"),
+      updatedAt: stamp(0, "08:05:00"),
+    },
+    {
+      id: "demo-blk-4",
+      taskId: "demo-task-3",
+      order: 2,
+      plannedMin: 30,
+      status: "scheduled",
+      plannedDate: day(0),
+      plannedStart: "16:30",
+      createdAt: stamp(0, "08:10:00"),
+      updatedAt: stamp(0, "08:10:00"),
+    },
+    {
+      id: "demo-blk-5",
+      taskId: "demo-task-4",
+      order: 0,
+      plannedMin: 40,
+      status: "done",
+      plannedDate: day(1),
+      plannedStart: "14:00",
+      actualMin: 35,
+      completedAt: stamp(1, "14:35:00"),
+      createdAt: stamp(1, "08:00:00"),
+      updatedAt: stamp(1, "14:35:00"),
+    },
+  ];
+
+  const dayPlanMeta: DayPlanMeta[] = [
+    {
+      id: "demo-meta-1",
+      date: day(1),
+      shutdownDone: true,
+      reflection: "Wrapped shallow reading triage before evening wind-down.",
+      createdAt: stamp(1, "21:15:00"),
+      updatedAt: stamp(1, "21:15:00"),
+    },
+  ];
+
   await importAll(
     JSON.stringify({
       schemaVersion: SCHEMA_VERSION,
@@ -211,6 +356,10 @@ export async function loadDemoDataToDb(today: Date = new Date()): Promise<void> 
         dayPlans: [],
         insightFeedback: [],
         microtaskResults: [],
+        projects,
+        tasks,
+        blocks,
+        dayPlanMeta,
       },
     }),
     "merge",
@@ -233,6 +382,10 @@ export async function clearDemoDataFromDb(): Promise<void> {
     gratitudeRepository,
     activityRepository,
     reviewRepository,
+    blockRepository,
+    taskRepository,
+    projectRepository,
+    dayPlanMetaRepository,
   ] as const;
 
   await Promise.all(
@@ -256,6 +409,11 @@ export interface OverviewAggregationInput {
   mindfulness?: MindfulnessSession[];
   activities?: ActivityLog[];
   insightFeedback?: InsightFeedback[];
+  projects?: Project[];
+  tasks?: Task[];
+  blocks?: Block[];
+  dayPlans?: DayPlan[];
+  dayPlanMeta?: DayPlanMeta[];
   today?: Date;
 }
 
@@ -328,10 +486,29 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
       habitLogs: input.habitLogs,
       activities: input.activities,
       mindfulness: input.mindfulness,
+      projects: input.projects,
+      tasks: input.tasks,
+      blocks: input.blocks,
+      dayPlans: input.dayPlans,
+      dayPlanMeta: input.dayPlanMeta,
     },
     todayISO,
     { feedback: input.insightFeedback },
   );
+  const todayPlan = (input.dayPlans ?? []).find((plan) => plan.date === todayISO);
+  const nextBlock = pickNextBlock({
+    blocks: input.blocks ?? [],
+    tasks: input.tasks ?? [],
+    projects: input.projects ?? [],
+    date: todayISO,
+    wakeTime: todayPlan?.wakeTime ?? "07:00",
+    nowMinutes:
+      input.today === undefined
+        ? new Date().getHours() * 60 + new Date().getMinutes()
+        : todayISO === format(startOfDay(new Date()), "yyyy-MM-dd")
+          ? new Date().getHours() * 60 + new Date().getMinutes()
+          : null,
+  });
   const insights = selectOverviewInsights(allInsights, 3);
 
   const isEmpty =
@@ -385,5 +562,6 @@ export function buildOverviewViewData(input: OverviewAggregationInput): Omit<
     brainActivity: activityToRegionIntensity(activityItems),
     isEmpty,
     hasDemoData,
+    nextBlock,
   };
 }

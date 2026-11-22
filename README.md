@@ -81,8 +81,10 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 
 - UI components and pages **never** import `dexie` directly; they read via `lib/db/hooks.ts` and mutate via repositories.
 - Every record implements `Base` (`id`, `createdAt`, `updatedAt`) with local `YYYY-MM-DD` day keys.
-- `SCHEMA_VERSION = 9` covers all 17 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`, `microtaskResults`).
-- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v8` backups.
+- `SCHEMA_VERSION = 10` covers all 21 Dexie tables (`settings`, `sleepLogs`, `checkins`, `focusSessions`, `movementLogs`, `nutritionLogs`, `habits`, `habitLogs`, `experiments`, `mindfulnessSessions`, `journalEntries`, `gratitudeEntries`, `activityLogs`, `reviewItems`, `dayPlans`, `insightFeedback`, `microtaskResults`, `projects`, `tasks`, `blocks`, `dayPlanMeta`).
+- `buildBackup()` / `importAll()` serialize and validate backups via Zod while retaining full backwards-compatible migrations for `v0.1` (`schemaVersion: 1`) through `v9` backups. A corrupt block (for example `plannedStart` without `plannedDate`) rejects the whole import atomically.
+
+**Planner connections (v0.4)**: `/planner` has five tabs — **Today** (capture a task, split it into blocks, place them on the timeline by typing a time, tapping **Slots**, dragging, or pressing `Alt`+`↑`/`↓` on a placed block, then start/skip/finish them), **Week** (Mon–Sun planned vs open-window minutes with carry-ahead hints), **Tasks** (open tasks with block counts and add-to-today), **Review** (planned vs logged minutes by block length and kind, always with sample sizes and a self-logged caveat) and **Day plan** (the rule-based generator, plus read-only busy time from an imported `.ics`). Drag-and-drop is a dependency-free Pointer Events controller loaded on demand, so it ships in its own ~2 KiB chunk and only loads when a drag starts. Finishing a timer records exactly one `FocusSession` and links it to the block, so brain and weekly totals never count a block twice. Export day/week as `.ics` with floating local wall-clock times; import is parsed locally and kept for the visit only. No new Dexie version was needed: `Block.actualMin/completedAt/focusSessionId` and `DayPlanMeta.shutdownDone/reflection` already existed at v10.
 
 ---
 
@@ -91,3 +93,6 @@ All persistence passes through `src/lib/db/repositories/` (`createRepository<T>`
 - **Educational associations, never measurements**: NeuroSync never gives a "brain score," never claims habits "grew" or "strengthened" brain regions, and never diagnoses anything. Every activity-linked brain view displays: *"Educational association, not a measurement of your brain activity."*
 - **Non-judgmental reflection**: No streaks, guilt framing, or calorie/macro counting. Journal entries and gratitude notes are never analyzed, scored, or sent anywhere.
 - **Honest browser limits & storage**: All logs stay in browser `IndexedDB` with zero network requests, zero accounts, and zero third-party analytics. Data is **not encrypted** on your device — use **Settings → Export JSON** anytime to keep a personal backup. Opt-in reminders explain clearly that browser apps without a push server cannot reliably fire alerts when closed, offering recurring `.ics` calendar export alongside active in-app notifications.
+
+
+See `INTEGRATION_REPORT_v0.4.md` for the verification evidence, bundle sizes, known issues and v0.5 suggestions.

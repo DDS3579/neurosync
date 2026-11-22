@@ -3,7 +3,7 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowUpRight, Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Check, CircleDashed, Plus, Sparkles, Telescope } from "lucide-react";
 import { motion } from "motion/react";
 
 import {
@@ -19,6 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePrefersReducedMotion } from "@/features/brain/useBrainQuality";
 import { cn } from "@/lib/utils";
 import type { Insight, RegionId } from "@/types/domain";
+import type { NextBlockInfo } from "@/features/planner/nextBlock";
+import { NextBlockCard } from "./NextBlockCard";
 
 import {
   FocusChart,
@@ -46,6 +48,9 @@ export interface OverviewViewProps {
   brainActivity: Partial<Record<RegionId, number>>;
   isEmpty: boolean;
   hasDemoData?: boolean;
+  /** Next scheduled planner block for today, or null when nothing is placed. */
+  nextBlock?: NextBlockInfo | null;
+  onStartNextBlock?: (blockId: string) => void;
   onLogToday(): void;
   onLoadDemo?(): void;
   onClearDemo?(): void;
@@ -169,6 +174,8 @@ export function OverviewView({
   brainActivity,
   isEmpty,
   hasDemoData,
+  nextBlock = null,
+  onStartNextBlock,
   onLogToday,
   onLoadDemo,
   onClearDemo,
@@ -315,6 +322,29 @@ export function OverviewView({
     <div className={LAYOUT}>
       <Entrance index={0} className="md:col-span-6 xl:col-span-12">
         {header}
+      </Entrance>
+
+      <Entrance index={0} lift className="md:col-span-6 xl:col-span-12">
+        {nextBlock ? (
+          <NextBlockCard info={nextBlock} onStart={onStartNextBlock} />
+        ) : (
+          <Card className="gap-0 rounded-card border border-dashed border-border bg-surface py-0 ring-0 shadow-none">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="min-w-0 space-y-1">
+                <p className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  <CalendarClock className="size-3.5" aria-hidden />
+                  No block placed yet
+                </p>
+                <p className="text-body text-muted-foreground">
+                  Break a task into blocks, then give one a start time. Nothing is scheduled automatically.
+                </p>
+              </div>
+              <Button asChild variant="outline" className="rounded-control">
+                <Link href="/planner#today">Plan today</Link>
+              </Button>
+            </div>
+          </Card>
+        )}
       </Entrance>
 
       <Entrance index={1} lift className="md:col-span-6 xl:col-span-8">

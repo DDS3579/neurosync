@@ -11,7 +11,9 @@ import { buildRemindersIcs } from "@/features/reminders/reminderUtils";
 import { getDb } from "@/lib/db/dexie";
 import {
   activityRepository,
+  blockRepository,
   checkinRepository,
+  dayPlanMetaRepository,
   focusRepository,
   gratitudeRepository,
   habitLogRepository,
@@ -21,9 +23,11 @@ import {
   mindfulnessRepository,
   movementRepository,
   nutritionRepository,
+  projectRepository,
   reviewRepository,
   settingsRepository,
   sleepRepository,
+  taskRepository,
 } from "@/lib/db/repositories";
 import { buildWeeklyReport, computeInsights } from "@/lib/insights";
 
@@ -209,7 +213,13 @@ describe("v0.2 end-to-end demo pipeline", () => {
     await insightFeedbackRepository.restore(first.id);
     expect((await insightFeedbackRepository.listAll()).length).toBe(0);
 
-    // 8. Clear demo data removes v0.1 + v0.2 demo rows cleanly
+    // 8. Verify v0.4 planner demo records exist before clearing
+    expect((await projectRepository.listAll()).length).toBeGreaterThanOrEqual(2);
+    expect((await taskRepository.listAll()).length).toBeGreaterThanOrEqual(4);
+    expect((await blockRepository.listAll()).length).toBeGreaterThanOrEqual(5);
+    expect((await dayPlanMetaRepository.listAll()).length).toBeGreaterThanOrEqual(1);
+
+    // 9. Clear demo data removes v0.1 + v0.2 + v0.4 demo rows cleanly
     await clearDemoDataFromDb();
     expect((await sleepRepository.listAll()).length).toBe(0);
     expect((await mindfulnessRepository.listAll()).length).toBe(0);
@@ -217,5 +227,9 @@ describe("v0.2 end-to-end demo pipeline", () => {
     expect((await gratitudeRepository.listAll()).length).toBe(0);
     expect((await activityRepository.listAll()).length).toBe(0);
     expect((await reviewRepository.listAll()).length).toBe(0);
+    expect((await projectRepository.listAll()).length).toBe(0);
+    expect((await taskRepository.listAll()).length).toBe(0);
+    expect((await blockRepository.listAll()).length).toBe(0);
+    expect((await dayPlanMetaRepository.listAll()).length).toBe(0);
   });
 });

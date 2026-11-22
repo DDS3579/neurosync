@@ -3,8 +3,10 @@ import Dexie, { type Table } from "dexie";
 import { DEFAULT_REMINDER_SETTINGS } from "@/features/reminders/reminderUtils";
 import type {
   ActivityLog,
+  Block,
   DailyCheckin,
   DayPlan,
+  DayPlanMeta,
   Experiment,
   FocusSession,
   GratitudeEntry,
@@ -16,9 +18,11 @@ import type {
   MindfulnessSession,
   MovementLog,
   NutritionLog,
+  Project,
   ReminderSettings,
   ReviewItem,
   SleepLog,
+  Task,
   TextSizePref,
   UserSettings,
 } from "@/types/domain";
@@ -28,7 +32,7 @@ import type {
  * Backups carry this number so an incompatible file is rejected instead of
  * being half-imported.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const DB_NAME = "neurosync";
 
@@ -53,6 +57,10 @@ export class NeuroSyncDatabase extends Dexie {
   dayPlans!: Table<DayPlan, string>;
   insightFeedback!: Table<InsightFeedback, string>;
   microtaskResults!: Table<MicrotaskResult, string>;
+  projects!: Table<Project, string>;
+  tasks!: Table<Task, string>;
+  blocks!: Table<Block, string>;
+  dayPlanMeta!: Table<DayPlanMeta, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -282,7 +290,7 @@ export class NeuroSyncDatabase extends Dexie {
           );
       });
 
-    this.version(SCHEMA_VERSION)
+    this.version(9)
       .stores({
         settings: "id",
         sleepLogs: "id, date",
@@ -307,8 +315,51 @@ export class NeuroSyncDatabase extends Dexie {
           .table("settings")
           .toCollection()
           .modify((row: { schemaVersion?: number }) => {
-            row.schemaVersion = SCHEMA_VERSION;
+            row.schemaVersion = 9;
           });
+      });
+
+    this.version(SCHEMA_VERSION)
+      .stores({
+        settings: "id",
+        sleepLogs: "id, date",
+        checkins: "id, date",
+        focusSessions: "id, date, subject, method",
+        movementLogs: "id, date, type",
+        nutritionLogs: "id, date",
+        habits: "id, archived",
+        habitLogs: "id, date, habitId, [date+habitId]",
+        experiments: "id, status, metric, baselineStart",
+        mindfulnessSessions: "id, date, type",
+        journalEntries: "id, date",
+        gratitudeEntries: "id, date",
+        activityLogs: "id, date, type",
+        reviewItems: "id, nextReviewDate, intervalStep",
+        dayPlans: "id, date",
+        insightFeedback: "id, insightId, status",
+        microtaskResults: "id, date, task",
+        projects: "id, archived",
+        tasks: "id, projectId, kind, status, dueDate",
+        blocks: "id, taskId, status, plannedDate, [plannedDate+order]",
+        dayPlanMeta: "id, date",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("settings")
+          .toCollection()
+          .modify(
+            (row: {
+              schemaVersion?: number;
+              defaultBlockMin?: number;
+              deepWorkCapMin?: number;
+              snapMin?: number;
+            }) => {
+              if (row.defaultBlockMin === undefined) row.defaultBlockMin = 50;
+              if (row.deepWorkCapMin === undefined) row.deepWorkCapMin = 240;
+              if (row.snapMin === undefined) row.snapMin = 15;
+              row.schemaVersion = SCHEMA_VERSION;
+            },
+          );
       });
   }
 }

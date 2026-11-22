@@ -96,6 +96,7 @@ function buildInitialDraft(
   defaultSleepMin: number,
   defaultBreakMin: number,
   focusHistory: readonly FocusSession[],
+  externalCommitments: readonly PlannerFixedCommitment[] = [],
 ): PlannerDraftState {
   if (saved) {
     const generatedMeta = generateDayPlan({
@@ -143,7 +144,11 @@ function buildInitialDraft(
     commitments: [],
     studyGoals: [],
   };
-  const generated = generateDayPlan({ ...base, focusHistory });
+  const generated = generateDayPlan({
+    ...base,
+    commitments: [...externalCommitments],
+    focusHistory,
+  });
   return {
     ...base,
     blocks: generated.blocks,
@@ -164,6 +169,12 @@ export interface PlannerWorkspaceProps {
   defaultBreakMin: number;
   focusSessions: FocusSession[];
   savedPlans: DayPlan[];
+  /**
+   * Read-only busy windows resolved through CalendarProvider (e.g. an imported
+   * .ics). They are merged at generation time only, so they never enter the
+   * editable commitment list and are never persisted by this workspace.
+   */
+  externalCommitments?: readonly PlannerFixedCommitment[];
   onSavePlan: (
     plan: Omit<DayPlan, "id" | "createdAt" | "updatedAt">,
   ) => Promise<"created" | "updated">;
@@ -174,6 +185,7 @@ export function PlannerWorkspace({
   defaultBreakMin,
   focusSessions,
   savedPlans,
+  externalCommitments = [],
   onSavePlan,
 }: PlannerWorkspaceProps) {
   const router = useRouter();
@@ -191,6 +203,7 @@ export function PlannerWorkspace({
       defaultSleepTargetMin,
       defaultBreakMin,
       focusSessions,
+      externalCommitments,
     ),
   );
 
@@ -216,6 +229,7 @@ export function PlannerWorkspace({
         defaultSleepTargetMin,
         defaultBreakMin,
         focusSessions,
+        externalCommitments,
       ),
     );
   };
@@ -231,7 +245,7 @@ export function PlannerWorkspace({
       bufferMin: next.bufferMin,
       movementGoalMin: next.movementGoalMin,
       preferRecoverySpacing: next.preferRecoverySpacing,
-      commitments: next.commitments,
+      commitments: [...next.commitments, ...externalCommitments],
       studyGoals: next.studyGoals,
       focusHistory: focusSessions,
     });
@@ -374,6 +388,7 @@ export function PlannerWorkspace({
         defaultSleepTargetMin,
         defaultBreakMin,
         focusSessions,
+        externalCommitments,
       ),
     );
     toast.success(`Loaded saved plan for ${draft.date}.`);

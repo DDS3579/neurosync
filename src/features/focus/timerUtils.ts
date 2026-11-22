@@ -47,6 +47,8 @@ export interface RunningFocusSession {
   pausedIntervals: PauseInterval[];
   distractions: number;
   notifiedComplete?: boolean;
+  /** Set when this timer was started from a planner block. */
+  blockId?: string;
 }
 
 export function isSessionPaused(session: RunningFocusSession): boolean {
@@ -80,6 +82,7 @@ export function startRunningSession(params: {
   method: LearningMethod;
   plannedMin: number;
   nowMs?: number;
+  blockId?: string;
 }): RunningFocusSession {
   const nowMs = params.nowMs ?? Date.now();
   const now = new Date(nowMs);
@@ -94,6 +97,7 @@ export function startRunningSession(params: {
     pausedIntervals: [],
     distractions: 0,
     notifiedComplete: false,
+    ...(params.blockId ? { blockId: params.blockId } : {}),
   };
 }
 
@@ -155,7 +159,12 @@ export function deserializeRunningSession(raw: string | null): RunningFocusSessi
     ) {
       return null;
     }
-    return parsed as RunningFocusSession;
+    const session = parsed as RunningFocusSession;
+    // A malformed block link must never make the timer unusable.
+    if (session.blockId !== undefined && typeof session.blockId !== "string") {
+      delete session.blockId;
+    }
+    return session;
   } catch {
     return null;
   }
